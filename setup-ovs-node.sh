@@ -87,15 +87,36 @@ route add default gw $mygw
 service openvswitch-switch restart
 
 #
-# Setup the data network
+# Make sure we have the integration bridge
 #
 ovs-vsctl add-br br-int
-#ovs-vsctl add-port br-int ${DATA_NETWORK_INTERFACE}
 
-if [ ${USE_EXISTING_DATA_IPS} -eq 0 ]; then
-    ifconfig ${DATA_NETWORK_INTERFACE} $dataip netmask 255.0.0.0 up
+#
+# (Maybe) Setup the data network
+#
+if [ ${SETUP_FLAT_DATA_NETWORK} -eq 1 ]; then
+    ovs-vsctl add-br br-data
+    ovs-vsctl add-port br-data ${DATA_NETWORK_INTERFACE}
+
+    ifconfig ${DATA_NETWORK_INTERFACE} 0 up
+    ifconfig br-data $dataip netmask 255.0.0.0 up
 
     cat <<EOF >> /etc/network/interfaces
+
+auto lo eth0 ${DATA_NETWORK_INTERFACE}
+
+iface br-data inet static
+    address $dataip
+    netmask 255.0.0.0
+
+iface ${DATA_NETWORK_INTERFACE} inet static
+    address 0.0.0.0
+EOF
+else
+    if [ ${USE_EXISTING_DATA_IPS} -eq 0 ]; then
+	ifconfig ${DATA_NETWORK_INTERFACE} $dataip netmask 255.0.0.0 up
+
+	cat <<EOF >> /etc/network/interfaces
 
 auto lo eth0 ${DATA_NETWORK_INTERFACE}
 
@@ -103,9 +124,10 @@ iface ${DATA_NETWORK_INTERFACE} inet static
     address $dataip
     netmask 255.0.0.0
 EOF
+    fi
 fi
 
-#service openvswitch-switch restart
+service openvswitch-switch restart
 
 ip route flush cache
 

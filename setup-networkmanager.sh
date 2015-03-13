@@ -75,11 +75,11 @@ EOF
 cat <<EOF >> /etc/neutron/plugins/ml2/ml2_conf.ini
 [ml2]
 type_drivers = flat,gre
-tenant_network_types = gre
+tenant_network_types = flat,gre
 mechanism_drivers = openvswitch
 
 [ml2_type_flat]
-flat_networks = external
+flat_networks = external,data
 
 [ml2_type_gre]
 tunnel_id_ranges = 1:1000
@@ -92,7 +92,7 @@ firewall_driver = neutron.agent.firewall.NoopFirewallDriver
 [ovs]
 local_ip = $dataip
 enable_tunneling = True
-bridge_mappings = external:br-ex
+bridge_mappings = external:br-ex,data:br-data
 
 [agent]
 tunnel_types = gre

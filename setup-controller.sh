@@ -401,8 +401,11 @@ EOF
     cat <<EOF >> /etc/neutron/plugins/ml2/ml2_conf.ini
 [ml2]
 type_drivers = flat,gre
-tenant_network_types = gre
+tenant_network_types = flat,gre
 mechanism_drivers = openvswitch
+
+[ml2_type_flat]
+flat_networks = external,data
 
 [ml2_type_gre]
 tunnel_id_ranges = 1:1000

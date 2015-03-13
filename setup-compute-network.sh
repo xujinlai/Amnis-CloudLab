@@ -28,7 +28,11 @@ if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
 
-myip=`ip addr show ${DATA_NETWORK_INTERFACE} | sed -n -e 's/^.*inet \([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
+if [ ${SETUP_FLAT_DATA_NETWORK} -eq 1 ]; then
+    myip=`ip addr show br-data | sed -n -e 's/^.*inet \([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
+else
+    myip=`ip addr show ${DATA_NETWORK_INTERFACE} | sed -n -e 's/^.*inet \([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
+fi
 
 cat <<EOF >> /etc/sysctl.conf
 net.ipv4.conf.all.rp_filter=0
@@ -71,11 +75,11 @@ EOF
 cat <<EOF >> /etc/neutron/plugins/ml2/ml2_conf.ini
 [ml2]
 type_drivers = flat,gre
-tenant_network_types = gre
+tenant_network_types = flat,gre
 mechanism_drivers = openvswitch
 
 [ml2_type_flat]
-flat_networks = external
+flat_networks = external,data
 
 [ml2_type_gre]
 tunnel_id_ranges = 1:1000
@@ -88,7 +92,7 @@ firewall_driver = neutron.agent.firewall.NoopFirewallDriver
 [ovs]
 local_ip = $myip
 enable_tunneling = True
-bridge_mappings = external:br-ex
+bridge_mappings = external:br-ex,data:br-data
 
 [agent]
 tunnel_types = gre

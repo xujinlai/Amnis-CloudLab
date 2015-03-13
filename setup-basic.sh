@@ -84,7 +84,9 @@ EOM
 
 #
 # NOTE: we reduce the MTU arbitrarily here so that we can (easily) fit
-# through a GRE tunnel.
+# through a GRE tunnel.  Also, add a second interface because our default
+# config has two interfaces -- a GRE tunnel data net, and a flat data "control"
+# net.
 #
 echo "*** adding networking for qemu ..."
 {
@@ -96,6 +98,10 @@ iface lo inet loopback
 auto eth0
 iface eth0 inet dhcp
     post-up /sbin/ifconfig eth0 mtu 1300
+
+auto eth1
+iface eth1 inet dhcp
+    post-up /sbin/ifconfig eth1 mtu 1300
 EOM
 } | tee -a mnt/etc/network/interfaces >/dev/null
 
@@ -126,13 +132,27 @@ glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" ubunt
 glance image-update --property kernel_id=${KERNEL_ID} ubuntu-core-14.04.1-core-arm64
 glance image-update --property ramdisk_id=${RAMDISK_ID} ubuntu-core-14.04.1-core-arm64
 
-echo "*** Creating data network and subnet ..."
+echo "*** Creating GRE data network and subnet ..."
 
-neutron net-create ${EPID}-net
-neutron subnet-create ${EPID}-net  --name ${EPID}-subnet 172.16/12
-neutron router-create ${EPID}-router
-neutron router-interface-add ${EPID}-router ${EPID}-subnet
-neutron router-gateway-set ${EPID}-router ext-net
+neutron net-create tun-data-net
+neutron subnet-create tun-data-net  --name tun-data-subnet 172.16/12
+neutron router-create tun-data-router
+neutron router-interface-add tun-data-router tun-data-subnet
+neutron router-gateway-set tun-data-router ext-net
+
+if [ ${SETUP_FLAT_DATA_NETWORK} -eq 1 ]; then
+
+    echo "*** Creating Flat data network and subnet ..."
+
+    nmdataip=`cat $OURDIR/data-hosts | grep networkmanager | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
+
+    neutron net-create flat-data-net --shared --router:external True --provider:physical_network data --provider:network_type flat
+    neutron subnet-create flat-data-net --name flat-data-subnet --allocation-pool start=10.254.1.1,end=10.254.254.254 --gateway $nmdataip 10.0.0.0/8
+
+    #neutron router-create ${EPID}-router
+    #neutron router-interface-add ${EPID}-router ${EPID}-subnet
+    #neutron router-gateway-set ${EPID}-router ext-net
+fi
 
 #
 # Now do another one, with sshd installed
