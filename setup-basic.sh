@@ -30,19 +30,76 @@ fi
 
 echo "*** Building an ARM64 image ..."
 
+# need growpart
+apt-get update
+apt-get install cloud-guest-utils
+
 # Grab some files
 wget http://boss.utah.cloudlab.us/downloads/vmlinuz-3.13.0-40-arm64-generic
 wget http://boss.utah.cloudlab.us/downloads/initrd.img-3.13.0-40-arm64-generic
 wget http://boss.utah.cloudlab.us/downloads/ubuntu-core-14.04.1-core-arm64.tar.gz
 
+echo "*** adding growpart to initrd ***"
+initrd=initrd.img-3.13.0-40-arm64-generic
+cp -pv $initrd ${initrd}.orig
+mkdir -p initrd
+cd initrd
+gunzip -c ../$initrd | cpio -i -H newc 
+#--verbose
+cat <<'EOF' > scripts/local-premount/growpart
+#/bin/sh -e
+
+set -x
+
+root_dev=`echo ${ROOT} | sed -n -e "s/.*\/\([a-z0-9]*[a-z]\).*/\1/p"`
+part_num=`echo ${ROOT} | sed -n -e "s/.*\/[a-z0-9]*[a-z]\(.*\)/\1/p"`
+echo "[] linux-rootfs-resize $ROOT ($root_dev and $part_num)..."
+growpart -v /dev/${root_dev} ${part_num}
+partprobe /dev/${root_dev}${part_num}
+sleep 2
+e2fsck -p -f /dev/${root_dev}${part_num}
+sleep 2
+resize2fs -f -p /dev/${root_dev}${part_num}
+EOF
+
+chmod ug+x scripts/local-premount/growpart
+echo "/scripts/local-premount/growpart" >> scripts/local-premount/ORDER
+
+# copy deps
+deps="growpart cat sfdisk grep sed awk partx e2fsck resize2fs partprobe readlink"
+for dep in $deps
+do
+    path=`which $dep`
+    dir=`dirname $path`
+    mkdir -p ./$dir
+    cp -pv $path ./$path
+    libs=`ldd $path | cut -d ' ' -f 3 | xargs`
+    for lib in $libs
+    do
+	dir=`dirname $lib`
+	mkdir -p ./$dir
+	cp -pv $lib ./$lib
+    done
+done
+
+# rebuild initrd
+find . | cpio -o -H newc | gzip > ../$initrd
+cd ..
+
 core=ubuntu-core-14.04.1-core-arm64.tar.gz
 out=ubuntu-core-14.04.1-core-arm64.img
 
 dd if=/dev/zero of="$out" bs=1M count=1024
+dd conv=notrunc if=$DIRNAME/mbr.img of="$out" bs=2048 count=1
+ld=`losetup --show -f "$out"`
+partprobe $ld
 echo "*** making a new ext4 filesystem ..."
-echo "y" | mkfs -t ext4 "$out" >/dev/null
+# if we don't pass 1024*1024*1023/4096 (size in blocks), mke2fs will make
+# the fs 1024*1024*1024/4096 --- not factoring the offset into the estimated
+# automatic size.  This must be a bug...
+mke2fs -t ext4 ${ld}p1
 mkdir -p mnt
-mount -o loop "$out" mnt
+mount ${ld}p1 mnt
 
 echo "*** adding contents of core tarball ..."
 tar xzf "$core" -C mnt
@@ -131,6 +188,8 @@ glance image-create --name ubuntu-core-14.04.1-core-arm64 --is-public True --pro
 glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" ubuntu-core-14.04.1-core-arm64
 glance image-update --property kernel_id=${KERNEL_ID} ubuntu-core-14.04.1-core-arm64
 glance image-update --property ramdisk_id=${RAMDISK_ID} ubuntu-core-14.04.1-core-arm64
+glance image-update --property root_device_name=/dev/vda1 ubuntu-core-14.04.1-core-arm64
+
 
 echo "*** Creating GRE data network and subnet ..."
 
@@ -158,10 +217,11 @@ fi
 # Now do another one, with sshd installed
 #
 mkdir -p mnt
-mount -o loop "$out" mnt
+mount ${ld}p1 mnt
 
 echo "*** installing ssh/sshd..."
 echo "nameserver 8.8.8.8" > mnt/etc/resolv.conf
+chroot mnt /usr/bin/apt-get update
 chroot mnt /usr/bin/apt-get install -y openssh-server openssh-client
 chroot mnt /usr/sbin/update-rc.d ssh defaults
 chroot mnt /usr/sbin/update-rc.d ssh enable
@@ -222,5 +282,8 @@ glance image-create --name ubuntu-core-14.04.1-core-arm64-sshd --is-public True 
 glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" ubuntu-core-14.04.1-core-arm64-sshd
 glance image-update --property kernel_id=${KERNEL_ID} ubuntu-core-14.04.1-core-arm64-sshd
 glance image-update --property ramdisk_id=${RAMDISK_ID} ubuntu-core-14.04.1-core-arm64-sshd
+glance image-update --property root_device_name=/dev/vda1 ubuntu-core-14.04.1-core-arm64-sshd
+
+losetup -d ${ld}
 
 exit 0
