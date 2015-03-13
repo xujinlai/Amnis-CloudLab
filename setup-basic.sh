@@ -103,7 +103,8 @@ EOM
 echo 'Acquire::CompressionTypes::Order { "gz"; "bz2"; }' | tee mnt/etc/apt/apt.conf.d/99gzip >/dev/null
 
 echo "*** fixing root password to root/root ..."
-sed -in -e 's@root:\*:@root:$6$pDWQLJGt$813e.4.vXznRlkCpxRtBdUZmHf6DnYg.XM58h6SGLF0Q2tCh5kTF2hCi7fm9NeaSSHeGBaUfpKQ9/wA54mcb51:@' mnt/etc/shadow
+#sed -in -e 's@root:\*:@root:$6$pDWQLJGt$813e.4.vXznRlkCpxRtBdUZmHf6DnYg.XM58h6SGLF0Q2tCh5kTF2hCi7fm9NeaSSHeGBaUfpKQ9/wA54mcb51:@' mnt/etc/shadow
+sed -in -e 's@root:\*:@root:$6$lMUVMHvx$JkBLzWKF/v6s/UQx1RlNPbIS7nEVjqfZwtQJcb1r.pEuMiV0JO1Z9r4w2s9ULJ22JLlY8.sU.whzQRil0f7sF/:@' mnt/etc/shadow
 
 echo "*** unmounting ..."
 umount mnt
