@@ -90,7 +90,7 @@ core=ubuntu-core-14.04.1-core-arm64.tar.gz
 out=ubuntu-core-14.04.1-core-arm64.img
 
 dd if=/dev/zero of="$out" bs=1M count=1024
-dd conv=notrunc if=$DIRNAME/mbr.img of="$out" bs=2048 count=1
+dd conv=notrunc if=$DIRNAME/etc/mbr.img of="$out" bs=2048 count=1
 ld=`losetup --show -f "$out"`
 partprobe $ld
 echo "*** making a new ext4 filesystem ..."
