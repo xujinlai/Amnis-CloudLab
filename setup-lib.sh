@@ -1,5 +1,21 @@
 #!/bin/sh
 
+#
+# Our default configuration
+#
+CONTROLLER="controller"
+NETWORKMANAGER="networkmanager"
+STORAGEHOST="controller"
+OBJECTHOST="controller"
+SETUP_FLAT_DATA_NETWORK=1
+USE_EXISTING_DATA_IPS=1
+EXTERNAL_NETWORK_INTERFACE="eth0"
+EXTERNAL_NETWORK_BRIDGE="br-ex"
+DATA_NETWORK_INTERFACE="eth1"
+DATA_NETWORK_BRIDGE="br-int"
+EXT_FLOAT_IP_START=128.110.154.240
+EXT_FLOAT_IP_END=128.110.154.254
+
 BOOTDIR=/var/emulab/boot
 TMCC=/usr/local/etc/emulab/tmcc
 
@@ -28,8 +44,6 @@ fi
 TTF=`mktemp topomap.XXXXXX`
 $TMCC topomap | gunzip > $TTF
 
-CONTROLLER="controller"
-NETWORKMANAGER="networkmanager"
 NODES=`cat $TTF | grep -v '^#' | sed -n -e 's/^\([a-zA-Z0-9\-]*\),.*:.*$/\1/p' | xargs`
 COMPUTENODES=""
 for node in $NODES
@@ -52,12 +66,7 @@ SETTINGS=$OURDIR/settings
 mkdir -p $OURDIR
 cd $OURDIR
 
-SETUP_FLAT_DATA_NETWORK=1
-USE_EXISTING_DATA_IPS=1
-EXTERNAL_NETWORK_INTERFACE="eth0"
-EXTERNAL_NETWORK_BRIDGE="br-ex"
-DATA_NETWORK_INTERFACE="eth1"
-DATA_NETWORK_BRIDGE="br-int"
-
-EXT_FLOAT_IP_START=128.110.154.240
-EXT_FLOAT_IP_END=128.110.154.254
+if [ ! -f $OURDIR/apt-updated ]; then
+    apt-get update
+    touch $OURDIR/apt-updated
+fi
