@@ -247,6 +247,9 @@ if [ -z "${NOVA_DBPASS}" ]; then
     NOVA_DBPASS=`$PSWDGEN`
     NOVA_PASS=`$PSWDGEN`
 
+    # Make sure we're consistent with the clients
+    apt-get install nova-api
+
     echo "create database nova" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on nova.* to 'nova'@'localhost' identified by '$NOVA_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on nova.* to 'nova'@'%' identified by '$NOVA_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
