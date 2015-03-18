@@ -17,8 +17,6 @@ OBJECTLAN=""
 SETUP_FLAT_DATA_NETWORK=1
 USE_EXISTING_DATA_IPS=1
 USE_EXISTING_MGMT_IPS=1
-EXT_FLOAT_IP_START=128.110.154.240
-EXT_FLOAT_IP_END=128.110.154.254
 DO_APT_UPDATE=1
 DO_UBUNTU_CLOUDARCHIVE=1
 
@@ -45,6 +43,10 @@ if [ "$SWAPPER" = "geniuser" ]; then
     SWAPPER_EMAIL=`geni-get user_email`
 else
     SWAPPER_EMAIL="$SWAPPER@$OURDOMAIN"
+fi
+
+if [ "$SWAPPER" = "geniuser" ]; then
+    PUBLICADDRS=`geni-get manifest | perl -e 'while (<STDIN>) { while ($_ =~ m/\<emulab:ipv4 address="([\d.]+)\" netmask=\"([\d\.]+)\"/g) { print "$1\n"; } }' | xargs`
 fi
 
 OURDIR=/root/setup

@@ -494,8 +494,19 @@ if [ -z "${NEUTRON_NETWORKS_DONE}" ]; then
     mynet=`ip route show dev br-ex | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\/[0-9]*\) .*$/\1/p'`
 
     neutron subnet-create ext-net --name ext-subnet \
-	--allocation-pool start=${EXT_FLOAT_IP_START},end=${EXT_FLOAT_IP_END} \
 	--disable-dhcp --gateway $mygw $mynet
+
+    SID=`neutron subnet-show ext-subnet | awk '/ id / {print $4}'`
+    # NB: get rid of the default one!
+    if [ ! -z "$SID" ]; then
+	echo "delete from ipallocationpools where subnet_id='$SID'" \
+	    | mysql --password=${DB_ROOT_PASS} neutron
+    fi
+
+    for ip in $PUBLICADDRS ; do
+	echo "insert into ipallocationpools values (UUID(),'$SID','$ip','$ip')" \
+	    | mysql --password=${DB_ROOT_PASS} neutron
+    done
 
     echo "NEUTRON_NETWORKS_DONE=\"${NEUTRON_NETWORKS_DONE}\"" >> $SETTINGS
 fi
