@@ -144,6 +144,7 @@ EOM
 # config has two interfaces -- a GRE tunnel data net, and a flat data "control"
 # net.
 #
+cp -p mnt/etc/network/interfaces ./etc.network.interfaces.ORIG
 echo "*** adding networking for qemu ..."
 {
     cat - <<EOM
@@ -259,6 +260,31 @@ glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" ubunt
 glance image-update --property kernel_id=${KERNEL_ID} ubuntu-core-14.04.1-core-arm64-sshd
 glance image-update --property ramdisk_id=${RAMDISK_ID} ubuntu-core-14.04.1-core-arm64-sshd
 glance image-update --property root_device_name=/dev/vda1 ubuntu-core-14.04.1-core-arm64-sshd
+
+#
+# Now do another one, with cloud-init installed
+#
+mkdir -p mnt
+mount ${ld}p1 mnt
+
+echo "*** installing cloud-init and cloud-guest-utils..."
+chroot mnt /usr/bin/apt-get update
+chroot mnt /usr/bin/apt-get install -y cloud-guest-utils cloud-init
+
+cp -p etc.network.interfaces mnt/etc/network/interfaces
+
+echo "*** unmounting ..."
+umount mnt
+rmdir mnt
+
+echo "*** Importing new image (with cloud-guest-utils) ..."
+
+glance image-create --name ubuntu-core-14.04.1-core-arm64-ci --is-public True --progress --file $out --disk-format ami --container-format ami
+
+glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" ubuntu-core-14.04.1-core-arm64-ci
+glance image-update --property kernel_id=${KERNEL_ID} ubuntu-core-14.04.1-core-arm64-ci
+glance image-update --property ramdisk_id=${RAMDISK_ID} ubuntu-core-14.04.1-core-arm64-ci
+glance image-update --property root_device_name=/dev/vda1 ubuntu-core-14.04.1-core-arm64-ci
 
 losetup -d ${ld}
 
