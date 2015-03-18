@@ -114,14 +114,14 @@ verbose = True
 EOF
 
 # Uncomment if dhcp has trouble due to MTU
-#cat <<EOF >> /etc/neutron/dhcp_agent.ini
-#[DEFAULT]
-#dnsmasq_config_file = /etc/neutron/dnsmasq-neutron.conf
-#EOF
-#cat <<EOF >> /etc/neutron/dnsmasq-neutron.conf
-#dhcp-option-force=26,1454
-#EOF
-#pkill dnsmasq
+cat <<EOF >> /etc/neutron/dhcp_agent.ini
+[DEFAULT]
+dnsmasq_config_file = /etc/neutron/dnsmasq-neutron.conf
+EOF
+cat <<EOF >> /etc/neutron/dnsmasq-neutron.conf
+dhcp-option-force=26,1454
+EOF
+pkill dnsmasq
 
 sed -i -e "s/^.*auth_url.*=.*$/auth_url = http:\\/\\/$CONTROLLER:5000\\/v2.0/" /etc/neutron/metadata_agent.ini
 sed -i -e "s/^.*auth_region.*=.*$/auth_region = regionOne/" /etc/neutron/metadata_agent.ini
