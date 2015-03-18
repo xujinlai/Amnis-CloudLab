@@ -503,6 +503,8 @@ if [ -z "${NEUTRON_NETWORKS_DONE}" ]; then
 	    | mysql --password=${DB_ROOT_PASS} neutron
     fi
 
+    # NB: this is important to do before we connect any routers to the ext-net
+    # (i.e., in setup-basic.sh)
     for ip in $PUBLICADDRS ; do
 	echo "insert into ipallocationpools values (UUID(),'$SID','$ip','$ip')" \
 	    | mysql --password=${DB_ROOT_PASS} neutron

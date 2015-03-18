@@ -47,6 +47,13 @@ fi
 
 if [ "$SWAPPER" = "geniuser" ]; then
     PUBLICADDRS=`geni-get manifest | perl -e 'while (<STDIN>) { while ($_ =~ m/\<emulab:ipv4 address="([\d.]+)\" netmask=\"([\d\.]+)\"/g) { print "$1\n"; } }' | xargs`
+    PUBLICCOUNT=0
+    for ip in $PUBLICADDRS ; do
+	PUBLICCOUNT=`expr $PUBLICCOUNT + 1`
+    done
+else
+    PUBLICADDRS=""
+    PUBLICCOUNT=0
 fi
 
 OURDIR=/root/setup

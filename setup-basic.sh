@@ -50,12 +50,14 @@ if [ ${SETUP_FLAT_DATA_NETWORK} -eq 1 ]; then
 
     nmdataip=`cat $OURDIR/data-hosts | grep networkmanager | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
 
-    neutron net-create flat-data-net --shared --router:external True --provider:physical_network data --provider:network_type flat
+    neutron net-create flat-data-net --shared --provider:physical_network data --provider:network_type flat
     neutron subnet-create flat-data-net --name flat-data-subnet --allocation-pool start=10.254.1.1,end=10.254.254.254 --gateway $nmdataip 10.0.0.0/8
 
-    #neutron router-create ${EPID}-router
-    #neutron router-interface-add ${EPID}-router ${EPID}-subnet
-    #neutron router-gateway-set ${EPID}-router ext-net
+    neutron router-create flat-data-router
+    neutron router-interface-add flat-data-router flat-data-subnet
+    if [ $PUBLICCOUNT -ge 3 ] ; then
+	neutron router-gateway-set flat-data-router ext-net
+    fi
 fi
 
 exit 0
