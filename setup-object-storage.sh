@@ -15,7 +15,6 @@ fi
 # Grab our libs
 . "`dirname $0`/setup-lib.sh"
 
-HOSTNAME=`hostname -s`
 if [ "$HOSTNAME" != "$OBJECTHOST" ]; then
     exit 0;
 fi
@@ -27,33 +26,63 @@ fi
 if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
-
-myip=`cat $OURDIR/mgmt-hosts | grep $HOSTNAME | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
+if [ -f $LOCALSETTINGS ]; then
+    . $LOCALSETTINGS
+fi
 
 apt-get install -y xfsprogs rsync
 
+#
+# First try to make LVM volumes; fall back to loop device in /storage.  We use
+# /storage for swift later, so we make the dir either way.
+#
+
 mkdir -p /storage
-dd if=/dev/zero of=/storage/pv.objectstore.loop.1 bs=32768 count=524288
-LDEV=`losetup -f`
-losetup $LDEV /storage/pv.objectstore.loop.1
+if [ -z "$LVM" ] ; then
+    LVM=1
+    VGNAME="openstack-volumes"
+    MKEXTRAFS_ARGS="-l -v ${VGNAME} -m util -z 1G"
+    # On Cloudlab ARM machines, there is no second disk nor extra disk space
+    if [ "$ARCH" = "aarch64" ]; then
+	MKEXTRAFS_ARGS=""
+	LVM=0
+    fi
+
+    /usr/local/etc/emulab/mkextrafs.pl ${MKEXTRAFS_ARGS}
+    if [ $? -ne 0 ]; then
+	/usr/local/etc/emulab/mkextrafs.pl ${MKEXTRAFS_ARGS} -f
+	if [ $? -ne 0 ]; then
+	    /usr/local/etc/emulab/mkextrafs.pl -f /storage
+	    LVM=0
+	fi
+    fi
+fi
+
+if [ $LVM -eq 0 ] ; then
+    dd if=/dev/zero of=/storage/swiftv1 bs=32768 count=131072
+    LDEV=`losetup -f`
+    losetup $LDEV /storage/swiftv1
+else
+    lvcreate -n swiftv1 -L 4G $VGNAME
+    LDEV=/dev/${VGNAME}/swiftv1
+fi
 
 mkfs.xfs $LDEV
 
 mkdir -p /storage/mnt/swift
-
 cat <<EOF >> /etc/fstab
-$LDEV /storage/mnt/swift/pv.objectstore.loop.1 xfs noatime,nodiratime,nobarrier,logbufs=8 0 2
+$LDEV /storage/mnt/swift/swiftv1 xfs noatime,nodiratime,nobarrier,logbufs=8 0 2
 EOF
 
-mkdir -p /storage/mnt/swift/pv.objectstore.loop.1
-mount /storage/mnt/swift/pv.objectstore.loop.1
+mkdir -p /storage/mnt/swift/swiftv1
+mount /storage/mnt/swift/swiftv1
 
 cat <<EOF >> /etc/rsyncd.conf
 uid = swift
 gid = swift
 log file = /var/log/rsyncd.log
 pid file = /var/run/rsyncd.pid
-address = $myip
+address = $MGMTIP
 
 [account]
 max connections = 8
@@ -94,7 +123,7 @@ curl -o /etc/swift/object-server.conf \
 
 cat <<EOF >> /etc/swift/account-server.conf
 [DEFAULT]
-bind_ip = $myip
+bind_ip = $MGMTIP
 bind_port = 6002
 user = swift
 swift_dir = /etc/swift
@@ -109,7 +138,7 @@ EOF
 
 cat <<EOF >> /etc/swift/container-server.conf
 [DEFAULT]
-bind_ip = $myip
+bind_ip = $MGMTIP
 bind_port = 6001
 user = swift
 swift_dir = /etc/swift
@@ -124,7 +153,7 @@ EOF
 
 cat <<EOF >> /etc/swift/object-server.conf
 [DEFAULT]
-bind_ip = $myip
+bind_ip = $MGMTIP
 bind_port = 6000
 user = swift
 swift_dir = /etc/swift

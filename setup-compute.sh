@@ -12,8 +12,10 @@ if [ $EUID -ne 0 ] ; then
     exit 1
 fi
 
+DIRNAME=`dirname $0`
+
 # Grab our libs
-. "`dirname $0`/setup-lib.sh"
+. "$DIRNAME/setup-lib.sh"
 
 HOSTNAME=`hostname -s`
 if [ "$HOSTNAME" == "$CONTROLLER" -o "$HOSTNAME" == "$NETWORKMANAGER" ]; then
@@ -28,10 +30,8 @@ if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
 
-myip=`cat /etc/hosts | grep $NODEID | head -1 | sed -n -e 's/^\\([0-9]*\\.[0-9]*\\.[0-9]*\\.[0-9]*\\).*$/\\1/p'`
-
-apt-get install -y nova-compute sysfsutils
-apt-get install -y libguestfs-tools libguestfs0 python-guestfs
+apt-get install -y nova-compute sysfsutils < /dev/null
+apt-get install -y libguestfs-tools libguestfs0 python-guestfs < /dev/null
 
 #
 # Change vnc_enabled = True for x86 -- but for aarch64, there is
@@ -43,10 +43,10 @@ rpc_backend = rabbit
 rabbit_host = $CONTROLLER
 rabbit_password = ${RABBIT_PASS}
 auth_strategy = keystone
-my_ip = $myip
+my_ip = $MGMTIP
 vnc_enabled = False
 vncserver_listen = 0.0.0.0
-vncserver_proxyclient_address = $myip
+vncserver_proxyclient_address = $MGMTIP
 novncproxy_base_url = http://$CONTROLLER:6080/vnc_auto.html
 verbose = True
 
@@ -68,9 +68,19 @@ compute_driver=libvirt.LibvirtDriver
 
 [libvirt]
 virt_type=kvm
+EOF
+
+if [ "$ARCH" = "aarch64" ] ; then
+    cat <<EOF >> /etc/nova/nova-compute.conf
 cpu_mode=custom
 cpu_model=host
 EOF
+fi
+
+#
+# Patch quick :(
+#
+patch -d / -p0 < $DIRNAME/etc/nova-juno-root-device-name.patch
 
 service nova-compute restart
 

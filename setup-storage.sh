@@ -27,23 +27,55 @@ fi
 if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
+if [ -f $LOCALSETTINGS ]; then
+    . $LOCALSETTINGS
+fi
 
-myip=`cat $OURDIR/mgmt-hosts | grep $HOSTNAME | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
+ARCH=`uname -m`
 
 apt-get install -y lvm2
 
-# XXX: have to copy the .bak versions back into place on uBoot-nodes.
-cp -p /boot/boot.scr.bak /boot/boot.scr
-cp -p /boot/uImage.bak /boot/uImage
-cp -p /boot/uInitrd.bak /boot/uInitrd
+if [ "$ARCH" = "aarch64" ]; then
+    # XXX: have to copy the .bak versions back into place on uBoot-nodes.
+    cp -p /boot/boot.scr.bak /boot/boot.scr
+    cp -p /boot/uImage.bak /boot/uImage
+    cp -p /boot/uInitrd.bak /boot/uInitrd
+fi
+
+#
+# First try to make LVM volumes; fall back to loop device in /storage.  We use
+# /storage for swift later, so we make the dir either way.
+#
 
 mkdir -p /storage
-dd if=/dev/zero of=/storage/pvloop.1 bs=32768 count=524288
-LDEV=`losetup -f`
-losetup $LDEV /storage/pvloop.1
+if [ -z "$LVM" ] ; then
+    LVM=1
+    VGNAME="openstack-volumes"
+    MKEXTRAFS_ARGS="-l -v ${VGNAME} -m util -z 1G"
+    # On Cloudlab ARM machines, there is no second disk nor extra disk space
+    if [ "$ARCH" = "aarch64" ]; then
+	MKEXTRAFS_ARGS=""
+	LVM=0
+    fi
 
-pvcreate /dev/loop0
-vgcreate cinder-volumes /dev/loop0
+    /usr/local/etc/emulab/mkextrafs.pl ${MKEXTRAFS_ARGS}
+    if [ $? -ne 0 ]; then
+	/usr/local/etc/emulab/mkextrafs.pl ${MKEXTRAFS_ARGS} -f
+	if [ $? -ne 0 ]; then
+	    /usr/local/etc/emulab/mkextrafs.pl -f /storage
+	    LVM=0
+	fi
+    fi
+fi
+
+if [ $LVM -eq 0 ] ; then
+    dd if=/dev/zero of=/storage/pvloop.1 bs=32768 count=131072
+    LDEV=`losetup -f`
+    losetup $LDEV /storage/pvloop.1
+
+    pvcreate /dev/loop0
+    vgcreate $VGNAME /dev/loop0
+fi
 
 apt-get install -y cinder-volume python-mysqldb
 
@@ -58,7 +90,7 @@ rpc_backend = rabbit
 rabbit_host = ${CONTROLLER}
 rabbit_password = ${RABBIT_PASS}
 auth_strategy = keystone
-my_ip = $myip
+my_ip = $MGMTIP
 verbose = True
 glance_host = ${CONTROLLER}
 
@@ -78,6 +110,9 @@ fi
 service tgt restart
 service cinder-volume restart
 rm -f /var/lib/cinder/cinder.sqlite
+
+echo "LVM=$LVM" >> $LOCALSETTINGS
+echo "VGNAME=${VGNAME}" >> $LOCALSETTINGS
 
 touch $OURDIR/setup-storage-host-done
 

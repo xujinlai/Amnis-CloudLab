@@ -15,7 +15,6 @@ fi
 # Grab our libs
 . "`dirname $0`/setup-lib.sh"
 
-HOSTNAME=`hostname -s`
 if [ "$HOSTNAME" != "$NETWORKMANAGER" ]; then
     exit 0;
 fi
@@ -39,9 +38,7 @@ EOF
 sysctl -p
 
 apt-get install -y neutron-plugin-ml2 neutron-plugin-openvswitch-agent \
-    neutron-l3-agent neutron-dhcp-agent
-
-apt-get install conntrack
+    neutron-l3-agent neutron-dhcp-agent conntrack
 
 sed -i -e "s/^\\(.*connection.*=.*\\)$/#\1/" /etc/neutron/neutron.conf
 sed -i -e "s/^\\(.*auth_host.*=.*\\)$/#\1/" /etc/neutron/neutron.conf

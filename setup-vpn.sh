@@ -18,7 +18,6 @@ DIRNAME=`dirname $0`
 # Grab our libs
 . "$DIRNAME/setup-lib.sh"
 
-HOSTNAME=`hostname -s`
 if [ "$HOSTNAME" != "$NETWORKMANAGER" ]; then
     exit 0;
 fi
@@ -107,29 +106,19 @@ EOF
 
 mkdir -p /etc/openvpn/ccd
 
-echo "192.168.0.1 $NETWORKMANAGER" > $OURDIR/mgmt-hosts
-
 #
 # Now build keys and set static IPs for the controller and the
 # compute nodes.
 #
-o3=0
-o4=3
-for node in $CONTROLLER $COMPUTENODES
+for node in $NODES
 do
     fqdn="$node.$EEID.$EPID.$OURDOMAIN"
 
     ./build-key $node
-    echo "ifconfig-push 192.168.$o3.$o4 255.255.0.0" \
-	> /etc/openvpn/ccd/$node
-    echo "192.168.$o3.$o4 $node" >> $OURDIR/mgmt-hosts
 
-    # Skip 2 for openvpn tun tunnels
-    o4=`expr $o4 + 2`
-    if [ $o4 -gt 253 ] ; then
-	o4=10
-	o3=`expr $o3 + 1`
-    fi
+    NMIP=`cat $OURDIR/mgmt-hosts | grep $node | head -1 | sed -n -e 's/^\\([0-9]*\\.[0-9]*\\.[0-9]*\\.[0-9]*\\).*$/\\1/p'`
+    echo "ifconfig-push $NMIP 255.255.0.0" \
+	> /etc/openvpn/ccd/$node
 done
 
 unset KEY_COUNTRY
@@ -159,16 +148,19 @@ unset KEY_EXPIRE
 service openvpn restart
 
 #
-# Get the hosts files setup to point to the new management network.
+# Get the hosts files setup to point to the new management network
+# and setup the VPN on the clients.
 #
 cat $OURDIR/mgmt-hosts > /etc/hosts
-for node in $CONTROLLER $COMPUTENODES
+for node in $NODES
 do
+    [ "$node" = "$NETWORKMANAGER" ] && continue
+
     fqdn="$node.$EEID.$EPID.$OURDOMAIN"
     $SSH $fqdn mkdir -p $OURDIR
     scp -p -o StrictHostKeyChecking=no \
 	/etc/openvpn/ca.crt $KEY_DIR/$node.crt $KEY_DIR/$node.key \
-	$OURDIR/mgmt-hosts $SETTINGS $fqdn:$OURDIR
+	$fqdn:$OURDIR
     $SSH $fqdn $DIRNAME/setup-vpn-client.sh
 done
 

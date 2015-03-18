@@ -28,7 +28,7 @@ if [ "$SWAPPER" = "geniuser" ]; then
 
     cp /root/.ssh/id_rsa.pub $SHAREDIR/$HOSTNAME
 
-    for node in $CONTROLLER $NETWORKMANAGER $COMPUTENODES; do
+    for node in $NODES ; do
 	while [ ! -f $SHAREDIR/$node ]; do
             sleep 1
 	done
@@ -36,10 +36,15 @@ if [ "$SWAPPER" = "geniuser" ]; then
 	cat $SHAREDIR/$node >> /root/.ssh/authorized_keys
     done
 else
-    for node in $CONTROLLER $NETWORKMANAGER $COMPUTENODES ; do
+    for node in $NODES ; do
 	if [ "$node" != "$HOSTNAME" ]; then 
 	    fqdn="$node.$EEID.$EPID.$OURDOMAIN"
-	    su -c "$SSH  -l $SWAPPER $fqdn sudo tee -a /root/.ssh/authorized_keys" $SWAPPER < /root/.ssh/id_rsa.pub
+	    SUCCESS=1
+	    while [ $SUCCESS -ne 0 ]; do
+		su -c "$SSH  -l $SWAPPER $fqdn sudo tee -a /root/.ssh/authorized_keys" $SWAPPER < /root/.ssh/id_rsa.pub
+		SUCCESS=$?
+		sleep 1
+	    done
 	fi
     done
 fi

@@ -22,11 +22,6 @@ if [ "$HOSTNAME" != "$CONTROLLER" ]; then
     exit 0;
 fi
 
-#
-# Give the controller a root login on all the machines
-#
-$DIRNAME/setup-root-ssh.sh
-
 if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
@@ -54,12 +49,13 @@ if [ -z "${DB_ROOT_PASS}" ]; then
     mysqladmin --password=${DB_ROOT_PASS} shutdown
     # Put it on the management network and set recommended settings
     echo "[mysqld]" >> /etc/mysql/my.cnf
-    echo "bind-address = 192.168.0.3" >> /etc/mysql/my.cnf
+    echo "bind-address = $MGMTIP" >> /etc/mysql/my.cnf
     echo "default-storage-engine = innodb" >> /etc/mysql/my.cnf
     echo "innodb_file_per_table" >> /etc/mysql/my.cnf
     echo "collation-server = utf8_general_ci" >> /etc/mysql/my.cnf
     echo "init-connect = 'SET NAMES utf8'" >> /etc/mysql/my.cnf
     echo "character-set-server = utf8" >> /etc/mysql/my.cnf
+    echo "max_connections = 5000" >> /etc/mysql/my.cnf
     # Restart it!
     service mysql restart
     # Save the passwd
@@ -248,7 +244,7 @@ if [ -z "${NOVA_DBPASS}" ]; then
     NOVA_PASS=`$PSWDGEN`
 
     # Make sure we're consistent with the clients
-    apt-get install nova-api
+    apt-get install -y nova-api
 
     echo "create database nova" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on nova.* to 'nova'@'localhost' identified by '$NOVA_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
@@ -275,9 +271,9 @@ rpc_backend = rabbit
 rabbit_host = $CONTROLLER
 rabbit_password = ${RABBIT_PASS}
 auth_strategy = keystone
-my_ip = 192.168.0.3
-vncserver_listen = 192.168.0.3
-vncserver_proxyclient_address = 192.168.0.3
+my_ip = ${MGMTIP}
+vncserver_listen = ${MGMTIP}
+vncserver_proxyclient_address = ${MGMTIP}
 verbose = True
 
 [database]
@@ -368,9 +364,9 @@ rpc_backend = rabbit
 rabbit_host = $CONTROLLER
 rabbit_password = ${RABBIT_PASS}
 auth_strategy = keystone
-my_ip = 192.168.0.3
-vncserver_listen = 192.168.0.3
-vncserver_proxyclient_address = 192.168.0.3
+my_ip = ${MGMTIP}
+vncserver_listen = ${MGMTIP}
+vncserver_proxyclient_address = ${MGMTIP}
 verbose = True
 core_plugin = ml2
 service_plugins = router
@@ -495,7 +491,7 @@ if [ -z "${NEUTRON_NETWORKS_DONE}" ]; then
 	--provider:physical_network external --provider:network_type flat
 
     mygw=`ip route show default | sed -n -e 's/^default via \([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
-    mynet=`ip route show dev ${EXTERNAL_NETWORK_INTERFACE} | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\/[0-9]*\) .*$/\1/p'`
+    mynet=`ip route show dev br-ex | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\/[0-9]*\) .*$/\1/p'`
 
     neutron subnet-create ext-net --name ext-subnet \
 	--allocation-pool start=${EXT_FLOAT_IP_START},end=${EXT_FLOAT_IP_END} \
@@ -558,6 +554,8 @@ if [ -z "${CINDER_DBPASS}" ]; then
 
     apt-get install -y cinder-api cinder-scheduler python-cinderclient
 
+    sed -i -e "s/^\\(.*volume_group.*=.*\\)$/#\1/" /etc/cinder/cinder.conf
+
     # Just slap these in.
     cat <<EOF >> /etc/cinder/cinder.conf
 [database]
@@ -568,9 +566,10 @@ rpc_backend = rabbit
 rabbit_host = ${CONTROLLER}
 rabbit_password = ${RABBIT_PASS}
 auth_strategy = keystone
-my_ip = 192.168.0.3
+my_ip = ${MGMTIP}
 verbose = True
 glance_host = ${CONTROLLER}
+volume_group = openstack-volumes
 
 [keystone_authtoken]
 auth_uri = http://$CONTROLLER:5000/v2.0
@@ -588,6 +587,7 @@ EOF
 
     service cinder-scheduler restart
     service cinder-api restart
+    service cinder-volume restart
     rm -f /var/lib/cinder/cinder.sqlite
 
     echo "CINDER_DBPASS=\"${CINDER_DBPASS}\"" >> $SETTINGS
@@ -635,7 +635,7 @@ if [ -z "${SWIFT_PASS}" ]; then
 
     mkdir -p /etc/swift
 
-    curl -o /etc/swift/proxy-server.conf \
+    wget -O /etc/swift/proxy-server.conf \
 	https://raw.githubusercontent.com/openstack/swift/stable/juno/etc/proxy-server.conf-sample
 
     # Just slap these in.
@@ -673,7 +673,7 @@ EOF
     sed -i -e "s/^\\(.*auth_port.*=.*\\)$/#\1/" /etc/swift/proxy-server.conf
     sed -i -e "s/^\\(.*auth_protocol.*=.*\\)$/#\1/" /etc/swift/proxy-server.conf
 
-    curl -o /etc/swift/swift.conf \
+    wget -O /etc/swift/swift.conf \
 	https://raw.githubusercontent.com/openstack/swift/stable/juno/etc/swift.conf-sample
 
     # Just slap these in.
@@ -831,7 +831,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
     if [ "${CEILOMETER_USE_MONGODB}" = "1" ]; then
 	apt-get install -y mongodb-server
 
-	sed -i -e "s/^.*bind_ip.*=.*$/bind_ip = 192.168.0.3/" /etc/mongodb.conf
+	sed -i -e "s/^.*bind_ip.*=.*$/bind_ip = ${MGMTIP}/" /etc/mongodb.conf
 
 	echo "smallfiles = true" >> /etc/mongodb.conf
 	service mongodb stop
@@ -844,7 +844,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
             pwd: \"${CEILOMETER_DBPASS}\",
             roles: [ \"readWrite\", \"dbAdmin\" ]})"
     else
-	apt-get install -y mariadb-server python-mysqldb
+	apt-get install -y mariadb-server python-mysqldb < /dev/null
 
 	echo "create database ceilometer" | mysql -u root --password="$DB_ROOT_PASS"
 	echo "grant all privileges on ceilometer.* to 'ceilometer'@'localhost' identified by '$CEILOMETER_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"

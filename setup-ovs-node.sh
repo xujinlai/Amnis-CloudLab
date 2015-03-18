@@ -22,20 +22,28 @@ fi
 # Grab our libs
 . "`dirname $0`/setup-lib.sh"
 
-HOSTNAME=`hostname -s`
-
-dataip=`cat $OURDIR/data-hosts | grep $HOSTNAME | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
+#
+# Figure out which interfaces need to go where.  We already have 
+# $EXTERNAL_NETWORK_INTERFACE from setup-lib.sh , and it and its configuration
+# get applied to br-ex .  So, we need to find which interface corresponds to
+# DATALAN on this node, if any, and move it (and its configuration OR its new
+# new DATAIP iff USE_EXISTING_DATA_IPS was set) to br-int
+#
+EXTERNAL_NETWORK_BRIDGE="br-ex"
+#DATA_NETWORK_INTERFACE=`ip addr show | grep "inet $MYIP" | sed -e "s/.*scope global \(.*\)\$/\1/"`
+DATA_NETWORK_BRIDGE="br-data"
+INTEGRATION_NETWORK_BRIDGE="br-int"
 
 #
 # If this is the controller, we don't have to do much network setup; just
 # setup the data network with its IP.
 #
-if [ "$HOSTNAME" = "$CONTROLLER" ]; then
-    if [ ${USE_EXISTING_DATA_IPS} -eq 0 ]; then
-	ifconfig ${DATA_NETWORK_INTERFACE} $dataip netmask 255.0.0.0 up
-    fi
-    exit 0;
-fi
+#if [ "$HOSTNAME" = "$CONTROLLER" ]; then
+#    if [ ${USE_EXISTING_DATA_IPS} -eq 0 ]; then
+#	ifconfig ${DATA_NETWORK_INTERFACE} $DATAIP netmask 255.0.0.0 up
+#    fi
+#    exit 0;
+#fi
 
 #
 # Otherwise, first we need openvswitch.
@@ -48,14 +56,13 @@ service openvswitch restart
 #
 # Setup the external network
 #
-ovs-vsctl add-br br-ex
-ovs-vsctl add-port br-ex ${EXTERNAL_NETWORK_INTERFACE}
+ovs-vsctl add-br ${EXTERNAL_NETWORK_BRIDGE}
+ovs-vsctl add-port ${EXTERNAL_NETWORK_BRIDGE} ${EXTERNAL_NETWORK_INTERFACE}
 #ethtool -K $EXTERNAL_NETWORK_INTERFACE gro off
 
 #
-# Now move the $EXTERNAL_NETWORK_INTERFACE and default route config to br-ex
+# Now move the $EXTERNAL_NETWORK_INTERFACE and default route config to ${EXTERNAL_NETWORK_BRIDGE}
 #
-myip=`ifconfig ${EXTERNAL_NETWORK_INTERFACE} | sed -n -e 's/^.*inet addr:\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
 mynetmask=`ifconfig ${EXTERNAL_NETWORK_INTERFACE} | sed -n -e 's/^.*Mask:\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
 mygw=`ip route show default | sed -n -e 's/^default via \([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
 
@@ -64,15 +71,17 @@ mygw=`ip route show default | sed -n -e 's/^default via \([0-9]*.[0-9]*.[0-9]*.[
 # This would definitely break experiment modify, of course
 #
 cat <<EOF > /etc/network/interfaces
-# Openstack Network Node in Cloudlab
+#
+# Openstack Network Node in Cloudlab/Emulab/Apt/Federation
+#
 
-auto lo eth0
+auto lo ${EXTERNAL_NETWORK_INTERFACE}
 
 # The loopback network interface
 iface lo inet loopback
 
-iface br-ex inet static
-    address $myip
+iface ${EXTERNAL_NETWORK_BRIDGE} inet static
+    address $MYIP
     netmask $mynetmask
     gateway $mygw
 
@@ -81,50 +90,64 @@ iface ${EXTERNAL_NETWORK_INTERFACE} inet static
 EOF
 
 ifconfig ${EXTERNAL_NETWORK_INTERFACE} 0 up
-ifconfig br-ex $myip netmask $mynetmask up
+ifconfig ${EXTERNAL_NETWORK_BRIDGE} $MYIP netmask $mynetmask up
 route add default gw $mygw
 
 service openvswitch-switch restart
 
 #
+# Add the management network config if necessary (if not, it's already a VPN)
+#
+if [ ! -z "$MGMTLAN" ]; then
+    cat <<EOF >> /etc/network/interfaces
+
+auto lo ${EXTERNAL_NETWORK_INTERFACE} ${MGMT_NETWORK_INTERFACE}
+
+iface ${MGMT_NETWORK_INTERFACE} inet static
+    address $MGMTIP
+    netmask $MGMTNETMASK
+EOF
+fi
+
+#
 # Make sure we have the integration bridge
 #
-ovs-vsctl add-br br-int
+ovs-vsctl add-br ${INTEGRATION_NETWORK_BRIDGE}
 
 #
 # (Maybe) Setup the data network
 #
 if [ ${SETUP_FLAT_DATA_NETWORK} -eq 1 ]; then
-    ovs-vsctl add-br br-data
-    ovs-vsctl add-port br-data ${DATA_NETWORK_INTERFACE}
+    ovs-vsctl add-br ${DATA_NETWORK_BRIDGE}
+    ovs-vsctl add-port ${DATA_NETWORK_BRIDGE} ${DATA_NETWORK_INTERFACE}
 
     ifconfig ${DATA_NETWORK_INTERFACE} 0 up
-    ifconfig br-data $dataip netmask 255.0.0.0 up
+    ifconfig ${DATA_NETWORK_BRIDGE} $DATAIP netmask $DATANETMASK up
+    # XXX!
+    route add -net 10.0.0.0/8 dev ${DATA_NETWORK_BRIDGE}
 
     cat <<EOF >> /etc/network/interfaces
 
-auto lo eth0 ${DATA_NETWORK_INTERFACE}
+auto lo ${EXTERNAL_NETWORK_INTERFACE} ${DATA_NETWORK_INTERFACE}
 
-iface br-data inet static
-    address $dataip
-    netmask 255.0.0.0
+iface ${DATA_NETWORK_BRIDGE} inet static
+    address $DATAIP
+    netmask $DATANETMASK
 
 iface ${DATA_NETWORK_INTERFACE} inet static
     address 0.0.0.0
 EOF
 else
-    if [ ${USE_EXISTING_DATA_IPS} -eq 0 ]; then
-	ifconfig ${DATA_NETWORK_INTERFACE} $dataip netmask 255.0.0.0 up
+    ifconfig ${DATA_NETWORK_INTERFACE} $DATAIP netmask 255.0.0.0 up
 
-	cat <<EOF >> /etc/network/interfaces
+    cat <<EOF >> /etc/network/interfaces
 
-auto lo eth0 ${DATA_NETWORK_INTERFACE}
+auto lo ${EXTERNAL_NETWORK_INTERFACE} ${DATA_NETWORK_INTERFACE}
 
 iface ${DATA_NETWORK_INTERFACE} inet static
-    address $dataip
-    netmask 255.0.0.0
+    address $DATAIP
+    netmask $DATANETMASK
 EOF
-    fi
 fi
 
 service openvswitch-switch restart
@@ -133,5 +156,9 @@ ip route flush cache
 
 # Just wait a bit
 #sleep 8
+
+echo "*** Removing Emulab rc.hostnames and rc.ifconfig boot scripts"
+mv /usr/local/etc/emulab/rc/rc.hostnames /usr/local/etc/emulab/rc/rc.hostnames.NO
+mv /usr/local/etc/emulab/rc/rc.ifconfig /usr/local/etc/emulab/rc/rc.ifconfig.NO
 
 exit 0
