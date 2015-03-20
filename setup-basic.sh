@@ -60,4 +60,9 @@ if [ ${SETUP_FLAT_DATA_NETWORK} -eq 1 ]; then
     fi
 fi
 
+if [ "$SWAPPER" = "geniuser" ] ; then
+    echo "*** Importing GENI user keys..."
+    $DIRNAME/setup-user-info.py
+fi
+
 exit 0
