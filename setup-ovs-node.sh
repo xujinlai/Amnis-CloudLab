@@ -66,6 +66,9 @@ ovs-vsctl add-port ${EXTERNAL_NETWORK_BRIDGE} ${EXTERNAL_NETWORK_INTERFACE}
 mynetmask=`ifconfig ${EXTERNAL_NETWORK_INTERFACE} | sed -n -e 's/^.*Mask:\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
 mygw=`ip route show default | sed -n -e 's/^default via \([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
 
+DNSDOMAIN=`cat /etc/resolv.conf | grep search | awk '{ print $2 }'`
+DNSSERVER=`cat /etc/resolv.conf | grep nameserver | awk '{ print $2 }'`
+
 #
 # We need to blow away the Emulab config -- no more dhcp
 # This would definitely break experiment modify, of course
@@ -75,16 +78,19 @@ cat <<EOF > /etc/network/interfaces
 # Openstack Network Node in Cloudlab/Emulab/Apt/Federation
 #
 
-auto lo ${EXTERNAL_NETWORK_INTERFACE}
-
 # The loopback network interface
+auto lo
 iface lo inet loopback
 
+auto ${EXTERNAL_NETWORK_BRIDGE}
 iface ${EXTERNAL_NETWORK_BRIDGE} inet static
     address $MYIP
     netmask $mynetmask
     gateway $mygw
+    dns-search $DNSDOMAIN
+    dns-nameservers $DNSSERVER
 
+auto ${EXTERNAL_NETWORK_INTERFACE}
 iface ${EXTERNAL_NETWORK_INTERFACE} inet static
     address 0.0.0.0
 EOF
@@ -101,8 +107,7 @@ service openvswitch-switch restart
 if [ ! -z "$MGMTLAN" ]; then
     cat <<EOF >> /etc/network/interfaces
 
-auto lo ${EXTERNAL_NETWORK_INTERFACE} ${MGMT_NETWORK_INTERFACE}
-
+auto ${MGMT_NETWORK_INTERFACE}
 iface ${MGMT_NETWORK_INTERFACE} inet static
     address $MGMTIP
     netmask $MGMTNETMASK
@@ -128,12 +133,12 @@ if [ ${SETUP_FLAT_DATA_NETWORK} -eq 1 ]; then
 
     cat <<EOF >> /etc/network/interfaces
 
-auto lo ${EXTERNAL_NETWORK_INTERFACE} ${DATA_NETWORK_INTERFACE}
-
+auto ${DATA_NETWORK_BRIDGE}
 iface ${DATA_NETWORK_BRIDGE} inet static
     address $DATAIP
     netmask $DATANETMASK
 
+auto ${DATA_NETWORK_INTERFACE}
 iface ${DATA_NETWORK_INTERFACE} inet static
     address 0.0.0.0
 EOF
@@ -142,13 +147,17 @@ else
 
     cat <<EOF >> /etc/network/interfaces
 
-auto lo ${EXTERNAL_NETWORK_INTERFACE} ${DATA_NETWORK_INTERFACE}
-
+auto ${DATA_NETWORK_INTERFACE}
 iface ${DATA_NETWORK_INTERFACE} inet static
     address $DATAIP
     netmask $DATANETMASK
 EOF
 fi
+
+#
+# Set the hostname for later after reboot!
+#
+echo `hostname` > /etc/hostname
 
 service openvswitch-switch restart
 
