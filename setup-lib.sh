@@ -130,8 +130,13 @@ fi
 #
 MGMTIP=`cat /etc/hosts | grep $NODEID | head -1 | sed -n -e 's/^\\([0-9]*\\.[0-9]*\\.[0-9]*\\.[0-9]*\\).*$/\\1/p'`
 MGMTNETMASK=`cat $OURDIR/data-netmask`
-MGMTMAC=`cat /var/emulab/boot/tmcc/ifconfig | sed -n -e "s/.* MAC=\([0-9a-f:\.]*\) .* LAN=${MGMTLAN}/\1/p"`
-MGMT_NETWORK_INTERFACE=`/usr/local/etc/emulab/findif -m $MGMTMAC`
+if [ -z "$MGMTLAN" ] ; then
+    MGMTMAC=""
+    MGMT_NETWORK_INTERFACE="tun0"
+else
+    MGMTMAC=`cat /var/emulab/boot/tmcc/ifconfig | sed -n -e "s/.* MAC=\([0-9a-f:\.]*\) .* LAN=${MGMTLAN}/\1/p"`
+    MGMT_NETWORK_INTERFACE=`/usr/local/etc/emulab/findif -m $MGMTMAC`
+fi
 
 #
 # NB: this IP/mask is only valid after data ips have been assigned, because
