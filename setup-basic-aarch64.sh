@@ -154,11 +154,15 @@ iface lo inet loopback
 
 auto eth0
 iface eth0 inet dhcp
-    post-up /sbin/ifconfig eth0 mtu 1300
+    post-up /sbin/ifconfig eth0 mtu 1400
 
 auto eth1
 iface eth1 inet dhcp
-    post-up /sbin/ifconfig eth1 mtu 1300
+    post-up /sbin/ifconfig eth1 mtu 1400
+
+auto eth2
+iface eth2 inet dhcp
+    post-up /sbin/ifconfig eth2 mtu 1400
 EOM
 } | tee -a mnt/etc/network/interfaces >/dev/null
 
@@ -273,18 +277,32 @@ chroot mnt /usr/bin/apt-get install -y cloud-guest-utils cloud-init
 
 cp -p etc.network.interfaces mnt/etc/network/interfaces
 
+cat <<EOF >>mnt/etc/network/interfaces
+auto lo
+iface lo inet loopback
+
+auto eth0
+iface eth0 inet dhcp
+
+auto eth1
+iface eth1 inet dhcp
+
+auto eth2
+iface eth2 inet dhcp
+EOF
+
 echo "*** unmounting ..."
 umount mnt
 rmdir mnt
 
 echo "*** Importing new image (with cloud-guest-utils) ..."
 
-glance image-create --name ubuntu-core-14.04.1-core-arm64-ci --is-public True --progress --file $out --disk-format ami --container-format ami
+glance image-create --name trusty-server --is-public True --progress --file $out --disk-format ami --container-format ami
 
-glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" ubuntu-core-14.04.1-core-arm64-ci
-glance image-update --property kernel_id=${KERNEL_ID} ubuntu-core-14.04.1-core-arm64-ci
-glance image-update --property ramdisk_id=${RAMDISK_ID} ubuntu-core-14.04.1-core-arm64-ci
-glance image-update --property root_device_name=/dev/vda1 ubuntu-core-14.04.1-core-arm64-ci
+glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" trusty-server
+glance image-update --property kernel_id=${KERNEL_ID} trusty-server
+glance image-update --property ramdisk_id=${RAMDISK_ID} trusty-server
+glance image-update --property root_device_name=/dev/vda1 trusty-server
 
 losetup -d ${ld}
 
