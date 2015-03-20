@@ -40,7 +40,7 @@ ARCH=`uname -m`
 SSH="ssh -o StrictHostKeyChecking=no"
 
 if [ "$SWAPPER" = "geniuser" ]; then
-    SWAPPER_EMAIL=`geni-get user_email`
+    SWAPPER_EMAIL=`geni-get slice_email`
 else
     SWAPPER_EMAIL="$SWAPPER@$OURDOMAIN"
 fi
