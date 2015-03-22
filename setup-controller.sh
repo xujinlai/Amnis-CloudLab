@@ -127,6 +127,7 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
     # Create the admin user
     ADMIN_PASS=`$PSWDGEN`
     ADMIN_PASS=admin
+    ADMIN_PASS="N!ceD3m0"
     keystone user-create --name admin --pass ${ADMIN_PASS} --email "${SWAPPER_EMAIL}"
     # Create the admin role
     keystone role-create --name admin
