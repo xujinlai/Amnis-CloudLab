@@ -29,7 +29,8 @@ fi
 
 echo "*** Downloading an x86_64 image ..."
 
-wget https://cloud-images.ubuntu.com/trusty/current/trusty-server-cloudimg-amd64-disk1.img
+#wget https://cloud-images.ubuntu.com/trusty/current/trusty-server-cloudimg-amd64-disk1.img
+wget http://boss.apt.emulab.net/downloads/trusty-server-cloudimg-amd64-disk1.img
 
 echo "*** Modifying to support 3 NICs..."
 
@@ -45,9 +46,23 @@ auto eth2
 iface eth2 inet dhcp
 EOF
 
+echo "*** Setting up sshd ..."
+sed -i -e 's/^.*PermitRootLogin .*$/PermitRootLogin yes/' /mnt/etc/ssh/sshd_config
+sed -i -e 's/^.*PasswordAuthentication .*$/PasswordAuthentication yes/' /mnt/etc/ssh/sshd_config
+
 echo "*** Modifying root password..."
 
-sed -in -e 's@root:\*:@root:$6$lMUVMHvx$JkBLzWKF/v6s/UQx1RlNPbIS7nEVjqfZwtQJcb1r.pEuMiV0JO1Z9r4w2s9ULJ22JLlY8.sU.whzQRil0f7sF/:@' /mnt/etc/shadow
+echo "*** fixing root password ..."
+sed -i -e 's@root:[^:]*:@root:$6$QDmiL4Pp$OxXz9eP112jYY4rljT.1QUFqw.PW9g85VMapJehvRIDrkio1LN.74Tq40XbkvxCXAGEcLi.eZOaCFqgelSzOA/:@' /mnt/etc/shadow
+
+echo "*** fixing ubuntu password ..."
+sed -i -e 's@ubuntu:[^:]*:@ubuntu:$6$QDmiL4Pp$OxXz9eP112jYY4rljT.1QUFqw.PW9g85VMapJehvRIDrkio1LN.74Tq40XbkvxCXAGEcLi.eZOaCFqgelSzOA/:@' /mnt/etc/shadow
+
+# permit root login!!
+sed -i -e 's/^disable_root: true$/disable_root: false/' /mnt/etc/cloud/cloud.cfg
+
+# don't overwrite the Ubuntu passwd we just hacked in
+sed -i -e 's/^.*lock_passwd:.*$/     lock_passwd: False/' /mnt/etc/cloud/cloud.cfg
 
 umount /mnt
 qemu-nbd -d /dev/nbd0

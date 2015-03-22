@@ -169,30 +169,18 @@ EOM
 
 echo 'Acquire::CompressionTypes::Order { "gz"; "bz2"; }' | tee mnt/etc/apt/apt.conf.d/99gzip >/dev/null
 
-echo "*** fixing root password to root/root ..."
-#sed -in -e 's@root:\*:@root:$6$pDWQLJGt$813e.4.vXznRlkCpxRtBdUZmHf6DnYg.XM58h6SGLF0Q2tCh5kTF2hCi7fm9NeaSSHeGBaUfpKQ9/wA54mcb51:@' mnt/etc/shadow
-sed -in -e 's@root:\*:@root:$6$lMUVMHvx$JkBLzWKF/v6s/UQx1RlNPbIS7nEVjqfZwtQJcb1r.pEuMiV0JO1Z9r4w2s9ULJ22JLlY8.sU.whzQRil0f7sF/:@' mnt/etc/shadow
+echo "*** fixing root password ..."
+sed -i -e 's@root:[^:]*:@root:$6$QDmiL4Pp$OxXz9eP112jYY4rljT.1QUFqw.PW9g85VMapJehvRIDrkio1LN.74Tq40XbkvxCXAGEcLi.eZOaCFqgelSzOA/:@' mnt/etc/shadow
+
+echo "*** fixing ubuntu password ..."
+sed -i -e 's@ubuntu:[^:]*:@ubuntu:$6$QDmiL4Pp$OxXz9eP112jYY4rljT.1QUFqw.PW9g85VMapJehvRIDrkio1LN.74Tq40XbkvxCXAGEcLi.eZOaCFqgelSzOA/:@' mnt/etc/shadow
 
 echo "*** unmounting ..."
 umount mnt
 rmdir mnt
 
-echo "*** Importing new image ..."
-
-glance image-create --name vmlinuz-3.13.0-40-arm64-generic --is-public True --progress --file vmlinuz-3.13.0-40-arm64-generic --disk-format aki --container-format aki
-
-KERNEL_ID=`glance image-show vmlinuz-3.13.0-40-arm64-generic | grep id | sed -n -e 's/^.*id.*| \([0-9a-zA-Z-]*\).*$/\1/p'`
-
-glance image-create --name initrd-3.13.0-40-arm64-generic --is-public True --progress --file initrd.img-3.13.0-40-arm64-generic --disk-format ari --container-format ari
-
-RAMDISK_ID=`glance image-show initrd-3.13.0-40-arm64-generic | grep id | sed -n -e 's/^.*id.*| \([0-9a-zA-Z-]*\).*$/\1/p'`
-
-glance image-create --name ubuntu-core-14.04.1-core-arm64 --is-public True --progress --file $out --disk-format ami --container-format ami
-
-glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" ubuntu-core-14.04.1-core-arm64
-glance image-update --property kernel_id=${KERNEL_ID} ubuntu-core-14.04.1-core-arm64
-glance image-update --property ramdisk_id=${RAMDISK_ID} ubuntu-core-14.04.1-core-arm64
-glance image-update --property root_device_name=/dev/vda1 ubuntu-core-14.04.1-core-arm64
+# cp, upload later
+cp -p $out $out.1
 
 #
 # Now do another one, with sshd installed
@@ -254,16 +242,8 @@ EOF
 
 echo "*** unmounting ..."
 umount mnt
-rmdir mnt
 
-echo "*** Importing new image (with sshd) ..."
-
-glance image-create --name ubuntu-core-14.04.1-core-arm64-sshd --is-public True --progress --file $out --disk-format ami --container-format ami
-
-glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" ubuntu-core-14.04.1-core-arm64-sshd
-glance image-update --property kernel_id=${KERNEL_ID} ubuntu-core-14.04.1-core-arm64-sshd
-glance image-update --property ramdisk_id=${RAMDISK_ID} ubuntu-core-14.04.1-core-arm64-sshd
-glance image-update --property root_device_name=/dev/vda1 ubuntu-core-14.04.1-core-arm64-sshd
+cp -p $out $out.2
 
 #
 # Now do another one, with cloud-init installed
@@ -274,6 +254,12 @@ mount ${ld}p1 mnt
 echo "*** installing cloud-init and cloud-guest-utils..."
 chroot mnt /usr/bin/apt-get update
 chroot mnt /usr/bin/apt-get install -y cloud-guest-utils cloud-init
+
+# permit root login!!
+sed -i -e 's/^disable_root: true$/disable_root: false/' mnt/etc/cloud/cloud.cfg
+
+# don't overwrite the Ubuntu passwd we just hacked in
+sed -i -e 's/^.*lock_passwd:.*$/     lock_passwd: False/' mnt/etc/cloud/cloud.cfg
 
 cp -p etc.network.interfaces mnt/etc/network/interfaces
 
@@ -295,15 +281,46 @@ echo "*** unmounting ..."
 umount mnt
 rmdir mnt
 
-echo "*** Importing new image (with cloud-guest-utils) ..."
+cp -p $out $out.3
 
-glance image-create --name trusty-server --is-public True --progress --file $out --disk-format ami --container-format ami
+losetup -d ${ld}
+
+echo "*** Importing kernel/ramdisk ..."
+
+glance image-create --name vmlinuz-3.13.0-40-arm64-generic --is-public True --progress --file vmlinuz-3.13.0-40-arm64-generic --disk-format aki --container-format aki
+
+KERNEL_ID=`glance image-show vmlinuz-3.13.0-40-arm64-generic | grep id | sed -n -e 's/^.*id.*| \([0-9a-zA-Z-]*\).*$/\1/p'`
+
+glance image-create --name initrd-3.13.0-40-arm64-generic --is-public True --progress --file initrd.img-3.13.0-40-arm64-generic --disk-format ari --container-format ari
+
+RAMDISK_ID=`glance image-show initrd-3.13.0-40-arm64-generic | grep id | sed -n -e 's/^.*id.*| \([0-9a-zA-Z-]*\).*$/\1/p'`
+
+echo "*** Importing image with cloud-guest-utils  ..."
+
+glance image-create --name trusty-server --is-public True --progress --file $out.3 --disk-format ami --container-format ami
 
 glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" trusty-server
 glance image-update --property kernel_id=${KERNEL_ID} trusty-server
 glance image-update --property ramdisk_id=${RAMDISK_ID} trusty-server
 glance image-update --property root_device_name=/dev/vda1 trusty-server
 
-losetup -d ${ld}
+echo "*** Importing non-ssh image ..."
+
+glance image-create --name ubuntu-core-14.04.1-core-arm64 --is-public True --progress --file $out.1 --disk-format ami --container-format ami
+
+glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" ubuntu-core-14.04.1-core-arm64
+glance image-update --property kernel_id=${KERNEL_ID} ubuntu-core-14.04.1-core-arm64
+glance image-update --property ramdisk_id=${RAMDISK_ID} ubuntu-core-14.04.1-core-arm64
+glance image-update --property root_device_name=/dev/vda1 ubuntu-core-14.04.1-core-arm64
+rmdir mnt
+
+echo "*** Importing image with sshd ..."
+
+glance image-create --name ubuntu-core-14.04.1-core-arm64-sshd --is-public True --progress --file $out.2 --disk-format ami --container-format ami
+
+glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" ubuntu-core-14.04.1-core-arm64-sshd
+glance image-update --property kernel_id=${KERNEL_ID} ubuntu-core-14.04.1-core-arm64-sshd
+glance image-update --property ramdisk_id=${RAMDISK_ID} ubuntu-core-14.04.1-core-arm64-sshd
+glance image-update --property root_device_name=/dev/vda1 ubuntu-core-14.04.1-core-arm64-sshd
 
 exit 0
