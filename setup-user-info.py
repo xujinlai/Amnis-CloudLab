@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import sys
 import subprocess
 from keystoneclient.auth.identity import v2
 from keystoneclient import session
