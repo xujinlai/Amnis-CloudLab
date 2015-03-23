@@ -33,6 +33,13 @@ fi
 #sudo add-apt-repository ppa:ubuntu-cloud-archive/juno-staging 
 
 #
+# Setup mail to users
+#
+apt-get install -y dma
+echo "Your OpenStack instance is setting up on `hostname` ." \
+    |  mail -s "OpenStack Instance Setting Up" ${SWAPPER_EMAIL} &
+
+#
 # Install the database
 #
 if [ -z "${DB_ROOT_PASS}" ]; then
@@ -1224,5 +1231,15 @@ if [ -z "${SETUP_BASIC_DONE}" ]; then
     $DIRNAME/setup-basic.sh
     echo "SETUP_BASIC_DONE=\"1\"" >> $SETTINGS
 fi
+
+echo "***"
+echo "*** Done with OpenStack Setup!"
+echo "***"
+echo "*** Login to your shiny new cloud at "
+echo "  http://$CONTROLLER.$EEID.$EPID.${OURDOMAIN}/horizon/auth/login/?next=/horizon/project/instances/ !"
+echo "***"
+
+echo "Your OpenStack instance has completed setup!  Browse to http://$CONTROLLER.$EEID.$EPID.${OURDOMAIN}/horizon/auth/login/?next=/horizon/project/instances/ ." \
+    |  mail -s "OpenStack Instance Setting Up" ${SWAPPER_EMAIL} &
 
 exit 0
