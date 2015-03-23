@@ -16,8 +16,6 @@ fi
 # Grab our libs
 . "`dirname $0`/setup-lib.sh"
 
-HOSTNAME=`hostname -s`
-
 # Make ourself a keypair; this gets copied to other roots' authorized_keys
 if [ ! -f /root/.ssh/id_rsa ]; then
     ssh-keygen -t rsa -f /root/.ssh/id_rsa -N ''

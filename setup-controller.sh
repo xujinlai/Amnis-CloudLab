@@ -17,7 +17,6 @@ fi
 # Grab our libs
 . "$DIRNAME/setup-lib.sh"
 
-HOSTNAME=`hostname -s`
 if [ "$HOSTNAME" != "$CONTROLLER" ]; then
     exit 0;
 fi

@@ -17,7 +17,6 @@ DIRNAME=`dirname $0`
 # Grab our libs
 . "$DIRNAME/setup-lib.sh"
 
-HOSTNAME=`hostname -s`
 if [ "$HOSTNAME" == "$CONTROLLER" -o "$HOSTNAME" == "$NETWORKMANAGER" ]; then
     exit 0;
 fi

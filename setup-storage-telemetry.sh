@@ -15,7 +15,6 @@ fi
 # Grab our libs
 . "`dirname $0`/setup-lib.sh"
 
-HOSTNAME=`hostname -s`
 if [ "$HOSTNAME" != "$STORAGEHOST" ]; then
     exit 0;
 fi

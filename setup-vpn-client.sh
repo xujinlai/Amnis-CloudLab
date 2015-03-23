@@ -16,8 +16,6 @@ fi
 # Grab our libs
 . "`dirname $0`/setup-lib.sh"
 
-HOSTNAME=`hostname -s`
-
 apt-get install -y openvpn
 
 cp -p $OURDIR/$HOSTNAME.crt $OURDIR/$HOSTNAME.key /etc/openvpn/
