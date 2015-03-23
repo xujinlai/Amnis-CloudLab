@@ -34,7 +34,7 @@ NFQDN="`cat $BOOTDIR/nickname`.$OURDOMAIN"
 PFQDN="`cat $BOOTDIR/nodeid`.$OURDOMAIN"
 MYIP=`cat $BOOTDIR/myip`
 EXTERNAL_NETWORK_INTERFACE=`cat $BOOTDIR/controlif`
-HOSTNAME=`hostname -s`
+HOSTNAME=`cat /var/emulab/boot/nickname | cut -f1 -d.`
 ARCH=`uname -m`
 
 SSH="ssh -o StrictHostKeyChecking=no"
