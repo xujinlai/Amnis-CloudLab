@@ -112,6 +112,11 @@ iface ${MGMT_NETWORK_INTERFACE} inet static
     address $MGMTIP
     netmask $MGMTNETMASK
 EOF
+    if [ -n "$MGMTVLANDEV" ]; then
+	cat <<EOF >> /etc/network/interfaces
+    vlan-raw-device ${MGMTVLANDEV}
+EOF
+    fi
 fi
 
 #
@@ -124,13 +129,9 @@ ovs-vsctl add-br ${INTEGRATION_NETWORK_BRIDGE}
 #
 if [ ${SETUP_FLAT_DATA_NETWORK} -eq 1 ]; then
     ovs-vsctl add-br ${DATA_NETWORK_BRIDGE}
+
     ovs-vsctl add-port ${DATA_NETWORK_BRIDGE} ${DATA_NETWORK_INTERFACE}
-
     ifconfig ${DATA_NETWORK_INTERFACE} 0 up
-    ifconfig ${DATA_NETWORK_BRIDGE} $DATAIP netmask $DATANETMASK up
-    # XXX!
-    route add -net 10.0.0.0/8 dev ${DATA_NETWORK_BRIDGE}
-
     cat <<EOF >> /etc/network/interfaces
 
 auto ${DATA_NETWORK_BRIDGE}
@@ -142,6 +143,15 @@ auto ${DATA_NETWORK_INTERFACE}
 iface ${DATA_NETWORK_INTERFACE} inet static
     address 0.0.0.0
 EOF
+    if [ -n "$DATAVLANDEV" ]; then
+	cat <<EOF >> /etc/network/interfaces
+    vlan-raw-device ${DATAVLANDEV}
+EOF
+    fi
+
+    ifconfig ${DATA_NETWORK_BRIDGE} $DATAIP netmask $DATANETMASK up
+    # XXX!
+    route add -net 10.0.0.0/8 dev ${DATA_NETWORK_BRIDGE}
 else
     ifconfig ${DATA_NETWORK_INTERFACE} $DATAIP netmask 255.0.0.0 up
 
@@ -152,6 +162,11 @@ iface ${DATA_NETWORK_INTERFACE} inet static
     address $DATAIP
     netmask $DATANETMASK
 EOF
+    if [ -n "$DATAVLANDEV" ]; then
+	cat <<EOF >> /etc/network/interfaces
+    vlan-raw-device ${DATAVLANDEV}
+EOF
+    fi
 fi
 
 #

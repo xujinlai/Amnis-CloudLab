@@ -130,13 +130,22 @@ fi
 # addresses because they might not be the Emulab ones.
 #
 MGMTIP=`cat /etc/hosts | grep $NODEID | head -1 | sed -n -e 's/^\\([0-9]*\\.[0-9]*\\.[0-9]*\\.[0-9]*\\).*$/\\1/p'`
-MGMTNETMASK=`cat $OURDIR/data-netmask`
+MGMTNETMASK=`cat $OURDIR/mgmt-netmask`
 if [ -z "$MGMTLAN" ] ; then
     MGMTMAC=""
     MGMT_NETWORK_INTERFACE="tun0"
 else
-    MGMTMAC=`cat /var/emulab/boot/tmcc/ifconfig | sed -n -e "s/.* MAC=\([0-9a-f:\.]*\) .* LAN=${MGMTLAN}/\1/p"`
-    MGMT_NETWORK_INTERFACE=`/usr/local/etc/emulab/findif -m $MGMTMAC`
+    cat /var/emulab/boot/tmcc/ifconfig | grep "IFACETYPE=vlan" | grep "${MGMTLAN}"
+    if [ $? = 0 ]; then
+	MGMTVLAN=1
+	MGMTMAC=`cat /var/emulab/boot/tmcc/ifconfig | sed -n -e "s/^.* VMAC=\([0-9a-f:\.]*\) .* LAN=${MGMTLAN}.*\$/\1/p"`
+	MGMT_NETWORK_INTERFACE=`/usr/local/etc/emulab/findif -m $MGMTMAC`
+	MGMTVLANDEV=`ip link show ${MGMT_NETWORK_INTERFACE} | sed -n -e "s/^.*${MGMT_NETWORK_INTERFACE}\@\([0-9a-zA-Z_]*\): .*\$/\1/p"`
+    else
+	MGMTVLAN=0
+	MGMTMAC=`cat /var/emulab/boot/tmcc/ifconfig | sed -n -e "s/.* MAC=\([0-9a-f:\.]*\) .* LAN=${MGMTLAN}/\1/p"`
+	MGMT_NETWORK_INTERFACE=`/usr/local/etc/emulab/findif -m $MGMTMAC`
+    fi
 fi
 
 #
@@ -145,8 +154,17 @@ fi
 #
 DATAIP=`cat $OURDIR/data-hosts | grep $NODEID | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
 DATANETMASK=`cat $OURDIR/data-netmask`
-DATAMAC=`cat /var/emulab/boot/tmcc/ifconfig | sed -n -e "s/.* MAC=\([0-9a-f:\.]*\) .* LAN=${DATALAN}/\1/p"`
-DATA_NETWORK_INTERFACE=`/usr/local/etc/emulab/findif -m $DATAMAC`
+cat /var/emulab/boot/tmcc/ifconfig | grep "IFACETYPE=vlan" | grep "${DATALAN}"
+if [ $? = 0 ]; then
+    DATAVLAN=1
+    DATAMAC=`cat /var/emulab/boot/tmcc/ifconfig | sed -n -e "s/^.* VMAC=\([0-9a-f:\.]*\) .* LAN=${DATALAN}.*\$/\1/p"`
+    DATA_NETWORK_INTERFACE=`/usr/local/etc/emulab/findif -m $DATAMAC`
+    DATAVLANDEV=`ip link show ${DATA_NETWORK_INTERFACE} | sed -n -e "s/^.*${DATA_NETWORK_INTERFACE}\@\([0-9a-zA-Z_]*\): .*\$/\1/p"`
+else
+    DATAVLAN=0
+    DATAMAC=`cat /var/emulab/boot/tmcc/ifconfig | sed -n -e "s/.* MAC=\([0-9a-f:\.]*\) .* LAN=${DATALAN}/\1/p"`
+    DATA_NETWORK_INTERFACE=`/usr/local/etc/emulab/findif -m $DATAMAC`
+fi
 
 #
 # Openstack stuff
