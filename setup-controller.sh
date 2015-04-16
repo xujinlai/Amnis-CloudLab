@@ -1240,6 +1240,6 @@ echo "  http://$CONTROLLER.$EEID.$EPID.${OURDOMAIN}/horizon/auth/login/?next=/ho
 echo "***"
 
 echo "Your OpenStack instance has completed setup!  Browse to http://$CONTROLLER.$EEID.$EPID.${OURDOMAIN}/horizon/auth/login/?next=/horizon/project/instances/ ." \
-    |  mail -s "OpenStack Instance Setting Up" ${SWAPPER_EMAIL} &
+    |  mail -s "OpenStack Instance Finished Setting Up" ${SWAPPER_EMAIL}
 
 exit 0
