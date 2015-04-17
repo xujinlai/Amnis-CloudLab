@@ -185,4 +185,30 @@ echo "*** Removing Emulab rc.hostnames and rc.ifconfig boot scripts"
 mv /usr/local/etc/emulab/rc/rc.hostnames /usr/local/etc/emulab/rc/rc.hostnames.NO
 mv /usr/local/etc/emulab/rc/rc.ifconfig /usr/local/etc/emulab/rc/rc.ifconfig.NO
 
+#
+# Install a basic ARP reply filter that prevents us from sending ARP replies on
+# the control net for anything we're not allowed to use (i.e., we can reply for
+# ourselves, and any public addresses we're allowed to use).  Really, we only
+# need the public address part on the network manager, but may as well let
+# any node reply as any public address we're allowed to use).
+#
+
+# Cheat and use our IPADDR/NETMASK instead of NETWORK/NETMASK below...
+OURNET=`ip addr show br-ex | sed -n -e 's/.*inet \([0-9\.\/]*\) .*/\1/p'`
+# Grab the port that corresponds to our
+OURPORT=`ovs-ofctl show br-ex | sed -n -e "s/[ \t]*\([0-9]*\)(${EXTERNAL_NETWORK_INTERFACE).*\$/\1/p"`
+
+ovs-ofctl add-flow br-ex \
+    "dl_type=0x0806,nw_proto=0x2,arp_spa=${MYIP},actions=NORMAL"
+for addr in $PUBLICADDRS ; do
+    ovs-ofctl add-flow br-ex \
+	"dl_type=0x0806,nw_proto=0x2,arp_spa=${addr},actions=NORMAL"
+done
+# Allow any inbound ARP replies on the control network.
+ovs-ofctl add-flow br-ex \
+    "dl_type=0x0806,nw_proto=0x2,arp_spa=${OURNET},in_port=${OURPORT},actions=NORMAL"
+# Drop any other control network addr ARP replies on the br-ex switch.
+ovs-ofctl add-flow br-ex \
+    "dl_type=0x0806,nw_proto=0x2,arp_spa=${OURNET},actions=drop"
+
 exit 0
