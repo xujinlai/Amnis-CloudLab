@@ -48,7 +48,7 @@ if [ ${SETUP_FLAT_DATA_NETWORK} -eq 1 ]; then
 
     echo "*** Creating Flat data network and subnet ..."
 
-    nmdataip=`cat $OURDIR/data-hosts | grep networkmanager | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
+    nmdataip=`cat $OURDIR/data-hosts | grep ${NETWORKMANAGER} | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
 
     neutron net-create flat-data-net --shared --provider:physical_network data --provider:network_type flat
     neutron subnet-create flat-data-net --name flat-data-subnet --allocation-pool start=10.254.1.1,end=10.254.254.254 --gateway $nmdataip 10.0.0.0/8

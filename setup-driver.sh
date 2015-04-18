@@ -157,6 +157,6 @@ $DIRNAME/setup-ovs.sh 1> $OURDIR/setup-ovs.log 2>&1
 
 echo "*** Building an Openstack!"
 
-ssh -o StrictHostKeyChecking=no controller "sh -c $DIRNAME/setup-controller.sh 1> $OURDIR/setup-controller.log 2>&1 </dev/null &"
+ssh -o StrictHostKeyChecking=no ${CONTROLLER} "sh -c $DIRNAME/setup-controller.sh 1> $OURDIR/setup-controller.log 2>&1 </dev/null &"
 
 exit 0

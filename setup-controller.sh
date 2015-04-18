@@ -528,7 +528,7 @@ if [ -z "${DASHBOARD_DONE}" ]; then
 
     apt-get install -y openstack-dashboard apache2 libapache2-mod-wsgi memcached python-memcache
 
-    sed -i -e 's/OPENSTACK_HOST.*=.*$/OPENSTACK_HOST = "controller"/' \
+    sed -i -e "s/OPENSTACK_HOST.*=.*\$/OPENSTACK_HOST = \"${CONTROLLER}\"/" \
 	/etc/openstack-dashboard/local_settings.py
     sed -i -e 's/^.*ALLOWED_HOSTS = \[.*$/ALLOWED_HOSTS = \["*"\]/' \
 	/etc/openstack-dashboard/local_settings.py
@@ -560,16 +560,16 @@ if [ -z "${CINDER_DBPASS}" ]; then
 
     keystone endpoint-create \
 	--service-id `keystone service-list | awk '/ volume / {print $2}'` \
-	--publicurl http://controller:8776/v1/%\(tenant_id\)s \
-	--internalurl http://controller:8776/v1/%\(tenant_id\)s \
-	--adminurl http://controller:8776/v1/%\(tenant_id\)s \
+	--publicurl http://${CONTROLLER}:8776/v1/%\(tenant_id\)s \
+	--internalurl http://${CONTROLLER}:8776/v1/%\(tenant_id\)s \
+	--adminurl http://${CONTROLLER}:8776/v1/%\(tenant_id\)s \
 	--region regionOne
 
     keystone endpoint-create \
 	--service-id `keystone service-list | awk '/ volumev2 / {print $2}'` \
-	--publicurl http://controller:8776/v2/%\(tenant_id\)s \
-	--internalurl http://controller:8776/v2/%\(tenant_id\)s \
-	--adminurl http://controller:8776/v2/%\(tenant_id\)s \
+	--publicurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
+	--internalurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
+	--adminurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
 	--region regionOne
 
     apt-get install -y cinder-api cinder-scheduler python-cinderclient
@@ -645,9 +645,9 @@ if [ -z "${SWIFT_PASS}" ]; then
 
     keystone endpoint-create \
 	--service-id `keystone service-list | awk '/ object-store / {print $2}'` \
-	--publicurl http://controller:8080/v1/AUTH_%\(tenant_id\)s \
-	--internalurl http://controller:8080/v1/AUTH_%\(tenant_id\)s \
-	--adminurl http://controller:8080 \
+	--publicurl http://${CONTROLLER}:8080/v1/AUTH_%\(tenant_id\)s \
+	--internalurl http://${CONTROLLER}:8080/v1/AUTH_%\(tenant_id\)s \
+	--adminurl http://${CONTROLLER}:8080 \
 	--region regionOne
 
     apt-get install -y swift swift-proxy python-swiftclient \
@@ -858,7 +858,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	rm /var/lib/mongodb/journal/prealloc.*
 	service mongodb start
 
-	mongo --host controller --eval "
+	mongo --host ${CONTROLLER} --eval "
             db = db.getSiblingDB(\"ceilometer\");
             db.addUser({user: \"ceilometer\",
             pwd: \"${CEILOMETER_DBPASS}\",
