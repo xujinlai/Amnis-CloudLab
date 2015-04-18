@@ -22,7 +22,8 @@ else:
     exec("ui = %s" % (blob,))
     pass
 
-auth = v2.Password(auth_url='http://controller:5000/v2.0',username='admin',password=ADMIN_PASS,tenant_name='admin')
+url = 'http://%s:5000/v2.0' % (CONTROLLER,)
+auth = v2.Password(auth_url=url,username='admin',password=ADMIN_PASS,tenant_name='admin')
 sess = session.Session(auth=auth)
 nova = Client(2,session=sess)
 

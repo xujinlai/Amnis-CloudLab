@@ -3,10 +3,10 @@
 #
 # Our default configuration
 #
-CONTROLLER="controller"
-NETWORKMANAGER="networkmanager"
-STORAGEHOST="controller"
-OBJECTHOST="controller"
+CONTROLLER="ctrl"
+NETWORKMANAGER="netmgr"
+STORAGEHOST="ctrl"
+OBJECTHOST="ctrl"
 COMPUTENODES=""
 BLOCKNODES=""
 OBJECTNODES=""
@@ -89,6 +89,25 @@ fi
 
 NODES=`cat $TOPOMAP | grep -v '^#' | sed -n -e 's/^\([a-zA-Z0-9\-]*\),.*:.*$/\1/p' | xargs`
 if [ -z "${COMPUTENODES}" ]; then
+    # Figure out which networkmanager (netmgr) and controller (ctrl) names we have
+    for node in $NODES
+    do
+	if [ "$node" = "networkmanager" ]; then
+	    NETWORKMANAGER="networkmanager"
+	fi
+	if [ "$node" = "controller" ]; then
+	    # If we were using the controller as storage and object host, then
+	    # keep using it (just use the old name we've detected).
+	    if [ "$STORAGEHOST" = "$CONTROLLER" ]; then
+		STORAGEHOST="controller"
+	    fi
+	    if [ "$OBJECTHOST" = "$CONTROLLER" ]; then
+		OBJECTHOST="controller"
+	    fi
+	    CONTROLLER="controller"
+	fi
+    done
+    # Figure out which ones are the compute nodes
     for node in $NODES
     do
 	if [ "$node" != "$CONTROLLER" -a "$node" != "$NETWORKMANAGER" \
@@ -105,6 +124,16 @@ do
 
     OTHERNODES="$OTHERNODES $node"
 done
+
+# Save the node stuff off to settings
+grep CONTROLLER $SETTINGS
+if [ ! $? = 0 ]; then
+    echo "CONTROLLER=\"${CONTROLLER}\"" >> $SETTINGS
+    echo "NETWORKMANAGER=\"${NETWORKMANAGER}\"" >> $SETTINGS
+    echo "STORAGEHOST=\"${STORAGEHOST}\"" >> $SETTINGS
+    echo "OBJECTHOST=\"${OBJECTHOST}\"" >> $SETTINGS
+    echo "COMPUTENODES=\"${COMPUTENODES}\"" >> $SETTINGS
+fi
 
 if [ ! -f $OURDIR/apt-updated -a "${DO_APT_UPDATE}" = "1" ]; then
     apt-get update
