@@ -3,10 +3,10 @@
 #
 # Our default configuration
 #
-CONTROLLER="ctrl"
-NETWORKMANAGER="netmgr"
-STORAGEHOST="ctrl"
-OBJECTHOST="ctrl"
+CONTROLLER="ctl"
+NETWORKMANAGER="nm"
+STORAGEHOST="ctl"
+OBJECTHOST="ctl"
 COMPUTENODES=""
 BLOCKNODES=""
 OBJECTNODES=""
