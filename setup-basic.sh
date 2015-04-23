@@ -39,7 +39,9 @@ fi
 echo "*** Creating GRE data network and subnet ..."
 
 neutron net-create tun-data-net
-neutron subnet-create tun-data-net  --name tun-data-subnet 172.16/12
+# Use the very last /16 of the 172.16/12 so that we don't overlap with Emulab
+# private vnode control net.
+neutron subnet-create tun-data-net  --name tun-data-subnet 172.31/16
 neutron router-create tun-data-router
 neutron router-interface-add tun-data-router tun-data-subnet
 neutron router-gateway-set tun-data-router ext-net
