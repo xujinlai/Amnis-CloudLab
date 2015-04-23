@@ -210,5 +210,9 @@ ovs-ofctl add-flow br-ex \
 # Drop any other control network addr ARP replies on the br-ex switch.
 ovs-ofctl add-flow br-ex \
     "dl_type=0x0806,nw_proto=0x2,arp_spa=${OURNET},actions=drop"
+# Also, drop Emulab vnode control network addr ARP replies on br-ex!
+ovs-ofctl add-flow br-ex \
+    "dl_type=0x0806,nw_proto=0x2,arp_spa=172.16.0.0/12,actions=drop"
+
 
 exit 0
