@@ -30,7 +30,7 @@ if [ -f $LOCALSETTINGS ]; then
     . $LOCALSETTINGS
 fi
 
-apt-get install -y xfsprogs rsync
+$APTGETINSTALL xfsprogs rsync
 
 #
 # First try to make LVM volumes; fall back to loop device in /storage.  We use
@@ -110,7 +110,7 @@ EOF
 service rsync start
 
 
-apt-get install -y swift swift-account swift-container swift-object
+$APTGETINSTALL swift swift-account swift-container swift-object
 
 curl -o /etc/swift/account-server.conf \
     https://raw.githubusercontent.com/openstack/swift/stable/juno/etc/account-server.conf-sample

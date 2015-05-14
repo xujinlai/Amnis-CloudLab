@@ -40,7 +40,7 @@ EOF
 
 sysctl -p
 
-apt-get install -y neutron-plugin-ml2 neutron-plugin-openvswitch-agent
+$APTGETINSTALL neutron-plugin-ml2 neutron-plugin-openvswitch-agent
 
 sed -i -e "s/^\\(.*connection.*=.*\\)$/#\1/" /etc/neutron/neutron.conf
 sed -i -e "s/^\\(.*auth_host.*=.*\\)$/#\1/" /etc/neutron/neutron.conf
@@ -52,6 +52,7 @@ cat <<EOF >> /etc/neutron/neutron.conf
 [DEFAULT]
 rpc_backend = rabbit
 rabbit_host = $CONTROLLER
+rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
 auth_strategy = keystone
 core_plugin = ml2

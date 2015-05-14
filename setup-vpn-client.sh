@@ -16,7 +16,7 @@ fi
 # Grab our libs
 . "`dirname $0`/setup-lib.sh"
 
-apt-get install -y openvpn
+$APTGETINSTALL openvpn
 
 cp -p $OURDIR/$HOSTNAME.crt $OURDIR/$HOSTNAME.key /etc/openvpn/
 cp -p $OURDIR/ca.crt /etc/openvpn
@@ -40,6 +40,14 @@ EOF
 
 cp -p $OURDIR/mgmt-hosts /etc/hosts
 
-sudo service openvpn restart
+#
+# Get the server up
+#
+if [ ${HAVE_SYSTEMD} -eq 1 ]; then
+    systemctl enable openvpn@server.service
+    systemctl restart openvpn@server.service
+else
+    service openvpn restart
+fi
 
 exit 0

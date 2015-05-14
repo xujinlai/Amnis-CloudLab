@@ -30,7 +30,7 @@ fi
 echo "*** Building an ARM64 image ..."
 
 # need growpart
-apt-get install -y cloud-guest-utils
+$APTGETINSTALL cloud-guest-utils
 
 # Grab some files
 wget http://boss.utah.cloudlab.us/downloads/vmlinuz-3.13.0-40-arm64-generic
@@ -196,7 +196,7 @@ EOM
     echo "*** installing ssh/sshd..."
     echo "nameserver 8.8.8.8" > mnt/etc/resolv.conf
     chroot mnt /usr/bin/apt-get update
-    chroot mnt /usr/bin/apt-get install -y openssh-server openssh-client
+    chroot mnt /usr/bin/apt-get $APTGETINSTALLOPTS openssh-server openssh-client
     chroot mnt /usr/sbin/update-rc.d ssh defaults
     chroot mnt /usr/sbin/update-rc.d ssh enable
 
@@ -257,7 +257,7 @@ EOF
 
     echo "*** installing cloud-init and cloud-guest-utils..."
     chroot mnt /usr/bin/apt-get update
-    chroot mnt /usr/bin/apt-get install -y cloud-guest-utils cloud-init
+    chroot mnt /usr/bin/apt-get install $APTGETINSTALLOPTS cloud-guest-utils cloud-init
 
     # permit root login!!
     sed -i -e 's/^disable_root: true$/disable_root: false/' mnt/etc/cloud/cloud.cfg

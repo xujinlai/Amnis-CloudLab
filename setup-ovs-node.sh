@@ -48,7 +48,7 @@ INTEGRATION_NETWORK_BRIDGE="br-int"
 #
 # Otherwise, first we need openvswitch.
 #
-apt-get install -y openvswitch-common openvswitch-switch
+$APTGETINSTALL openvswitch-common openvswitch-switch
 
 # Make sure it's running
 service openvswitch restart

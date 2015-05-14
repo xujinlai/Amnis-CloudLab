@@ -35,7 +35,7 @@ fi
 #
 # Setup mail to users
 #
-apt-get install -y dma
+$APTGETINSTALL dma
 echo "Your OpenStack instance is setting up on `hostname` ." \
     |  mail -s "OpenStack Instance Setting Up" ${SWAPPER_EMAIL} &
 
@@ -43,7 +43,7 @@ echo "Your OpenStack instance is setting up on `hostname` ." \
 # Install the database
 #
 if [ -z "${DB_ROOT_PASS}" ]; then
-    apt-get install -y mariadb-server python-mysqldb < /dev/null
+    $APTGETINSTALL mariadb-server python-mysqldb
     service mysql stop
     # Change the root password; secure the users/dbs.
     mysqld_safe --skip-grant-tables --skip-networking &
@@ -72,9 +72,9 @@ fi
 # Install a message broker
 #
 if [ -z "${RABBIT_PASS}" ]; then
-    apt-get install -y rabbitmq-server
+    $APTGETINSTALL rabbitmq-server
 
-cat <<EOF > /etc/rabbitmq/rabbitmq.config
+    cat <<EOF > /etc/rabbitmq/rabbitmq.config
 [
  {rabbit,
   [
@@ -84,9 +84,20 @@ cat <<EOF > /etc/rabbitmq/rabbitmq.config
 .
 EOF
 
+    if [ ${OSCODENAME} = "juno" ]; then
+	RABBIT_USER="guest"
+    else
+	RABBIT_USER="openstack"
+	rabbitmqctl add_vhost /
+    fi
     RABBIT_PASS=`$PSWDGEN`
-    rabbitmqctl change_password guest $RABBIT_PASS
+    rabbitmqctl change_password $RABBIT_USER $RABBIT_PASS
+    if [ ! $? -eq 0 ]; then
+	rabbitmqctl add_user ${RABBIT_USER} ${RABBIT_PASS}
+	rabbitmqctl set_permissions ${RABBIT_USER} ".*" ".*" ".*"
+    fi
     # Save the passwd
+    echo "RABBIT_USER=\"${RABBIT_USER}\"" >> $SETTINGS
     echo "RABBIT_PASS=\"${RABBIT_PASS}\"" >> $SETTINGS
 
     service rabbitmq-server restart
@@ -101,7 +112,7 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
     echo "grant all privileges on keystone.* to 'keystone'@'localhost' identified by '$KEYSTONE_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on keystone.* to 'keystone'@'%' identified by '$KEYSTONE_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
 
-    apt-get install -y keystone python-keystoneclient
+    $APTGETINSTALL keystone python-keystoneclient
 
     ADMIN_TOKEN=`$PSWDGEN`
 
@@ -201,7 +212,7 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	--adminurl http://$CONTROLLER:9292 \
 	--region regionOne
 
-    apt-get install -y glance python-glanceclient
+    $APTGETINSTALL glance python-glanceclient
 
     sed -i -e "s/^.*connection.*=.*$/connection = mysql:\\/\\/glance:${GLANCE_DBPASS}@$CONTROLLER\\/glance/" /etc/glance/glance-api.conf
     # Just slap these in.
@@ -251,7 +262,7 @@ if [ -z "${NOVA_DBPASS}" ]; then
     NOVA_PASS=`$PSWDGEN`
 
     # Make sure we're consistent with the clients
-    apt-get install -y nova-api
+    $APTGETINSTALL nova-api
 
     echo "create database nova" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on nova.* to 'nova'@'localhost' identified by '$NOVA_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
@@ -268,7 +279,7 @@ if [ -z "${NOVA_DBPASS}" ]; then
 	--adminurl http://$CONTROLLER:8774/v2/%\(tenant_id\)s \
 	--region regionOne
 
-    apt-get install -y nova-api nova-cert nova-conductor nova-consoleauth \
+    $APTGETINSTALL nova-api nova-cert nova-conductor nova-consoleauth \
 	nova-novncproxy nova-scheduler python-novaclient
 
     # Just slap these in.
@@ -276,6 +287,7 @@ if [ -z "${NOVA_DBPASS}" ]; then
 [DEFAULT]
 rpc_backend = rabbit
 rabbit_host = $CONTROLLER
+rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
 auth_strategy = keystone
 my_ip = ${MGMTIP}
@@ -356,7 +368,7 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	--internalurl http://$CONTROLLER:9696 \
 	--region regionOne
 
-    apt-get install -y neutron-server neutron-plugin-ml2 python-neutronclient
+    $APTGETINSTALL neutron-server neutron-plugin-ml2 python-neutronclient
 
     service_tenant_id=`keystone tenant-get service | grep id | cut -d '|' -f 3`
 
@@ -369,6 +381,7 @@ sed -i -e "s/^\\(.*auth_protocol.*=.*\\)$/#\1/" /etc/neutron/neutron.conf
 [DEFAULT]
 rpc_backend = rabbit
 rabbit_host = $CONTROLLER
+rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
 auth_strategy = keystone
 my_ip = ${MGMTIP}
@@ -440,7 +453,7 @@ service_metadata_proxy = True
 metadata_proxy_shared_secret = ${NEUTRON_METADATA_SECRET}
 EOF
 
-    su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade juno" neutron
+    su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade ${OSCODENAME}" neutron
 
     service nova-api restart
     service nova-scheduler restart
@@ -494,8 +507,13 @@ fi
 if [ -z "${NEUTRON_NETWORKS_DONE}" ]; then
     NEUTRON_NETWORKS_DONE=1
 
-    neutron net-create ext-net --shared --router:external True \
-	--provider:physical_network external --provider:network_type flat
+    if [ $OSCODENAME = "kilo" ]; then
+	neutron net-create ext-net --shared --router:external \
+	    --provider:physical_network external --provider:network_type flat
+    else
+	neutron net-create ext-net --shared --router:external True \
+	    --provider:physical_network external --provider:network_type flat
+    fi
 
     mygw=`ip route show default | sed -n -e 's/^default via \([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
     mynet=`ip route show dev br-ex | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\/[0-9]*\) .*$/\1/p'`
@@ -526,7 +544,7 @@ fi
 if [ -z "${DASHBOARD_DONE}" ]; then
     DASHBOARD_DONE=1
 
-    apt-get install -y openstack-dashboard apache2 libapache2-mod-wsgi memcached python-memcache
+    $APTGETINSTALL openstack-dashboard apache2 libapache2-mod-wsgi memcached python-memcache
 
     sed -i -e "s/OPENSTACK_HOST.*=.*\$/OPENSTACK_HOST = \"${CONTROLLER}\"/" \
 	/etc/openstack-dashboard/local_settings.py
@@ -572,7 +590,7 @@ if [ -z "${CINDER_DBPASS}" ]; then
 	--adminurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
 	--region regionOne
 
-    apt-get install -y cinder-api cinder-scheduler python-cinderclient
+    $APTGETINSTALL cinder-api cinder-scheduler python-cinderclient
 
     sed -i -e "s/^\\(.*volume_group.*=.*\\)$/#\1/" /etc/cinder/cinder.conf
 
@@ -584,6 +602,7 @@ connection = mysql://cinder:${CINDER_DBPASS}@$CONTROLLER/cinder
 [DEFAULT]
 rpc_backend = rabbit
 rabbit_host = ${CONTROLLER}
+rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
 auth_strategy = keystone
 my_ip = ${MGMTIP}
@@ -650,7 +669,7 @@ if [ -z "${SWIFT_PASS}" ]; then
 	--adminurl http://${CONTROLLER}:8080 \
 	--region regionOne
 
-    apt-get install -y swift swift-proxy python-swiftclient \
+    $APTGETINSTALL swift swift-proxy python-swiftclient \
 	python-keystoneclient python-keystonemiddleware memcached
 
     mkdir -p /etc/swift
@@ -798,7 +817,7 @@ if [ -z "${HEAT_DBPASS}" ]; then
 	--adminurl http://${CONTROLLER}:8000/v1 \
 	--region regionOne
 
-    apt-get install -y heat-api heat-api-cfn heat-engine python-heatclient
+    $APTGETINSTALL heat-api heat-api-cfn heat-engine python-heatclient
 
     sed -i -e "s/^.*connection.*=.*$/connection = mysql:\\/\\/heat:${HEAT_DBPASS}@$CONTROLLER\\/heat/" /etc/heat/heat.conf
     # Just slap these in.
@@ -806,6 +825,7 @@ if [ -z "${HEAT_DBPASS}" ]; then
 [DEFAULT]
 rpc_backend = rabbit
 rabbit_host = ${CONTROLLER}
+rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
 heat_metadata_server_url = http://${CONTROLLER}:8000
 heat_waitcondition_server_url = http://${CONTROLLER}:8000/v1/waitcondition
@@ -849,7 +869,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
     CEILOMETER_SECRET=`$PSWDGEN`
 
     if [ "${CEILOMETER_USE_MONGODB}" = "1" ]; then
-	apt-get install -y mongodb-server
+	$APTGETINSTALL mongodb-server
 
 	sed -i -e "s/^.*bind_ip.*=.*$/bind_ip = ${MGMTIP}/" /etc/mongodb.conf
 
@@ -864,7 +884,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
             pwd: \"${CEILOMETER_DBPASS}\",
             roles: [ \"readWrite\", \"dbAdmin\" ]})"
     else
-	apt-get install -y mariadb-server python-mysqldb < /dev/null
+	$APTGETINSTALL mariadb-server python-mysqldb
 
 	echo "create database ceilometer" | mysql -u root --password="$DB_ROOT_PASS"
 	echo "grant all privileges on ceilometer.* to 'ceilometer'@'localhost' identified by '$CEILOMETER_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
@@ -883,7 +903,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	--adminurl http://${CONTROLLER}:8777 \
 	--region regionOne
 
-    apt-get install -y ceilometer-api ceilometer-collector \
+    $APTGETINSTALL ceilometer-api ceilometer-collector \
 	ceilometer-agent-central ceilometer-agent-notification \
 	ceilometer-alarm-evaluator ceilometer-alarm-notifier \
 	python-ceilometerclient python-pymongo python-bson
@@ -899,6 +919,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 [DEFAULT]
 rpc_backend = rabbit
 rabbit_host = ${CONTROLLER}
+rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
 auth_strategy = keystone
 verbose = True
@@ -970,6 +991,7 @@ if [ -z "${TELEMETRY_GLANCE_DONE}" ]; then
 notification_driver = messaging
 rpc_backend = rabbit
 rabbit_host = ${CONTROLLER}
+rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
 EOF
 
@@ -1016,7 +1038,7 @@ if [ -z "${TELEMETRY_SWIFT_DONE}" ]; then
 
     chmod g+w /var/log/ceilometer
 
-    apt-get install -y python-ceilometerclient
+    $APTGETINSTALL python-ceilometerclient
 
     keystone role-create --name ResellerAdmin
     keystone user-role-add --tenant service --user ceilometer \
@@ -1044,7 +1066,7 @@ if [ -z "${TROVE_DBPASS}" ]; then
     TROVE_DBPASS=`$PSWDGEN`
     TROVE_PASS=`$PSWDGEN`
 
-    apt-get install -y python-trove python-troveclient python-glanceclient \
+    $APTGETINSTALL python-trove python-troveclient python-glanceclient \
 	trove-common trove-api trove-taskmanager
 
     echo "create database trove" | mysql -u root --password="$DB_ROOT_PASS"
@@ -1069,6 +1091,7 @@ if [ -z "${TROVE_DBPASS}" ]; then
 [DEFAULT]
 rpc_backend = rabbit
 rabbit_host = ${CONTROLLER}
+rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
 verbose = True
 log_dir = /var/log/trove
@@ -1088,6 +1111,7 @@ EOF
 [DEFAULT]
 rpc_backend = rabbit
 rabbit_host = ${CONTROLLER}
+rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
 verbose = True
 log_dir = /var/log/trove
@@ -1110,6 +1134,7 @@ EOF
 [DEFAULT]
 rpc_backend = rabbit
 rabbit_host = ${CONTROLLER}
+rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
 verbose = True
 log_dir = /var/log/trove
@@ -1177,12 +1202,18 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 	--adminurl http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s \
 	--region regionOne
 
+    apt-cache search ^sahara\$ | grep -q ^sahara\$
+    APT_HAS_SAHARA=$?
 
-    # XXX: http://askubuntu.com/questions/555093/openstack-juno-sahara-data-processing-on-14-04
-    apt-get install -y python-pip
-    # sahara deps
-    apt-get install -y python-eventlet python-flask python-oslo.serialization
-    pip install sahara
+    if [ ${APT_HAS_SAHARA} -eq 0 ]; then
+        # XXX: http://askubuntu.com/questions/555093/openstack-juno-sahara-data-processing-on-14-04
+	$APTGETINSTALL python-pip
+        # sahara deps
+	$APTGETINSTALL python-eventlet python-flask python-oslo.serialization
+	pip install sahara
+    else
+	$APTGETINSTALL sahara sahara-api sahara-engine
+    fi
 
     mkdir -p /etc/sahara
     sed -i -e "s/^.*connection.*=.*$/connection = mysql:\\/\\/sahara:${SAHARA_DBPASS}@$CONTROLLER\\/sahara/" /etc/sahara/sahara.conf

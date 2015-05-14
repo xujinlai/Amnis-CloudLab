@@ -29,7 +29,7 @@ fi
 
 
 
-apt-get install -y ceilometer-agent-compute
+$APTGETINSTALL ceilometer-agent-compute
 
 # Just slap these in.
 cat <<EOF >> /etc/nova/nova.conf
@@ -47,6 +47,7 @@ cat <<EOF >> /etc/ceilometer/ceilometer.conf
 [DEFAULT]
 rpc_backend = rabbit
 rabbit_host = ${CONTROLLER}
+rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
 auth_strategy = keystone
 verbose = True

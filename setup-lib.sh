@@ -38,6 +38,17 @@ EXTERNAL_NETWORK_INTERFACE=`cat $BOOTDIR/controlif`
 HOSTNAME=`cat /var/emulab/boot/nickname | cut -f1 -d.`
 ARCH=`uname -m`
 
+# Check if our init is systemd
+dpkg-query -S /sbin/init | grep -q systemd
+HAVE_SYSTEMD=`expr $? = 0`
+
+. /etc/lsb-release
+if [ ${DISTRIB_CODENAME} = "vivid" ]; then
+    OSCODENAME="kilo"
+else
+    OSCODENAME="juno"
+fi
+
 SSH="ssh -o StrictHostKeyChecking=no"
 
 if [ "$SWAPPER" = "geniuser" ]; then
@@ -135,19 +146,23 @@ if [ ! $? = 0 ]; then
     echo "COMPUTENODES=\"${COMPUTENODES}\"" >> $SETTINGS
 fi
 
+# Setup apt-get to not prompt us
+export DEBIAN_FRONTEND=noninteractive
+#  -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
+APTGETINSTALLOPTS='-y'
+APTGETINSTALL="apt-get install $APTGETINSTALLOPTS"
+
 if [ ! -f $OURDIR/apt-updated -a "${DO_APT_UPDATE}" = "1" ]; then
     apt-get update
     touch $OURDIR/apt-updated
 fi
 
-if [ ! -f /etc/apt/sources.list.d/cloudarchive-juno.list \
+if [ ! -f /etc/apt/sources.list.d/cloudarchive-${OSCODENAME}.list \
     -a ! -f $OURDIR/cloudarchive-added \
     -a "${DO_UBUNTU_CLOUDARCHIVE}" = "1" ]; then
-    . /etc/lsb-release
-
     if [ "${DISTRIB_CODENAME}" = "trusty" ] ; then
-	apt-get install -y ubuntu-cloud-keyring
-	echo "deb http://ubuntu-cloud.archive.canonical.com/ubuntu" "${DISTRIB_CODENAME}-updates/juno main" > /etc/apt/sources.list.d/cloudarchive-juno.list
+	$APTGETINSTALL install -y ubuntu-cloud-keyring
+	echo "deb http://ubuntu-cloud.archive.canonical.com/ubuntu" "${DISTRIB_CODENAME}-updates/${OSCODENAME} main" > /etc/apt/sources.list.d/cloudarchive-${OSCODENAME}.list
 	apt-get update
     fi
 

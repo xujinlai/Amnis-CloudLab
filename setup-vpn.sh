@@ -22,7 +22,7 @@ if [ "$HOSTNAME" != "$NETWORKMANAGER" ]; then
     exit 0;
 fi
 
-apt-get install -y openvpn easy-rsa
+$APTGETINSTALL openvpn easy-rsa
 
 #
 # Get our server CA config set up.
@@ -145,7 +145,12 @@ unset KEY_EXPIRE
 #
 # Get the server up
 #
-service openvpn restart
+if [ ${HAVE_SYSTEMD} -eq 1 ]; then
+    systemctl enable openvpn@server.service
+    systemctl start openvpn@server.service
+else
+    service openvpn restart
+fi
 
 #
 # Get the hosts files setup to point to the new management network

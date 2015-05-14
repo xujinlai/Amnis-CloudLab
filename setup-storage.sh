@@ -32,7 +32,7 @@ fi
 
 ARCH=`uname -m`
 
-apt-get install -y lvm2
+$APTGETINSTALL lvm2
 
 if [ "$ARCH" = "aarch64" ]; then
     # XXX: have to copy the .bak versions back into place on uBoot-nodes.
@@ -76,7 +76,7 @@ if [ $LVM -eq 0 ] ; then
     vgcreate $VGNAME /dev/loop0
 fi
 
-apt-get install -y cinder-volume python-mysqldb
+$APTGETINSTALL cinder-volume python-mysqldb
 
 if [ "${STORAGEHOST}" != "${CONTROLLER}" ]; then
     # Just slap these in.
@@ -87,6 +87,7 @@ connection = mysql://cinder:${CINDER_DBPASS}@$CONTROLLER/cinder
 [DEFAULT]
 rpc_backend = rabbit
 rabbit_host = ${CONTROLLER}
+rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
 auth_strategy = keystone
 my_ip = $MGMTIP

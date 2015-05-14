@@ -29,8 +29,8 @@ if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
 
-apt-get install -y nova-compute sysfsutils < /dev/null
-apt-get install -y libguestfs-tools libguestfs0 python-guestfs < /dev/null
+$APTGETINSTALL nova-compute sysfsutils
+$APTGETINSTALL libguestfs-tools libguestfs0 python-guestfs
 
 #
 # Change vnc_enabled = True for x86 -- but for aarch64, there is
@@ -40,6 +40,7 @@ cat <<EOF >> /etc/nova/nova.conf
 [DEFAULT]
 rpc_backend = rabbit
 rabbit_host = $CONTROLLER
+rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
 auth_strategy = keystone
 my_ip = $MGMTIP
@@ -76,10 +77,12 @@ cpu_model=host
 EOF
 fi
 
-#
-# Patch quick :(
-#
-patch -d / -p0 < $DIRNAME/etc/nova-juno-root-device-name.patch
+if [ ${OSCODENAME} = "juno" ]; then
+    #
+    # Patch quick :(
+    #
+    patch -d / -p0 < $DIRNAME/etc/nova-juno-root-device-name.patch
+fi
 
 service nova-compute restart
 
