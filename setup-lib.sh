@@ -170,6 +170,11 @@ if [ ! -f /etc/apt/sources.list.d/cloudarchive-${OSCODENAME}.list \
 fi
 
 #
+# We rely on crudini in a few spots, instead of sed whacking.
+#
+$APTGETINSTALL crudini
+
+#
 # NB: this IP/mask is only valid after setting up the management network IP
 # addresses because they might not be the Emulab ones.
 #
