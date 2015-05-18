@@ -869,7 +869,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
     CEILOMETER_SECRET=`$PSWDGEN`
 
     if [ "${CEILOMETER_USE_MONGODB}" = "1" ]; then
-	$APTGETINSTALL mongodb-server
+	$APTGETINSTALL mongodb-server python-pymongo
 
 	sed -i -e "s/^.*bind_ip.*=.*$/bind_ip = ${MGMTIP}/" /etc/mongodb.conf
 
@@ -906,7 +906,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
     $APTGETINSTALL ceilometer-api ceilometer-collector \
 	ceilometer-agent-central ceilometer-agent-notification \
 	ceilometer-alarm-evaluator ceilometer-alarm-notifier \
-	python-ceilometerclient python-pymongo python-bson
+	python-ceilometerclient python-bson
 
     if [ "${CEILOMETER_USE_MONGODB}" = "1" ]; then
 	sed -i -e "s/^.*connection.*=.*$/connection = mongodb:\\/\\/ceilometer:${CEILOMETER_DBPASS}@$CONTROLLER:27017\\/ceilometer/" /etc/ceilometer/ceilometer.conf
