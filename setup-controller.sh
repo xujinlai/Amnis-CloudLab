@@ -1066,8 +1066,17 @@ if [ -z "${TROVE_DBPASS}" ]; then
     TROVE_DBPASS=`$PSWDGEN`
     TROVE_PASS=`$PSWDGEN`
 
+    # trove on Ubuntu Vivid was broken at the time this was done...
+    $APTGETINSTALL trove-common
+    if [ ! $? -eq 0 ]; then
+	touch /var/lib/trove/trove_test.sqlite
+	chown trove:trove /var/lib/trove/trove_test.sqlite
+	crudini --set /etc/trove/trove.conf database connection sqlite:////var/lib/trove/trove_test.sqlite
+	$APTGETINSTALL trove-common
+    fi
+
     $APTGETINSTALL python-trove python-troveclient python-glanceclient \
-	trove-common trove-api trove-taskmanager
+	trove-api trove-taskmanager trove-conductor
 
     echo "create database trove" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on trove.* to 'trove'@'localhost' identified by '$TROVE_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
@@ -1106,6 +1115,7 @@ default_datastore = mysql
 add_addresses = True
 network_label_regex = ^NETWORK_LABEL$
 api_paste_config = /etc/trove/api-paste.ini
+taskmanager_manager = trove.taskmanager.manager.Manager
 EOF
     cat <<EOF >> /etc/trove/trove-taskmanager.conf
 [DEFAULT]
@@ -1145,7 +1155,7 @@ swift_url = http://${CONTROLLER}:8080/v1/AUTH_
 sql_connection = mysql://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
 notifier_queue_hostname = ${CONTROLLER}
 EOF
-cat <<EOF >> /etc/trove/api-paste.ini
+    cat <<EOF >> /etc/trove/api-paste.ini
 [filter:authtoken]
 auth_uri = http://${CONTROLLER}:5000/v2.0
 identity_uri = http://${CONTROLLER}:35357
@@ -1155,6 +1165,13 @@ admin_tenant_name = service
 signing_dir = /var/cache/trove
 EOF
 
+    crudini --set /etc/trove/trove.conf \
+	database connection mysql://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
+    crudini --set /etc/trove/trove-taskmanager.conf \
+	database connection mysql://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
+    crudini --set /etc/trove/trove-conductor.conf \
+	database connection mysql://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
+
     sed -i -e "s/^\\(.*auth_host.*=.*\\)$/#\1/" /etc/trove/api-paste.ini
     sed -i -e "s/^\\(.*auth_port.*=.*\\)$/#\1/" /etc/trove/api-paste.ini
     sed -i -e "s/^\\(.*auth_protocol.*=.*\\)$/#\1/" /etc/trove/api-paste.ini
@@ -1163,6 +1180,14 @@ EOF
     chown -R trove:trove /var/cache/trove
 
     su -s /bin/sh -c "/usr/bin/trove-manage db_sync" trove
+    if [ ! $? -eq 0 ]; then
+	#
+        # Try disabling foreign_key_checks, sigh
+        #
+	echo "set global foreign_key_checks=0;" | mysql -u root --password="$DB_ROOT_PASS" trove
+	su -s /bin/sh -c "/usr/bin/trove-manage db_sync" trove
+	echo "set global foreign_key_checks=1;" | mysql -u root --password="$DB_ROOT_PASS" trove
+    fi
 
     su -s /bin/sh -c "trove-manage datastore_update mysql ''" trove
 
