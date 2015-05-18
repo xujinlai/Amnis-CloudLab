@@ -675,7 +675,7 @@ if [ -z "${SWIFT_PASS}" ]; then
     mkdir -p /etc/swift
 
     wget -O /etc/swift/proxy-server.conf \
-	https://raw.githubusercontent.com/openstack/swift/stable/juno/etc/proxy-server.conf-sample
+	https://raw.githubusercontent.com/openstack/swift/stable/${OSCODENAME}/etc/proxy-server.conf-sample
 
     # Just slap these in.
     cat <<EOF >> /etc/swift/proxy-server.conf
@@ -713,7 +713,7 @@ EOF
     sed -i -e "s/^\\(.*auth_protocol.*=.*\\)$/#\1/" /etc/swift/proxy-server.conf
 
     wget -O /etc/swift/swift.conf \
-	https://raw.githubusercontent.com/openstack/swift/stable/juno/etc/swift.conf-sample
+	https://raw.githubusercontent.com/openstack/swift/stable/${OSCODENAME}/etc/swift.conf-sample
 
     # Just slap these in.
     cat <<EOF >> /etc/swift/swift.conf
