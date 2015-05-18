@@ -1227,6 +1227,7 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 	--adminurl http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s \
 	--region regionOne
 
+    aserr=0
     apt-cache search ^sahara\$ | grep -q ^sahara\$
     APT_HAS_SAHARA=$?
 
@@ -1237,11 +1238,18 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 	$APTGETINSTALL python-eventlet python-flask python-oslo.serialization
 	pip install sahara
     else
-	$APTGETINSTALL sahara sahara-api sahara-engine
+	# This may fail because sahara's migration scripts use ALTER TABLE,
+        # which sqlite doesn't support
+	$APTGETINSTALL sahara-common 
+	aserr=$?
+	$APTGETINSTALL sahara-api sahara-engine
     fi
 
     mkdir -p /etc/sahara
-    sed -i -e "s/^.*connection.*=.*$/connection = mysql:\\/\\/sahara:${SAHARA_DBPASS}@$CONTROLLER\\/sahara/" /etc/sahara/sahara.conf
+    touch /etc/sahara/sahara.conf
+    chown -R sahara /etc/sahara
+    crudini --set /etc/sahara/sahara.conf \
+	database connection mysql://sahara:${SAHARA_DBPASS}@$CONTROLLER/sahara
     # Just slap these in.
     cat <<EOF >> /etc/sahara/sahara.conf
 [DEFAULT]
@@ -1264,17 +1272,28 @@ EOF
     sed -i -e "s/^\\(.*auth_port.*=.*\\)$/#\1/" /etc/sahara/sahara.conf
     sed -i -e "s/^\\(.*auth_protocol.*=.*\\)$/#\1/" /etc/sahara/sahara.conf
 
+    # If the apt-get install had failed, do it again so that the configure
+    # step can succeed ;)
+    if [ ! $aserr -eq 0 ]; then
+	$APTGETINSTALL sahara-common sahara-api sahara-engine
+    fi
+
     sahara-db-manage --config-file /etc/sahara/sahara.conf upgrade head
 
     mkdir -p /var/log/sahara
 
-    #pkill sahara-all
-    pkill sahara-engine
-    pkill sahara-api
+    if [ ${APT_HAS_SAHARA} -eq 0 ]; then
+        #pkill sahara-all
+	pkill sahara-engine
+	pkill sahara-api
 
-    sahara-api >>/var/log/sahara/sahara-api.log 2>&1 &
-    sahara-engine >>/var/log/sahara/sahara-engine.log 2>&1 &
-    #sahara-all >>/var/log/sahara/sahara-all.log 2>&1 &
+	sahara-api >>/var/log/sahara/sahara-api.log 2>&1 &
+	sahara-engine >>/var/log/sahara/sahara-engine.log 2>&1 &
+        #sahara-all >>/var/log/sahara/sahara-all.log 2>&1 &
+    else
+	service sahara-api restart
+	service sahara-engine restart
+    fi
 
     echo "SAHARA_DBPASS=\"${SAHARA_DBPASS}\"" >> $SETTINGS
     echo "SAHARA_PASS=\"${SAHARA_PASS}\"" >> $SETTINGS
