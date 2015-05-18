@@ -112,14 +112,14 @@ service rsync start
 
 $APTGETINSTALL swift swift-account swift-container swift-object
 
-curl -o /etc/swift/account-server.conf \
-    https://raw.githubusercontent.com/openstack/swift/stable/juno/etc/account-server.conf-sample
+wget -O /etc/swift/account-server.conf \
+    https://raw.githubusercontent.com/openstack/swift/stable/${OSCODENAME}/etc/account-server.conf-sample
 
-curl -o /etc/swift/container-server.conf \
-    https://raw.githubusercontent.com/openstack/swift/stable/juno/etc/container-server.conf-sample
+wget -O /etc/swift/container-server.conf \
+    https://raw.githubusercontent.com/openstack/swift/stable/${OSCODENAME}/etc/container-server.conf-sample
 
-curl -o /etc/swift/object-server.conf \
-    https://raw.githubusercontent.com/openstack/swift/stable/juno/etc/object-server.conf-sample
+wget -O /etc/swift/object-server.conf \
+    https://raw.githubusercontent.com/openstack/swift/stable/${OSCODENAME}/etc/object-server.conf-sample
 
 cat <<EOF >> /etc/swift/account-server.conf
 [DEFAULT]
