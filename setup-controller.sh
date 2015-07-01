@@ -507,7 +507,7 @@ fi
 if [ -z "${NEUTRON_NETWORKS_DONE}" ]; then
     NEUTRON_NETWORKS_DONE=1
 
-    if [ $OSCODENAME = "kilo" ]; then
+    if [ "$OSCODENAME" = "kilo" ]; then
 	neutron net-create ext-net --shared --router:external \
 	    --provider:physical_network external --provider:network_type flat
     else
@@ -675,61 +675,111 @@ if [ -z "${SWIFT_PASS}" ]; then
     mkdir -p /etc/swift
 
     wget -O /etc/swift/proxy-server.conf \
-	https://raw.githubusercontent.com/openstack/swift/stable/${OSCODENAME}/etc/proxy-server.conf-sample
+	"https://git.openstack.org/cgit/openstack/swift/plain/etc/proxy-server.conf-sample?h=stable/${OSCODENAME}"
 
     # Just slap these in.
-    cat <<EOF >> /etc/swift/proxy-server.conf
-[DEFAULT]
-bind_port = 8080
-user = swift
-swift_dir = /etc/swift
+    crudini --set /etc/swift/proxy-server.conf DEFAULT bind_port 8080
+    crudini --set /etc/swift/proxy-server.conf DEFAULT user swift
+    crudini --set /etc/swift/proxy-server.conf DEFAULT swift_dir /etc/swift
 
-[pipeline:main]
-pipeline = authtoken cache healthcheck keystoneauth proxy-logging proxy-server
+    pipeline=`crudini --get /etc/swift/proxy-server.conf pipeline:main pipeline`
+    if [ -z "$pipeline" ]; then
+	if [ "$OSCODENAME" = "juno" ]; then
+	    crudini --set /etc/swift/proxy-server.conf pipeline:main pipeline \
+		'authtoken cache healthcheck keystoneauth proxy-logging proxy-server'
+	else
+	    crudini --set /etc/swift/proxy-server.conf pipeline:main pipeline \
+		'catch_errors gatekeeper healthcheck proxy-logging cache container_sync bulk ratelimit authtoken keystoneauth container-quotas account-quotas slo dlo proxy-logging proxy-server'
+	fi
+    fi
 
-[app:proxy-server]
-allow_account_management = true
-account_autocreate = true
+    crudini --set /etc/swift/proxy-server.conf \
+	app:proxy-server allow_account_management true
+    crudini --set /etc/swift/proxy-server.conf \
+	app:proxy-server account_autocreate true
 
-[filter:keystoneauth]
-use = egg:swift#keystoneauth
-operator_roles = admin,_member_
+    crudini --set /etc/swift/proxy-server.conf \
+	filter:keystoneauth use 'egg:swift#keystoneauth'
+    if [ "$OSCODENAME" = "juno" ]; then
+	crudini --set /etc/swift/proxy-server.conf \
+	    filter:keystoneauth operator_roles 'admin,_member_'
+    else
+	crudini --set /etc/swift/proxy-server.conf \
+	    filter:keystoneauth operator_roles 'admin,user'
+    fi
 
-[filter:authtoken]
-paste.filter_factory = keystonemiddleware.auth_token:filter_factory
-auth_uri = http://${CONTROLLER}:5000/v2.0
-identity_uri = http://${CONTROLLER}:35357
-admin_tenant_name = service
-admin_user = swift
-admin_password = ${SWIFT_PASS}
-delay_auth_decision = true
+    crudini --set /etc/swift/proxy-server.conf \
+	filter:authtoken paste.filter_factory keystonemiddleware.auth_token:filter_factory
+    if [ "$OSCODENAME" = "juno" ]; then
+	crudini --set /etc/swift/proxy-server.conf \
+	    auth_uri "http://${CONTROLLER}:5000/v2.0"
+	crudini --set /etc/swift/proxy-server.conf \
+	    filter:authtoken identity_url "http://${CONTROLLER}:35357"
+	crudini --set /etc/swift/proxy-server.conf \
+	    filter:authtoken admin_tenant_name service
+	crudini --set /etc/swift/proxy-server.conf \
+	    filter:authtoken admin_user swift
+	crudini --set /etc/swift/proxy-server.conf \
+	    filter:authtoken admin_password "${SWIFT_PASS}"
+    else
+	crudini --set /etc/swift/proxy-server.conf \
+	    filter:authtoken auth_uri "http://${CONTROLLER}:5000"
+	crudini --set /etc/swift/proxy-server.conf \
+	    filter:authtoken auth_url "http://${CONTROLLER}:35357"
+	crudini --set /etc/swift/proxy-server.conf \
+	    filter:authtoken auth_plugin password
+	crudini --set /etc/swift/proxy-server.conf \
+	    filter:authtoken project_domain_id default
+	crudini --set /etc/swift/proxy-server.conf \
+	    filter:authtoken user_domain_id default
+	crudini --set /etc/swift/proxy-server.conf \
+	    filter:authtoken project_name service
+	crudini --set /etc/swift/proxy-server.conf \
+	    filter:authtoken username swift
+	crudini --set /etc/swift/proxy-server.conf \
+	    filter:authtoken password "${SWIFT_PASS}"
+    fi
+    crudini --set /etc/swift/proxy-server.conf \
+	filter:authtoken delay_auth_decision true
 
-[filter:cache]
-memcache_servers = 127.0.0.1:11211
-EOF
+    crudini --set /etc/swift/proxy-server.conf \
+	filter:cache memcache_servers 127.0.0.1:11211
 
     sed -i -e "s/^\\(.*auth_host.*=.*\\)$/#\1/" /etc/swift/proxy-server.conf
     sed -i -e "s/^\\(.*auth_port.*=.*\\)$/#\1/" /etc/swift/proxy-server.conf
     sed -i -e "s/^\\(.*auth_protocol.*=.*\\)$/#\1/" /etc/swift/proxy-server.conf
 
+    mkdir -p /var/log/swift
+    chown -R syslog.adm /var/log/swift
+
+    crudini --set /etc/swift/proxy-server.conf DEFAULT log_facility LOG_LOCAL1
+    crudini --set /etc/swift/proxy-server.conf DEFAULT log_level INFO
+    crudini --set /etc/swift/proxy-server.conf DEFAULT log_name swift-proxy
+
+    echo 'if $programname == "swift-proxy" then { action(type="omfile" file="/var/log/swift/swift-proxy.log") }' >> /etc/rsyslog.d/99-swift.conf
+
     wget -O /etc/swift/swift.conf \
-	https://raw.githubusercontent.com/openstack/swift/stable/${OSCODENAME}/etc/swift.conf-sample
+	"https://git.openstack.org/cgit/openstack/swift/plain/etc/swift.conf-sample?h=stable/${OSCODENAME}"
 
-    # Just slap these in.
-    cat <<EOF >> /etc/swift/swift.conf
-[swift-hash]
-swift_hash_path_suffix = ${SWIFT_HASH_PATH_PREFIX}
-swift_hash_path_prefix = ${SWIFT_HASH_PATH_SUFFIX}
-
-[storage-policy:0]
-name = Policy-0
-default = yes
-EOF
+    crudini --set /etc/swift/swift.conf \
+	swift-hash swift_hash_path_suffix "${SWIFT_HASH_PATH_PREFIX}"
+    crudini --set /etc/swift/swift.conf \
+	swift-hash swift_hash_path_prefix "${SWIFT_HASH_PATH_SUFFIX}"
+    crudini --set /etc/swift/swift.conf \
+	storage-policy:0 name "Policy-0"
+    crudini --set /etc/swift/swift.conf \
+	storage-policy:0 default yes
 
     chown -R swift:swift /etc/swift
 
     service memcached restart
-    swift-init proxy-server restart
+    if [ ${HAVE_SYSTEMD} -eq 0 ]; then
+	swift-init proxy-server restart
+	service rsyslog restart
+    else
+	systemctl restart swift-proxy.service
+	systemctl restart rsyslog.service
+    fi 
 
     echo "SWIFT_PASS=\"${SWIFT_PASS}\"" >> $SETTINGS
     echo "SWIFT_HASH_PATH_PREFIX=\"${SWIFT_HASH_PATH_PREFIX}\"" >> $SETTINGS

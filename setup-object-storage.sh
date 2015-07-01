@@ -109,17 +109,26 @@ EOF
 
 service rsync start
 
+mkdir -p /var/log/swift
+chown -R syslog.adm /var/log/swift
 
 $APTGETINSTALL swift swift-account swift-container swift-object
 
 wget -O /etc/swift/account-server.conf \
-    https://raw.githubusercontent.com/openstack/swift/stable/${OSCODENAME}/etc/account-server.conf-sample
+    "https://git.openstack.org/cgit/openstack/swift/plain/etc/account-server.conf-sample?h=stable/${OSCODENAME}"
 
 wget -O /etc/swift/container-server.conf \
-    https://raw.githubusercontent.com/openstack/swift/stable/${OSCODENAME}/etc/container-server.conf-sample
+    "  https://git.openstack.org/cgit/openstack/swift/plain/etc/container-server.conf-sample?h=stable/${OSCODENAME}"
 
 wget -O /etc/swift/object-server.conf \
-    https://raw.githubusercontent.com/openstack/swift/stable/${OSCODENAME}/etc/object-server.conf-sample
+    "  https://git.openstack.org/cgit/openstack/swift/plain/etc/object-server.conf-sample?h=stable/${OSCODENAME}"
+
+if [ "$OSCODENAME" = "kilo" ]; then
+    wget -O /etc/swift/container-reconciler.conf \
+	"https://git.openstack.org/cgit/openstack/swift/plain/etc/container-reconciler.conf-sample?h=stable/${OSCODENAME}"
+    wget -O /etc/swift/object-expirer.conf \
+	"https://git.openstack.org/cgit/openstack/swift/plain/etc/object-expirer.conf-sample?h=stable/${OSCODENAME}"
+fi
 
 cat <<EOF >> /etc/swift/account-server.conf
 [DEFAULT]
@@ -136,6 +145,24 @@ pipeline = healthcheck recon account-server
 recon_cache_path = /var/cache/swift
 EOF
 
+crudini --set /etc/swift/account-server.conf DEFAULT log_facility LOG_LOCAL1
+crudini --set /etc/swift/account-server.conf DEFAULT log_level INFO
+crudini --set /etc/swift/account-server.conf DEFAULT log_name swift-account
+crudini --set /etc/swift/account-server.conf app:account-server log_facility LOG_LOCAL1
+crudini --set /etc/swift/account-server.conf app:account-server log_level INFO
+crudini --set /etc/swift/account-server.conf app:account-server log_name swift-account
+crudini --set /etc/swift/account-server.conf account-replicator log_facility LOG_LOCAL1
+crudini --set /etc/swift/account-server.conf account-replicator log_level INFO
+crudini --set /etc/swift/account-server.conf account-replicator log_name swift-account-replicator
+crudini --set /etc/swift/account-server.conf account-auditor log_facility LOG_LOCAL1
+crudini --set /etc/swift/account-server.conf account-auditor log_level INFO
+crudini --set /etc/swift/account-server.conf account-auditor log_name swift-account-auditor
+crudini --set /etc/swift/account-server.conf account-reaper log_facility LOG_LOCAL1
+crudini --set /etc/swift/account-server.conf account-reaper log_level INFO
+crudini --set /etc/swift/account-server.conf account-reaper log_name swift-account-reaper
+
+echo 'if $programname == "swift-account" then { action(type="omfile" file="/var/log/swift/swift-account.log") }' >> /etc/rsyslog.d/99-swift.conf
+
 cat <<EOF >> /etc/swift/container-server.conf
 [DEFAULT]
 bind_ip = $MGMTIP
@@ -151,6 +178,27 @@ pipeline = healthcheck recon container-server
 recon_cache_path = /var/cache/swift
 EOF
 
+crudini --set /etc/swift/container-server.conf DEFAULT log_facility LOG_LOCAL1
+crudini --set /etc/swift/container-server.conf DEFAULT log_level INFO
+crudini --set /etc/swift/container-server.conf DEFAULT log_name swift-container
+crudini --set /etc/swift/container-server.conf app:container-server log_facility LOG_LOCAL1
+crudini --set /etc/swift/container-server.conf app:container-server log_level INFO
+crudini --set /etc/swift/container-server.conf app:container-server log_name swift-container
+crudini --set /etc/swift/container-server.conf container-replicator log_facility LOG_LOCAL1
+crudini --set /etc/swift/container-server.conf container-replicator log_level INFO
+crudini --set /etc/swift/container-server.conf container-replicator log_name swift-container-replicator
+crudini --set /etc/swift/container-server.conf container-updater log_facility LOG_LOCAL1
+crudini --set /etc/swift/container-server.conf container-updater log_level INFO
+crudini --set /etc/swift/container-server.conf container-updater log_name swift-container-updater
+crudini --set /etc/swift/container-server.conf container-auditor log_facility LOG_LOCAL1
+crudini --set /etc/swift/container-server.conf container-auditor log_level INFO
+crudini --set /etc/swift/container-server.conf container-auditor log_name swift-container-auditor
+crudini --set /etc/swift/container-server.conf container-sync log_facility LOG_LOCAL1
+crudini --set /etc/swift/container-server.conf container-sync log_level INFO
+crudini --set /etc/swift/container-server.conf container-sync log_name swift-container-sync
+
+echo 'if $programname == "swift-container" then { action(type="omfile" file="/var/log/swift/swift-container.log") }' >> /etc/rsyslog.d/99-swift.conf
+
 cat <<EOF >> /etc/swift/object-server.conf
 [DEFAULT]
 bind_ip = $MGMTIP
@@ -165,13 +213,57 @@ pipeline = healthcheck recon object-server
 [filter:recon]
 recon_cache_path = /var/cache/swift
 EOF
+if [ "$OSCODENAME" = "kilo" ]; then
+    cat <<EOF >> /etc/swift/object-server.conf
+[filter:recon]
+recon_lock_path = /var/lock
+EOF
+
+crudini --set /etc/swift/object-server.conf DEFAULT log_facility LOG_LOCAL1
+crudini --set /etc/swift/object-server.conf DEFAULT log_level INFO
+crudini --set /etc/swift/object-server.conf DEFAULT log_name swift-object
+crudini --set /etc/swift/object-server.conf app:object-server log_facility LOG_LOCAL1
+crudini --set /etc/swift/object-server.conf app:object-server log_level INFO
+crudini --set /etc/swift/object-server.conf app:object-server log_name swift-object
+crudini --set /etc/swift/object-server.conf object-replicator log_facility LOG_LOCAL1
+crudini --set /etc/swift/object-server.conf object-replicator log_level INFO
+crudini --set /etc/swift/object-server.conf object-replicator log_name swift-object-replicator
+crudini --set /etc/swift/object-server.conf object-reconstructor log_facility LOG_LOCAL1
+crudini --set /etc/swift/object-server.conf object-reconstructor log_level INFO
+crudini --set /etc/swift/object-server.conf object-reconstructor log_name swift-object-reconstructor
+crudini --set /etc/swift/object-server.conf object-updater log_facility LOG_LOCAL1
+crudini --set /etc/swift/object-server.conf object-updater log_level INFO
+crudini --set /etc/swift/object-server.conf object-updater log_name swift-object-updater
+crudini --set /etc/swift/object-server.conf object-auditor log_facility LOG_LOCAL1
+crudini --set /etc/swift/object-server.conf object-auditor log_level INFO
+crudini --set /etc/swift/object-server.conf object-auditor log_name swift-object-auditor
+
+echo 'if $programname == "swift-object" then { action(type="omfile" file="/var/log/swift/swift-object.log") }' >> /etc/rsyslog.d/99-swift.conf
 
 chown -R swift:swift /storage/mnt/swift
 
 mkdir -p /var/cache/swift
 chown -R swift:swift /var/cache/swift
 
-swift-init all start
+if [ ${HAVE_SYSTEMD} -eq 0 ]; then
+    swift-init all start
+    service rsyslog restart
+else
+    systemctl restart rsyslog
+    systemctl restart swift-account.service
+    systemctl restart swift-account-replicator.service
+    systemctl restart swift-account-auditor.service
+    systemctl restart swift-account-reaper.service
+    systemctl restart swift-container.service
+    systemctl restart swift-container-auditor.service
+    systemctl restart swift-container-replicator.service
+    systemctl restart swift-container-sync.service
+    systemctl restart swift-container-updater.service
+    systemctl restart swift-object.service
+    systemctl restart swift-object-auditor.service
+    systemctl restart swift-object-replicator.service
+    systemctl restart swift-object-updater.service
+fi
 
 touch $OURDIR/setup-object-host-done
 
