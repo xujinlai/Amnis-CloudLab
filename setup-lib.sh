@@ -14,12 +14,41 @@ DATALAN="lan-1"
 MGMTLAN="lan-2"
 BLOCKLAN=""
 OBJECTLAN=""
+SETUP_TUNNEL_DATA_NETWORK=1
 SETUP_FLAT_DATA_NETWORK=1
 USE_EXISTING_DATA_IPS=1
 USE_EXISTING_MGMT_IPS=1
+DO_APT_INSTALL=1
 DO_APT_UPDATE=1
 DO_UBUNTU_CLOUDARCHIVE=1
 BUILD_AARCH64_FROM_CORE=0
+#ADMIN_PASS=`$PSWDGEN`
+#ADMIN_PASS=admin
+ADMIN_PASS="N!ceD3m0"
+
+OURDIR=/root/setup
+SETTINGS=$OURDIR/settings
+LOCALSETTINGS=$OURDIR/settings.local
+TOPOMAP=$OURDIR/topomap
+
+mkdir -p $OURDIR
+cd $OURDIR
+touch $SETTINGS
+touch $LOCALSETTINGS
+
+BOOTDIR=/var/emulab/boot
+SWAPPER=`cat $BOOTDIR/swapper`
+
+#
+# Suck in user configuration overrides, if we haven't already
+#
+if [ ! -e $OURDIR/parameters ]; then
+    touch $OURDIR/parameters
+    if [ "$SWAPPER" = "geniuser" ]; then
+	geni-get manifest | sed -n -e 's/^[^<]*<[^:]*:parameter>\([^<]*\)<\/[^:]*:parameter>/\1/p' > $OURDIR/parameters
+    fi
+fi
+. $OURDIR/parameters
 
 BOOTDIR=/var/emulab/boot
 TMCC=/usr/local/etc/emulab/tmcc
@@ -67,16 +96,6 @@ else
     PUBLICADDRS=""
     PUBLICCOUNT=0
 fi
-
-OURDIR=/root/setup
-SETTINGS=$OURDIR/settings
-LOCALSETTINGS=$OURDIR/settings.local
-TOPOMAP=$OURDIR/topomap
-
-mkdir -p $OURDIR
-cd $OURDIR
-touch $SETTINGS
-touch $LOCALSETTINGS
 
 #
 # Grab our topomap so we can see how many nodes we have.
@@ -151,6 +170,10 @@ export DEBIAN_FRONTEND=noninteractive
 #  -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
 APTGETINSTALLOPTS='-y'
 APTGETINSTALL="apt-get install $APTGETINSTALLOPTS"
+# Don't install/update packages if this is not set
+if [ ! ${DO_APT_INSTALL} -eq 1 ]; then
+    APTGETINSTALL="/bin/true ${APTGETINSTALL}"
+fi
 
 if [ ! -f $OURDIR/apt-updated -a "${DO_APT_UPDATE}" = "1" ]; then
     apt-get update
