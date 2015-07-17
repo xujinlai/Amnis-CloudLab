@@ -110,6 +110,12 @@ mount ${ld}p1 mnt
 echo "*** adding contents of core tarball ..."
 tar xzf "$core" -C mnt
 
+echo "*** fixing root password ..."
+sed -i -e "s@root:[^:]*:@root:${ADMIN_PASS_HASH}:@" mnt/etc/shadow
+
+echo "*** fixing ubuntu password ..."
+sed -i -e "s@ubuntu:[^:]*:@ubuntu:${ADMIN_PASS_HASH}:@" mnt/etc/shadow
+
 umount mnt
 
 #
@@ -175,12 +181,6 @@ EOM
     } | tee -a mnt/etc/network/interfaces >/dev/null
 
     echo 'Acquire::CompressionTypes::Order { "gz"; "bz2"; }' | tee mnt/etc/apt/apt.conf.d/99gzip >/dev/null
-
-    echo "*** fixing root password ..."
-    sed -i -e 's@root:[^:]*:@root:$6$QDmiL4Pp$OxXz9eP112jYY4rljT.1QUFqw.PW9g85VMapJehvRIDrkio1LN.74Tq40XbkvxCXAGEcLi.eZOaCFqgelSzOA/:@' mnt/etc/shadow
-
-    echo "*** fixing ubuntu password ..."
-    sed -i -e 's@ubuntu:[^:]*:@ubuntu:$6$QDmiL4Pp$OxXz9eP112jYY4rljT.1QUFqw.PW9g85VMapJehvRIDrkio1LN.74Tq40XbkvxCXAGEcLi.eZOaCFqgelSzOA/:@' mnt/etc/shadow
 
     echo "*** unmounting ..."
     umount mnt

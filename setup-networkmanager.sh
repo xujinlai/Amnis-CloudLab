@@ -27,7 +27,8 @@ if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
 
-dataip=`cat $OURDIR/data-hosts | grep $HOSTNAME | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
+# Grab the neutron configuration we computed in setup-lib.sh
+. $OURDIR/info.neutron
 
 cat <<EOF >> /etc/sysctl.conf
 net.ipv4.ip_forward=1
@@ -72,15 +73,18 @@ EOF
 # Just slap these in.
 cat <<EOF >> /etc/neutron/plugins/ml2/ml2_conf.ini
 [ml2]
-type_drivers = flat,gre
-tenant_network_types = flat,gre
+type_drivers = ${network_types}
+tenant_network_types = ${network_types}
 mechanism_drivers = openvswitch
 
 [ml2_type_flat]
-flat_networks = external,data
+flat_networks = ${flat_networks}
 
 [ml2_type_gre]
 tunnel_id_ranges = 1:1000
+
+[ml2_type_vlan]
+${network_vlan_ranges}
 
 [securitygroup]
 enable_security_group = True
@@ -88,12 +92,12 @@ enable_ipset = True
 firewall_driver = neutron.agent.firewall.NoopFirewallDriver
 
 [ovs]
-local_ip = $dataip
-enable_tunneling = True
-bridge_mappings = external:br-ex,data:br-data
+${gre_local_ip}
+${enable_tunneling}
+${bridge_mappings}
 
 [agent]
-tunnel_types = gre
+${tunnel_types}
 EOF
 
 # Just slap these in.

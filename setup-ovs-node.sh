@@ -27,7 +27,7 @@ fi
 # $EXTERNAL_NETWORK_INTERFACE from setup-lib.sh , and it and its configuration
 # get applied to br-ex .  So, we need to find which interface corresponds to
 # DATALAN on this node, if any, and move it (and its configuration OR its new
-# new DATAIP iff USE_EXISTING_DATA_IPS was set) to br-int
+# new DATAIP iff USE_EXISTING_IPS was set) to br-int
 #
 EXTERNAL_NETWORK_BRIDGE="br-ex"
 #DATA_NETWORK_INTERFACE=`ip addr show | grep "inet $MYIP" | sed -e "s/.*scope global \(.*\)\$/\1/"`
@@ -39,7 +39,7 @@ INTEGRATION_NETWORK_BRIDGE="br-int"
 # setup the data network with its IP.
 #
 #if [ "$HOSTNAME" = "$CONTROLLER" ]; then
-#    if [ ${USE_EXISTING_DATA_IPS} -eq 0 ]; then
+#    if [ ${USE_EXISTING_IPS} -eq 0 ]; then
 #	ifconfig ${DATA_NETWORK_INTERFACE} $DATAIP netmask 255.0.0.0 up
 #    fi
 #    exit 0;
@@ -125,22 +125,25 @@ fi
 ovs-vsctl add-br ${INTEGRATION_NETWORK_BRIDGE}
 
 #
-# (Maybe) Setup the data network
+# (Maybe) Setup the flat data networks
 #
-if [ ${SETUP_FLAT_DATA_NETWORK} -eq 1 ]; then
-    ovs-vsctl add-br ${DATA_NETWORK_BRIDGE}
+for lan in $DATAFLATLANS ; do
+    # suck in the vars we'll use to configure this one
+    . $OURDIR/info.$lan
 
-    ovs-vsctl add-port ${DATA_NETWORK_BRIDGE} ${DATA_NETWORK_INTERFACE}
-    ifconfig ${DATA_NETWORK_INTERFACE} 0 up
+    ovs-vsctl add-br ${DATABRIDGE}
+
+    ovs-vsctl add-port ${DATABRIDGE} ${DATADEV}
+    ifconfig ${DATADEV} 0 up
     cat <<EOF >> /etc/network/interfaces
 
-auto ${DATA_NETWORK_BRIDGE}
-iface ${DATA_NETWORK_BRIDGE} inet static
+auto ${DATABRIDGE}
+iface ${DATABRIDGE} inet static
     address $DATAIP
     netmask $DATANETMASK
 
-auto ${DATA_NETWORK_INTERFACE}
-iface ${DATA_NETWORK_INTERFACE} inet static
+auto ${DATADEV}
+iface ${DATADEV} inet static
     address 0.0.0.0
 EOF
     if [ -n "$DATAVLANDEV" ]; then
@@ -149,25 +152,50 @@ EOF
 EOF
     fi
 
-    ifconfig ${DATA_NETWORK_BRIDGE} $DATAIP netmask $DATANETMASK up
+    ifconfig ${DATABRIDGE} $DATAIP netmask $DATANETMASK up
     # XXX!
-    route add -net 10.0.0.0/8 dev ${DATA_NETWORK_BRIDGE}
-else
-    ifconfig ${DATA_NETWORK_INTERFACE} $DATAIP netmask 255.0.0.0 up
+    #route add -net 10.0.0.0/8 dev ${DATA_NETWORK_BRIDGE}
+done
 
-    cat <<EOF >> /etc/network/interfaces
+#
+# (Maybe) Setup the VLAN data networks.
+# Note, these are for the case where we're giving openstack the chance
+# to manage these networks... so we delete the emulab-created vlan devices,
+# create an openvswitch switch for the vlan device, and just add the physical
+# device as a port.  Simple.
+#
+for lan in $DATAVLANS ; do
+    # suck in the vars we'll use to configure this one
+    . $OURDIR/info.$lan
 
-auto ${DATA_NETWORK_INTERFACE}
-iface ${DATA_NETWORK_INTERFACE} inet static
-    address $DATAIP
-    netmask $DATANETMASK
-EOF
-    if [ -n "$DATAVLANDEV" ]; then
-	cat <<EOF >> /etc/network/interfaces
-    vlan-raw-device ${DATAVLANDEV}
-EOF
+    ifconfig $DATADEV down
+    vconfig rem $DATADEV
+
+    # If the bridge exists, we've already done it (we might have multiplexed
+    # (trunked) more than one vlan across this physical device).
+    ovs-vsctl br-exists ${DATABRIDGE}
+    if [ $? -ne 0 ]; then
+	ovs-vsctl add-br ${DATABRIDGE}
+	ovs-vsctl add-port ${DATABRIDGE} ${DATAVLANDEV}
     fi
-fi
+done
+
+#else
+#    ifconfig ${DATA_NETWORK_INTERFACE} $DATAIP netmask 255.0.0.0 up
+#
+#    cat <<EOF >> /etc/network/interfaces
+#
+#auto ${DATA_NETWORK_INTERFACE}
+#iface ${DATA_NETWORK_INTERFACE} inet static
+#    address $DATAIP
+#    netmask $DATANETMASK
+#EOF
+#    if [ -n "$DATAVLANDEV" ]; then
+#	cat <<EOF >> /etc/network/interfaces
+#    vlan-raw-device ${DATAVLANDEV}
+#EOF
+#    fi
+#fi
 
 #
 # Set the hostname for later after reboot!

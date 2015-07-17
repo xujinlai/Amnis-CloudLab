@@ -43,11 +43,15 @@ sed -i -e 's/^.*PasswordAuthentication .*$/PasswordAuthentication yes/' /mnt/etc
 
 echo "*** Modifying root password..."
 
+cp -p /mnt/etc/shadow $OURDIR/
+cp -p /mnt/etc/passwd $OURDIR/
+cp -p /mnt/etc/group $OURDIR/
+
 echo "*** fixing root password ..."
-sed -i -e 's@root:[^:]*:@root:$6$QDmiL4Pp$OxXz9eP112jYY4rljT.1QUFqw.PW9g85VMapJehvRIDrkio1LN.74Tq40XbkvxCXAGEcLi.eZOaCFqgelSzOA/:@' /mnt/etc/shadow
+sed -i -e "s@root:[^:]*:@root:${ADMIN_PASS_HASH}:@" /mnt/etc/shadow
 
 echo "*** fixing ubuntu password ..."
-sed -i -e 's@ubuntu:[^:]*:@ubuntu:$6$QDmiL4Pp$OxXz9eP112jYY4rljT.1QUFqw.PW9g85VMapJehvRIDrkio1LN.74Tq40XbkvxCXAGEcLi.eZOaCFqgelSzOA/:@' /mnt/etc/shadow
+sed -i -e "s@ubuntu:[^:]*:@ubuntu:${ADMIN_PASS_HASH}:@" /mnt/etc/shadow
 
 # permit root login!!
 sed -i -e 's/^disable_root: true$/disable_root: false/' /mnt/etc/cloud/cloud.cfg

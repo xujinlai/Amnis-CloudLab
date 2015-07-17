@@ -41,81 +41,9 @@ for node in $NODES ; do
     echo "*** $node is up!"
 done
 
-echo "*** Setting up Management and Data Network IP Addresses"
-
-#
-# Create IP addresses for the Management and Data networks, as necessary.
-#
-if [ -z "${MGMTLAN}" -o ${USE_EXISTING_MGMT_IPS} -eq 0 ]; then
-    echo "255.255.0.0" > $OURDIR/mgmt-netmask
-    echo "192.168.0.1 $NETWORKMANAGER" > $OURDIR/mgmt-hosts
-    echo "192.168.0.3 $CONTROLLER" >> $OURDIR/mgmt-hosts
-    o3=0
-    o4=5
-    for node in $NODES
-    do
-	[ "$node" = "$CONTROLLER" -o "$node" = "$NETWORKMANAGER" ] \
-	    && continue
-
-	echo "192.168.$o3.$o4 $node" >> $OURDIR/mgmt-hosts
-
-        # Skip 2 for openvpn tun tunnels
-	o4=`expr $o4 + 2`
-	if [ $o4 -gt 253 ] ; then
-	    o4=10
-	    o3=`expr $o3 + 1`
-	fi
-    done
-else
-    cat $TOPOMAP | grep -v '^#' | sed -e 's/,/ /' \
-	| sed -n -e "s/\([a-zA-Z0-9_\-]*\) .*${MGMTLAN}:\([0-9\.]*\).*\$/\2\t\1/p" \
-	> $OURDIR/mgmt-hosts
-    cat /var/emulab/boot/tmcc/ifconfig \
-	| sed -n -e "s/.* MASK=\([0-9\.]*\) .* LAN=${MGMTLAN}/\1/p" \
-	> $OURDIR/mgmt-netmask
-fi
-
-#
-# If USE_EXISTING_DATA_IPS is set to 0, we will re-IP those data lan
-# interfaces: networkmanager:eth1 gets 10.0.0.1/8, and controller gets
-# 10.0.0.3/8; and the compute nodes get 10.0.x.y, where x starts at 1,
-# and y starts at 1 and does not exceed 254.
-#
-if [ ${USE_EXISTING_DATA_IPS} -eq 0 ]; then
-    echo "255.0.0.0" > $OURDIR/data-netmask
-    echo "10.0.0.1 $NETWORKMANAGER" > $OURDIR/data-hosts
-    echo "10.0.0.3 $CONTROLLER" >> $OURDIR/data-hosts
-
-    #
-    # Now set static IPs for the compute nodes.
-    #
-    o3=1
-    o4=1
-    for node in $NODES
-    do
-	[ "$node" = "$CONTROLLER" -o "$node" = "$NETWORKMANAGER" ] \
-	    && continue
-
-	echo "10.0.$o3.$o4 $node" >> $OURDIR/data-hosts
-
-        # Skip 2 for openvpn tun tunnels
-	o4=`expr $o4 + 1`
-	if [ $o4 -gt 254 ] ; then
-	    o4=10
-	    o3=`expr $o3 + 1`
-	fi
-    done
-else
-    cat $TOPOMAP | grep -v '^#' | sed -e 's/,/ /' \
-	| sed -n -e "s/\([a-zA-Z0-9_\-]*\) .*${DATALAN}:\([0-9\.]*\).*\$/\2\t\1/p" \
-	> $OURDIR/data-hosts
-    cat /var/emulab/boot/tmcc/ifconfig \
-	| sed -n -e "s/.* MASK=\([0-9\.]*\) .* LAN=${DATALAN}/\1/p" \
-	> $OURDIR/data-netmask
-fi
-
 #
 # Get our hosts files setup to point to the new management network.
+# (These were created one-time in setup-lib.sh)
 #
 cat $OURDIR/mgmt-hosts > /etc/hosts
 for node in $NODES 

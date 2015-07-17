@@ -32,10 +32,6 @@ fi
 $APTGETINSTALL nova-compute sysfsutils
 $APTGETINSTALL libguestfs-tools libguestfs0 python-guestfs
 
-#
-# Change vnc_enabled = True for x86 -- but for aarch64, there is
-# no video device, for KVM mode, anyway, it seems.
-#
 cat <<EOF >> /etc/nova/nova.conf
 [DEFAULT]
 rpc_backend = rabbit
@@ -44,10 +40,6 @@ rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
 auth_strategy = keystone
 my_ip = $MGMTIP
-vnc_enabled = False
-vncserver_listen = 0.0.0.0
-vncserver_proxyclient_address = $MGMTIP
-novncproxy_base_url = http://$CONTROLLER:6080/vnc_auto.html
 verbose = True
 
 [keystone_authtoken]
@@ -60,6 +52,29 @@ admin_password = ${NOVA_PASS}
 [glance]
 host = $CONTROLLER
 EOF
+
+#
+# Change vnc_enabled = True for x86 -- but for aarch64, there is
+# no video device, for KVM mode, anyway, it seems.
+#
+ARCH=`uname -m`
+if [ "$ARCH" = "aarch64" ] ; then
+    cat <<EOF >> /etc/nova/nova.conf
+[DEFAULT]
+vnc_enabled = False
+vncserver_listen = 0.0.0.0
+vncserver_proxyclient_address = $MGMTIP
+novncproxy_base_url = http://$CONTROLLER.$EEID.$EPID.$OURDOMAIN:6080/vnc_auto.html
+EOF
+else
+    cat <<EOF >> /etc/nova/nova.conf
+[DEFAULT]
+vnc_enabled = True
+vncserver_listen = 0.0.0.0
+vncserver_proxyclient_address = $MGMTIP
+novncproxy_base_url = http://$CONTROLLER.$EEID.$EPID.$OURDOMAIN:6080/vnc_auto.html
+EOF
+fi
 
 cat <<EOF >> /etc/nova/nova-compute.conf
 

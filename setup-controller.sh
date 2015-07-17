@@ -141,8 +141,10 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
 
     # Create the admin tenant
     keystone tenant-create --name admin --description "Admin Tenant"
-    # Create the admin user
-    keystone user-create --name admin --pass ${ADMIN_PASS} --email "${SWAPPER_EMAIL}"
+    # Create the admin user -- temporarily use the random one for ${ADMIN_API};
+    # we change it right away below manually via sql
+    keystone user-create --name admin --pass ${ADMIN_API_PASS} \
+	--email "${SWAPPER_EMAIL}"
     # Create the admin role
     keystone role-create --name admin
     # Add the admin tenant and user to the admin role:
@@ -164,26 +166,39 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
         --adminurl http://$CONTROLLER:35357/v2.0 \
         --region regionOne
 
+    #
+    # Update the admin user with the passwd hash from our config
+    #
+    echo "update user set password='${ADMIN_PASS_HASH}' where name='admin'" \
+	| mysql -u root --password=${DB_ROOT_PASS} keystone
+
+    # Create the adminapi user
+    keystone user-create --name ${ADMIN_API} --pass ${ADMIN_API_PASS} \
+	--email "${SWAPPER_EMAIL}"
+    keystone user-role-add --tenant admin --user ${ADMIN_API} --role admin
+    keystone user-role-add --tenant admin --user ${ADMIN_API} --role _member_
+
     unset OS_SERVICE_TOKEN OS_SERVICE_ENDPOINT
 
     sed -i -e "s/^.*admin_token.*$/#admin_token =/" /etc/keystone/keystone.conf
 
     # Save the passwd
-    echo "ADMIN_PASS=\"${ADMIN_PASS}\"" >> $SETTINGS
+    echo "ADMIN_API=\"${ADMIN_API}\"" >> $SETTINGS
+    echo "ADMIN_API_PASS=\"${ADMIN_API_PASS}\"" >> $SETTINGS
     echo "KEYSTONE_DBPASS=\"${KEYSTONE_DBPASS}\"" >> $SETTINGS
 fi
 
 #
-# From here on out, we need to be the admin user.
+# From here on out, we need to be the adminapi user.
 #
 export OS_TENANT_NAME=admin
-export OS_USERNAME=admin
-export OS_PASSWORD=$ADMIN_PASS
+export OS_USERNAME=${ADMIN_API}
+export OS_PASSWORD=${ADMIN_API_PASS}
 export OS_AUTH_URL=http://$CONTROLLER:35357/v2.0
 
 echo "export OS_TENANT_NAME=admin" > $OURDIR/admin-openrc.sh
-echo "export OS_USERNAME=admin" >> $OURDIR/admin-openrc.sh
-echo "export OS_PASSWORD=${ADMIN_PASS}" >> $OURDIR/admin-openrc.sh
+echo "export OS_USERNAME=${ADMIN_API}" >> $OURDIR/admin-openrc.sh
+echo "export OS_PASSWORD=${ADMIN_API_PASS}" >> $OURDIR/admin-openrc.sh
 echo "export OS_AUTH_URL=http://$CONTROLLER:35357/v2.0" >> $OURDIR/admin-openrc.sh
 
 #
@@ -348,6 +363,8 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
     NEUTRON_PASS=`$PSWDGEN`
     NEUTRON_METADATA_SECRET=`$PSWDGEN`
 
+    . $OURDIR/info.neutron
+
     echo "create database neutron" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on neutron.* to 'neutron'@'localhost' identified by '$NEUTRON_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on neutron.* to 'neutron'@'%' identified by '$NEUTRON_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
@@ -416,15 +433,18 @@ EOF
 
     cat <<EOF >> /etc/neutron/plugins/ml2/ml2_conf.ini
 [ml2]
-type_drivers = flat,gre
-tenant_network_types = flat,gre
+type_drivers = ${network_types}
+tenant_network_types = ${network_types}
 mechanism_drivers = openvswitch
 
 [ml2_type_flat]
-flat_networks = external,data
+flat_networks = ${flat_networks}
 
 [ml2_type_gre]
 tunnel_id_ranges = 1:1000
+
+[ml2_type_vlan]
+${network_vlan_ranges}
 
 [securitygroup]
 enable_security_group = True
@@ -1182,8 +1202,8 @@ notifier_queue_hostname = ${CONTROLLER}
 # These options are for an admin user in your keystone config.
 # It proxy's the token received from the user to send to nova via this admin users creds,
 # basically acting like the client via that proxy token.
-nova_proxy_admin_user = admin
-nova_proxy_admin_pass = ${ADMIN_PASS}
+nova_proxy_admin_user = ${ADMIN_API}
+nova_proxy_admin_pass = ${ADMIN_API_PASS}
 nova_proxy_admin_tenant_name = service
 taskmanager_manager = trove.taskmanager.manager.Manager
 EOF

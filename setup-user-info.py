@@ -23,7 +23,7 @@ else:
     pass
 
 url = 'http://%s:5000/v2.0' % (CONTROLLER,)
-auth = v2.Password(auth_url=url,username='admin',password=ADMIN_PASS,tenant_name='admin')
+auth = v2.Password(auth_url=url,username=ADMIN_API,password=ADMIN_API_PASS,tenant_name='admin')
 sess = session.Session(auth=auth)
 nova = Client(2,session=sess)
 
