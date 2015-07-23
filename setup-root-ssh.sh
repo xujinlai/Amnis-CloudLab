@@ -19,7 +19,7 @@ fi
 KEYNAME=id_rsa
 
 # Remove it if it exists...
-rm -f ~/.ssh/${KEYNAME} ~/.ssh/${KEYNAME}.pub
+rm -f /root/.ssh/${KEYNAME} /root/.ssh/${KEYNAME}.pub
 
 ##
 ## Figure out our strategy.  Are we using the new geni_certificate and
@@ -30,11 +30,12 @@ chmod 600 $OURDIR/${KEYNAME}
 if [ -s $OURDIR/${KEYNAME} ] ; then
     ssh-keygen -f $OURDIR/${KEYNAME} -y > $OURDIR/${KEYNAME}.pub
     chmod 600 $OURDIR/${KEYNAME}.pub
-    mkdir -p ~/.ssh
-    chmod 600 ~/.ssh
-    cp -p $OURDIR/${KEYNAME} $OURDIR/${KEYNAME}.pub ~/.ssh/
-    cat $OURDIR/${KEYNAME}.pub >> ~/.ssh/authorized_keys
-    chmod 600 ~/.ssh/authorized_keys
+    mkdir -p /root/.ssh
+    chmod 600 /root/.ssh
+    cp -p $OURDIR/${KEYNAME} $OURDIR/${KEYNAME}.pub /root/.ssh/
+    ps axwww > $OURDIR/ps.txt
+    cat $OURDIR/${KEYNAME}.pub >> /root/.ssh/authorized_keys
+    chmod 600 /root/.ssh/authorized_keys
     exit 0
 fi
 
