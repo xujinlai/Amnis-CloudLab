@@ -33,7 +33,7 @@ do
     [ "$node" = "$NETWORKMANAGER" ] && continue
 
     echo "*** Setting up OpenVSwitch on $node"
-    fqdn="$node.$EEID.$EPID.$OURDOMAIN"
+    fqdn=`getfqdn $node`
     $SSH $fqdn $DIRNAME/setup-ovs-node.sh
 done
 

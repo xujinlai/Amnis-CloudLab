@@ -1,5 +1,7 @@
 #!/bin/sh
 
+DIRNAME=`dirname $0`
+
 PSWDGEN="openssl rand -hex 10"
 
 #
@@ -79,7 +81,7 @@ NFQDN="`cat $BOOTDIR/nickname`.$OURDOMAIN"
 PFQDN="`cat $BOOTDIR/nodeid`.$OURDOMAIN"
 MYIP=`cat $BOOTDIR/myip`
 EXTERNAL_NETWORK_INTERFACE=`cat $BOOTDIR/controlif`
-HOSTNAME=`cat /var/emulab/boot/nickname | cut -f1 -d.`
+HOSTNAME=`cat ${BOOTDIR}/nickname | cut -f1 -d.`
 ARCH=`uname -m`
 
 # Check if our init is systemd
@@ -112,8 +114,36 @@ else
     PUBLICCOUNT=0
 fi
 
+##
+## Grab our geni creds, and create a GENI credential cert
+##
+#
+# NB: force the install of python-m2crypto if geniuser
+#
+if [ "$SWAPPER" = "geniuser" ]; then
+    dpkg-query -l python-m2crypto | grep -q ii
+    if [ ! $? = 0 ]; then
+	apt-get install python-m2crypto
+    fi
+fi
+if [ ! -e $OURDIR/geni.key ]; then
+    geni-get key > $OURDIR/geni.key
+fi
+if [ ! -e $OURDIR/geni.certificate ]; then
+    geni-get certificate > $OURDIR/geni.certificate
+fi
+
+if [ ! -e /root/.ssl/encrypted.pem ]; then
+    mkdir -p /root/.ssl
+    chmod 600 /root/.ssl
+
+    cat $OURDIR/geni.key > /root/.ssl/encrypted.pem
+    cat $OURDIR/geni.certificate >> /root/.ssl/encrypted.pem
+fi
+
 #
 # Grab our topomap so we can see how many nodes we have.
+# NB: only safe to use topomap for non-fqdn things.
 #
 if [ ! -f $TOPOMAP ]; then
     $TMCC topomap | gunzip > $TOPOMAP
@@ -132,7 +162,37 @@ if [ ! -z "$MGMTLAN" ] ; then
     fi
 fi
 
-NODES=`cat $TOPOMAP | grep -v '^#' | sed -n -e 's/^\([a-zA-Z0-9\-]*\),.*:.*$/\1/p' | xargs`
+#
+# Create a map of node nickname to FQDN.  This supports geni multi-site
+# experiments.
+#
+if [ \( -s /root/.ssl/encrypted.pem \) -a \( ! \( -e $OURDIR/manifests.xml \) \) ]; then
+    python $DIRNAME/getmanifests.py > $OURDIR/manifests.xml
+    cat manifests.xml | sed -e 's/<node /\n<node /g'  | sed -n -e "s/^<node [^>]*client_id=['\"]*\([^'\"]*\)['\"].*<host name=['\"]\([^'\"]*\)['\"].*$/\1\t\2/p" > $OURDIR/fqdn.map
+fi
+
+#
+# Setup the fqdn map the non-geni way if necessary!
+#
+if [ ! -s $OURDIR/fqdn.map ]; then
+    NODES=`cat $TOPOMAP | grep -v '^#' | sed -n -e 's/^\([a-zA-Z0-9\-]*\),.*:.*$/\1/p' | xargs`
+    FQDNS=""
+    for n in $NODES ; do 
+	fqdn="$n.$EEID.$EPID.$OURDOMAIN"
+	FQDNS="${FQDNS} $fqdn"
+
+	/bin/echo -e "$n\t$fqdn" >> $OURDIR/fqdn.map
+    done
+fi
+
+#
+# Grab our list of short-name and FQDN nodes.  One way or the other, we have
+# an fqdn map.  First we tried the GENI way; then the old Emulab way with
+# topomap.
+#
+NODES=`cat $OURDIR/fqdn.map | cut -f1 | xargs`
+FQDNS=`cat $OURDIR/fqdn.map | cut -f2 | xargs`
+
 if [ -z "${COMPUTENODES}" ]; then
     # Figure out which networkmanager (netmgr) and controller (ctrl) names we have
     for node in $NODES
@@ -261,7 +321,7 @@ if [ ! -f $OURDIR/mgmt-hosts ] ; then
 	cat $TOPOMAP | grep -v '^#' | sed -e 's/,/ /' \
 	    | sed -n -e "s/\([a-zA-Z0-9_\-]*\) .*${MGMTLAN}:\([0-9\.]*\).*\$/\2\t\1/p" \
 	    > $OURDIR/mgmt-hosts
-	cat /var/emulab/boot/tmcc/ifconfig \
+	cat ${BOOTDIR}/tmcc/ifconfig \
 	    | sed -n -e "s/^.* MASK=\([0-9\.]*\) .* LAN=${MGMTLAN}.*$/\1/p" \
 	    > $OURDIR/mgmt-netmask
     fi
@@ -319,7 +379,7 @@ if [ ! -f $OURDIR/mgmt-hosts ] ; then
 	    cat $TOPOMAP | grep -v '^#' | sed -e 's/,/ /' \
 		| sed -n -e "s/\([a-zA-Z0-9_\-]*\) .*${lan}:\([0-9\.]*\).*\$/\2\t\1/p" \
 		> $OURDIR/data-hosts.$lan
-	    netmask=`cat /var/emulab/boot/tmcc/ifconfig \
+	    netmask=`cat ${BOOTDIR}/tmcc/ifconfig \
   		         | sed -n -e "s/^.* MASK=\([0-9\.]*\) .* LAN=${lan}.*$/\1/p"`
 	    echo "$netmask" > $OURDIR/data-netmask.$lan
 	    nmdataip=`cat $OURDIR/data-hosts.${lan} | grep ${NETWORKMANAGER} | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
@@ -445,15 +505,15 @@ if [ -z "$MGMTLAN" ] ; then
     MGMTMAC=""
     MGMT_NETWORK_INTERFACE="tun0"
 else
-    cat /var/emulab/boot/tmcc/ifconfig | grep "IFACETYPE=vlan" | grep "${MGMTLAN}"
+    cat ${BOOTDIR}/tmcc/ifconfig | grep "IFACETYPE=vlan" | grep "${MGMTLAN}"
     if [ $? = 0 ]; then
 	MGMTVLAN=1
-	MGMTMAC=`cat /var/emulab/boot/tmcc/ifconfig | sed -n -e "s/^.* VMAC=\([0-9a-f:\.]*\) .* LAN=${MGMTLAN}.*\$/\1/p"`
+	MGMTMAC=`cat ${BOOTDIR}/tmcc/ifconfig | sed -n -e "s/^.* VMAC=\([0-9a-f:\.]*\) .* LAN=${MGMTLAN}.*\$/\1/p"`
 	MGMT_NETWORK_INTERFACE=`/usr/local/etc/emulab/findif -m $MGMTMAC`
 	MGMTVLANDEV=`ip link show ${MGMT_NETWORK_INTERFACE} | sed -n -e "s/^.*${MGMT_NETWORK_INTERFACE}\@\([0-9a-zA-Z_]*\): .*\$/\1/p"`
     else
 	MGMTVLAN=0
-	MGMTMAC=`cat /var/emulab/boot/tmcc/ifconfig | sed -n -e "s/.* MAC=\([0-9a-f:\.]*\) .* LAN=${MGMTLAN}/\1/p"`
+	MGMTMAC=`cat ${BOOTDIR}/tmcc/ifconfig | sed -n -e "s/.* MAC=\([0-9a-f:\.]*\) .* LAN=${MGMTLAN}/\1/p"`
 	MGMT_NETWORK_INTERFACE=`/usr/local/etc/emulab/findif -m $MGMTMAC`
     fi
 fi
@@ -469,18 +529,18 @@ for lan in $DATAFLATLANS ; do
 
     DATAIP=`cat $OURDIR/data-hosts.$lan | grep $NODEID | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
     DATANETMASK=`cat $OURDIR/data-netmask.$lan`
-    cat /var/emulab/boot/tmcc/ifconfig | grep "IFACETYPE=vlan" | grep "${lan}"
+    cat ${BOOTDIR}/tmcc/ifconfig | grep "IFACETYPE=vlan" | grep "${lan}"
     if [ $? = 0 ]; then
 	DATAVLAN=1
-	DATAMAC=`cat /var/emulab/boot/tmcc/ifconfig | sed -n -e "s/^.* VMAC=\([0-9a-f:\.]*\) .* LAN=${lan}.*\$/\1/p"`
+	DATAMAC=`cat ${BOOTDIR}/tmcc/ifconfig | sed -n -e "s/^.* VMAC=\([0-9a-f:\.]*\) .* LAN=${lan}.*\$/\1/p"`
 	DATADEV=`/usr/local/etc/emulab/findif -m $DATAMAC`
 	DATAVLANDEV=`ip link show ${DATADEV} | sed -n -e "s/^.*${DATADEV}\@\([0-9a-zA-Z_]*\): .*\$/\1/p"`
-	DATAVLANTAG=`cat /var/emulab/boot/tmcc/ifconfig | sed -n -e "s/^.* LAN=${lan} VTAG=\([0-9]*\).*\$/\1/p"`
+	DATAVLANTAG=`cat ${BOOTDIR}/tmcc/ifconfig | sed -n -e "s/^.* LAN=${lan} VTAG=\([0-9]*\).*\$/\1/p"`
     else
 	DATAVLAN=0
 	DATAVLANDEV=""
 	DATAVLANTAG=0
-	DATAMAC=`cat /var/emulab/boot/tmcc/ifconfig | sed -n -e "s/^.* MAC=\([0-9a-f:\.]*\) .* LAN=${lan}.*$/\1/p"`
+	DATAMAC=`cat ${BOOTDIR}/tmcc/ifconfig | sed -n -e "s/^.* MAC=\([0-9a-f:\.]*\) .* LAN=${lan}.*$/\1/p"`
 	DATADEV=`/usr/local/etc/emulab/findif -m $DATAMAC`
     fi
 
@@ -502,10 +562,10 @@ for lan in $DATAVLANS ; do
     #DATAIP=`cat $OURDIR/data-hosts.$lan | grep $NODEID | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
     #DATANETMASK=`cat $OURDIR/data-netmask.$lan`
     DATAVLAN=1
-    DATAMAC=`cat /var/emulab/boot/tmcc/ifconfig | sed -n -e "s/^.* VMAC=\([0-9a-f:\.]*\) .* LAN=${lan}.*\$/\1/p"`
+    DATAMAC=`cat ${BOOTDIR}/tmcc/ifconfig | sed -n -e "s/^.* VMAC=\([0-9a-f:\.]*\) .* LAN=${lan}.*\$/\1/p"`
     DATADEV=`/usr/local/etc/emulab/findif -m $DATAMAC`
     DATAVLANDEV=`ip link show ${DATADEV} | sed -n -e "s/^.*${DATADEV}\@\([0-9a-zA-Z_]*\): .*\$/\1/p"`
-    DATAVLANTAG=`cat /var/emulab/boot/tmcc/ifconfig | sed -n -e "s/^.* LAN=${lan} VTAG=\([0-9]*\).*\$/\1/p"`
+    DATAVLANTAG=`cat ${BOOTDIR}/tmcc/ifconfig | sed -n -e "s/^.* LAN=${lan} VTAG=\([0-9]*\).*\$/\1/p"`
 
     echo "DATABRIDGE=br-${DATAVLANDEV}" >> $OURDIR/info.$lan
     #echo "DATAIP=${DATAIP}" >> $OURDIR/info.$lan
@@ -618,3 +678,13 @@ if [ ! -f $OURDIR/info.neutron ]; then
     echo "tunnel_types=\"${tunnel_types}\"" >> $OURDIR/info.neutron
 
 fi
+
+##
+## Util functions.
+##
+
+getfqdn() {
+    n=$1
+    fqdn=`cat $OURDIR/fqdn.map | grep "$n" | cut -f2`
+    echo $fqdn
+}

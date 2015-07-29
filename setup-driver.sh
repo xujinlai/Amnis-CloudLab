@@ -32,7 +32,7 @@ for node in $NODES ; do
     [ "$node" = "$NETWORKMANAGER" ] && continue
 
     SUCCESS=1
-    fqdn=$node.$EEID.$EPID.$OURDOMAIN
+    fqdn=`getfqdn $node`
     while [ $SUCCESS -ne 0 ] ; do
 	sleep 1
 	ssh -o ConnectTimeout=1 -o PasswordAuthentication=No -o NumberOfPasswordPrompts=0 -o StrictHostKeyChecking=No $fqdn /bin/ls > /dev/null
@@ -50,7 +50,7 @@ for node in $NODES
 do
     [ "$node" = "$NETWORKMANAGER" ] && continue
 
-    fqdn="$node.$EEID.$EPID.$OURDOMAIN"
+    fqdn=`getfqdn $node`
     $SSH $fqdn mkdir -p $OURDIR
     scp -p -o StrictHostKeyChecking=no \
 	$SETTINGS $OURDIR/mgmt-hosts $OURDIR/mgmt-netmask \

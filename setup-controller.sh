@@ -344,7 +344,7 @@ if [ -z "${NOVA_COMPUTENODES_DONE}" ]; then
 
     for node in $COMPUTENODES
     do
-	fqdn="$node.$EEID.$EPID.$OURDOMAIN"
+	fqdn=`getfqdn $node`
 
 	# Copy the latest settings (passwords, endpoints, whatever) over
 	scp -o StrictHostKeyChecking=no $SETTINGS admin-openrc.sh $fqdn:$OURDIR
@@ -490,7 +490,7 @@ fi
 if [ -z "${NEUTRON_NETWORKMANAGER_DONE}" ]; then
     NEUTRON_NETWORKMANAGER_DONE=1
 
-    fqdn="$NETWORKMANAGER.$EEID.$EPID.$OURDOMAIN"
+    fqdn=`getfqdn $NETWORKMANAGER`
 
     # Copy the latest settings (passwords, endpoints, whatever) over
     scp -o StrictHostKeyChecking=no $SETTINGS $fqdn:$SETTINGS
@@ -509,7 +509,7 @@ if [ -z "${NEUTRON_COMPUTENODES_DONE}" ]; then
 
     for node in $COMPUTENODES
     do
-	fqdn="$node.$EEID.$EPID.$OURDOMAIN"
+	fqdn=`getfqdn $node`
 
 	# Copy the latest settings (passwords, endpoints, whatever) over
 	scp -o StrictHostKeyChecking=no $SETTINGS $fqdn:$SETTINGS
@@ -679,7 +679,7 @@ EOF
 fi
 
 if [ -z "${STORAGE_HOST_DONE}" ]; then
-    fqdn="$STORAGEHOST.$EEID.$EPID.$OURDOMAIN"
+    fqdn=`getfqdn $STORAGEHOST`
 
     if [ "${STORAGEHOST}" = "${CONTROLLER}" ]; then
 	$DIRNAME/setup-storage.sh
@@ -832,7 +832,7 @@ if [ -z "${SWIFT_PASS}" ]; then
 fi
 
 if [ -z "${OBJECT_HOST_DONE}" ]; then
-    fqdn="$OBJECTHOST.$EEID.$EPID.$OURDOMAIN"
+    fqdn=`getfqdn $OBJECTHOST`
 
     if [ "${OBJECTHOST}" = "${CONTROLLER}" ]; then
 	$DIRNAME/setup-object-storage.sh
@@ -1064,7 +1064,7 @@ if [ -z "${TELEMETRY_COMPUTENODES_DONE}" ]; then
 
     for node in $COMPUTENODES
     do
-	fqdn="$node.$EEID.$EPID.$OURDOMAIN"
+	fqdn=`getfqdn $node`
 
 	# Copy the latest settings (passwords, endpoints, whatever) over
 	scp -o StrictHostKeyChecking=no $SETTINGS $fqdn:$SETTINGS
@@ -1111,7 +1111,7 @@ EOF
     service cinder-api restart
     service cinder-scheduler restart
 
-    fqdn="$STORAGEHOST.$EEID.$EPID.$OURDOMAIN"
+    fqdn=`getfqdn $STORAGEHOST`
 
     if [ "${STORAGEHOST}" = "${CONTROLLER}" ]; then
 	$DIRNAME/setup-storage-telemetry.sh

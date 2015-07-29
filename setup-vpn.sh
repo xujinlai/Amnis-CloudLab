@@ -112,7 +112,7 @@ mkdir -p /etc/openvpn/ccd
 #
 for node in $NODES
 do
-    fqdn="$node.$EEID.$EPID.$OURDOMAIN"
+    fqdn=`getfqdn $node`
 
     ./build-key $node
 
@@ -161,7 +161,7 @@ for node in $NODES
 do
     [ "$node" = "$NETWORKMANAGER" ] && continue
 
-    fqdn="$node.$EEID.$EPID.$OURDOMAIN"
+    fqdn=`getfqdn $node`
     $SSH $fqdn mkdir -p $OURDIR
     scp -p -o StrictHostKeyChecking=no \
 	/etc/openvpn/ca.crt $KEY_DIR/$node.crt $KEY_DIR/$node.key \

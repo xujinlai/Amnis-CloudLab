@@ -21,11 +21,13 @@ $APTGETINSTALL openvpn
 cp -p $OURDIR/$HOSTNAME.crt $OURDIR/$HOSTNAME.key /etc/openvpn/
 cp -p $OURDIR/ca.crt /etc/openvpn
 
+nmfqdn=`getfqdn $NETWORKMANAGER`
+
 cat <<EOF > /etc/openvpn/server.conf
 client
 dev tun
 proto udp
-remote ${NETWORKMANAGER}.$EEID.$EPID.$OURDOMAIN 1194
+remote $nmfqdn 1194
 resolv-retry infinite
 nobind
 persist-key

@@ -62,7 +62,7 @@ if [ "$SWAPPER" = "geniuser" ]; then
 else
     for node in $NODES ; do
 	if [ "$node" != "$HOSTNAME" ]; then 
-	    fqdn="$node.$EEID.$EPID.$OURDOMAIN"
+	    fqdn=`getfqdn $node`
 	    SUCCESS=1
 	    while [ $SUCCESS -ne 0 ]; do
 		su -c "$SSH  -l $SWAPPER $fqdn sudo tee -a /root/.ssh/authorized_keys" $SWAPPER < /root/.ssh/${KEYNAME}.pub
