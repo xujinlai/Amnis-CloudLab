@@ -33,6 +33,8 @@ fi
 cat <<EOF >> /etc/sysctl.conf
 net.ipv4.conf.all.rp_filter=0
 net.ipv4.conf.default.rp_filter=0
+net.bridge.bridge-nf-call-iptables=1
+net.bridge.bridge-nf-call-ip6tables=1
 EOF
 
 sysctl -p
@@ -65,8 +67,10 @@ admin_user = neutron
 admin_password = ${NEUTRON_PASS}
 EOF
 
-# enable_security_group = True
-# firewall_driver = neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver
+fwdriver="neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver"
+if [ ${DISABLE_SECURITY_GROUPS} -eq 1 ]; then
+    fwdriver="neutron.agent.firewall.NoopFirewallDriver"
+fi
 
 # Just slap these in.
 cat <<EOF >> /etc/neutron/plugins/ml2/ml2_conf.ini
@@ -87,7 +91,7 @@ ${network_vlan_ranges}
 [securitygroup]
 enable_security_group = True
 enable_ipset = True
-firewall_driver = neutron.agent.firewall.NoopFirewallDriver
+firewall_driver = $fwdriver
 
 [ovs]
 ${gre_local_ip}

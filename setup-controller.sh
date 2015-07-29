@@ -428,8 +428,10 @@ admin_password = ${NEUTRON_PASS}
 host = $CONTROLLER
 EOF
 
-# enable_security_group = True
-# firewall_driver = neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver
+fwdriver="neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver"
+if [ ${DISABLE_SECURITY_GROUPS} -eq 1 ]; then
+    fwdriver="neutron.agent.firewall.NoopFirewallDriver"
+fi
 
     cat <<EOF >> /etc/neutron/plugins/ml2/ml2_conf.ini
 [ml2]
@@ -449,7 +451,7 @@ ${network_vlan_ranges}
 [securitygroup]
 enable_security_group = True
 enable_ipset = True
-firewall_driver = neutron.agent.firewall.NoopFirewallDriver
+firewall_driver = $fwdriver
 EOF
 
     cat <<EOF >> /etc/nova/nova.conf

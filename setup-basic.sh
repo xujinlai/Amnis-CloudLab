@@ -96,6 +96,11 @@ for lan in ${DATAVLANS} ; do
     #fi
 done
 
+if [ ${DEFAULT_SECGROUP_ENABLE_SSH_ICMP} -eq 1 ]; then
+    nova secgroup-add-rule default icmp -1 -1 0.0.0.0/0
+    nova secgroup-add-rule default tcp 22 22 0.0.0.0/0
+fi
+
 if [ "$SWAPPER" = "geniuser" ] ; then
     echo "*** Importing GENI user keys for admin user..."
     $DIRNAME/setup-user-info.py

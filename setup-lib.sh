@@ -25,6 +25,8 @@ DO_APT_INSTALL=1
 DO_APT_UPDATE=1
 DO_UBUNTU_CLOUDARCHIVE=1
 BUILD_AARCH64_FROM_CORE=0
+DISABLE_SECURITY_GROUPS=0
+DEFAULT_SECGROUP_ENABLE_SSH_ICMP=1
 #
 # We have an 'adminapi' user that gets a random password.  Then, we have
 # the dashboard and instance password, that comes in from geni-lib/rspec as a
