@@ -593,12 +593,22 @@ if [ -z "${CINDER_DBPASS}" ]; then
     keystone service-create --name cinderv2 --type volumev2 \
 	--description "OpenStack Block Storage Service"
 
-    keystone endpoint-create \
-	--service-id `keystone service-list | awk '/ volume / {print $2}'` \
-	--publicurl http://${CONTROLLER}:8776/v1/%\(tenant_id\)s \
-	--internalurl http://${CONTROLLER}:8776/v1/%\(tenant_id\)s \
-	--adminurl http://${CONTROLLER}:8776/v1/%\(tenant_id\)s \
-	--region regionOne
+#    if [ $OSCODENAME = 'juno' ]; then
+	keystone endpoint-create \
+	    --service-id `keystone service-list | awk '/ volume / {print $2}'` \
+	    --publicurl http://${CONTROLLER}:8776/v1/%\(tenant_id\)s \
+	    --internalurl http://${CONTROLLER}:8776/v1/%\(tenant_id\)s \
+	    --adminurl http://${CONTROLLER}:8776/v1/%\(tenant_id\)s \
+	    --region regionOne
+#    else
+#	# Kilo uses the v2 endpoint even for v1 service
+#	keystone endpoint-create \
+#	    --service-id `keystone service-list | awk '/ volume / {print $2}'` \
+#	    --publicurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
+#	    --internalurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
+#	    --adminurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
+#	    --region regionOne
+ #   fi
 
     keystone endpoint-create \
 	--service-id `keystone service-list | awk '/ volumev2 / {print $2}'` \
@@ -626,7 +636,10 @@ my_ip = ${MGMTIP}
 verbose = True
 glance_host = ${CONTROLLER}
 volume_group = openstack-volumes
+EOF
 
+    if [ $OSCODENAME = 'juno' ] ; then
+	cat <<EOF >> /etc/cinder/cinder.conf
 [keystone_authtoken]
 auth_uri = http://$CONTROLLER:5000/v2.0
 identity_uri = http://$CONTROLLER:35357
@@ -634,6 +647,19 @@ admin_tenant_name = service
 admin_user = cinder
 admin_password = ${CINDER_PASS}
 EOF
+    else
+	cat <<EOF >> /etc/cinder/cinder.conf
+[keystone_authtoken]
+auth_uri = http://$CONTROLLER:5000
+auth_url = http://$CONTROLLER:35357
+auth_plugin = password
+project_domain_id = default
+user_domain_id = default
+project_name = service
+username = cinder
+password = ${CINDER_PASS}
+EOF
+    fi
 
     sed -i -e "s/^\\(.*auth_host.*=.*\\)$/#\1/" /etc/cinder/cinder.conf
     sed -i -e "s/^\\(.*auth_port.*=.*\\)$/#\1/" /etc/cinder/cinder.conf
