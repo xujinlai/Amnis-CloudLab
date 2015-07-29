@@ -218,6 +218,7 @@ if [ "$OSCODENAME" = "kilo" ]; then
 [filter:recon]
 recon_lock_path = /var/lock
 EOF
+fi
 
 crudini --set /etc/swift/object-server.conf DEFAULT log_facility LOG_LOCAL1
 crudini --set /etc/swift/object-server.conf DEFAULT log_level INFO
