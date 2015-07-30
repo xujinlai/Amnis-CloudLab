@@ -58,13 +58,14 @@ EOF
 # no video device, for KVM mode, anyway, it seems.
 #
 ARCH=`uname -m`
+cname=`getfqdn $CONTROLLER`
 if [ "$ARCH" = "aarch64" ] ; then
     cat <<EOF >> /etc/nova/nova.conf
 [DEFAULT]
 vnc_enabled = False
 vncserver_listen = 0.0.0.0
 vncserver_proxyclient_address = $MGMTIP
-novncproxy_base_url = http://$CONTROLLER.$EEID.$EPID.$OURDOMAIN:6080/vnc_auto.html
+novncproxy_base_url = http://${cname}:6080/vnc_auto.html
 EOF
 else
     cat <<EOF >> /etc/nova/nova.conf
@@ -72,7 +73,7 @@ else
 vnc_enabled = True
 vncserver_listen = 0.0.0.0
 vncserver_proxyclient_address = $MGMTIP
-novncproxy_base_url = http://$CONTROLLER.$EEID.$EPID.$OURDOMAIN:6080/vnc_auto.html
+novncproxy_base_url = http://${cname}:6080/vnc_auto.html
 EOF
 fi
 
