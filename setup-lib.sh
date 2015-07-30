@@ -402,7 +402,7 @@ EOF
 	    allips=`cat /root/setup/data-hosts.$lan | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
 	    gi1=0; gi2=0; gi3=0; gi4=0;
 	    # Figure out the max currently-used IP in this subnet
-	    for ip in "${allips}" ; do
+	    for ip in ${allips} ; do
 		IFS=.
 		read -r i1 i2 i3 i4 <<EOF
 $ip
