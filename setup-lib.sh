@@ -369,8 +369,13 @@ if [ ! -f $OURDIR/mgmt-hosts ] ; then
 	    # Start the pool at the next availble addr!  Don't skip.
 	    # XXX: could cause problems for adding new phys hosts... oh well.
 	    o3=`expr $o3 + 10`
-	    echo "start=10.$NEXTSPARESUBNET.$o3.1,end=10.$NEXTSPARESUBNET.254.254" \
+	    # Also save two addrs, one for the dhcp agent, and one for the
+	    # router interface
+	    echo "start=10.$NEXTSPARESUBNET.$o3.3,end=10.$NEXTSPARESUBNET.254.254" \
 		> $OURDIR/data-allocation-pool.$lan
+
+	    echo "10.$NEXTSPARESUBNET.$o3.1" > $OURDIR/router-ipaddr.$lan
+	    echo "10.$NEXTSPARESUBNET.$o3.2" > $OURDIR/dhcp-agent-ipaddr.$lan
 
 	    NEXTSPARESUBNET=`expr $NEXTSPARESUBNET + 1`
 	done
@@ -438,6 +443,12 @@ EOF
 	    if [ $i4 = 255 ]; then i4=254; fi
 	    endaddr="$i1.$i2.$i3.$i4"
 
+	    # Also save two addrs, one for the dhcp agent, and one for the
+	    # router interface
+	    echo "$gi1.$gi2.$gi3.$gi4" > $OURDIR/router-ipaddr.$lan
+	    gi4=`expr $gi4 + 1`
+	    echo "$gi1.$gi2.$gi3.$gi4" > $OURDIR/dhcp-agent-ipaddr.$lan
+	    gi4=`expr $gi4 + 1`
 	    # Start the pool at the next availble addr!  Don't skip.
 	    # XXX: could cause problems for adding new phys hosts... oh well.
 	    echo "start=$gi1.$gi2.$gi3.$gi4,end=$endaddr" \
