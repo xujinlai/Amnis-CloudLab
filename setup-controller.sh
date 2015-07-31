@@ -294,6 +294,20 @@ if [ -z "${NOVA_DBPASS}" ]; then
     $APTGETINSTALL nova-api nova-cert nova-conductor nova-consoleauth \
 	nova-novncproxy nova-scheduler python-novaclient
 
+    if [ ${ENABLE_NEW_SERIAL_SUPPORT} = 1 ]; then
+	$APTGETINSTALL nova-serialproxy
+	mkdir -p $OURDIR/src
+	( cd $OURDIR/src && git clone https://github.com/larsks/novaconsole )
+	( cd $OURDIR/src && git clone https://github.com/liris/websocket-client )
+	cat <<EOF > $OURDIR/novaconsole.sh
+#!/bin/sh
+source $OURDIR/admin-openrc.sh
+export PYTHONPATH=$OURDIR/src/websocket-client:$OURDIR/src/novaconsole
+exec $OURDIR/src/novaconsole/novaconsole/main.py $@
+EOF
+	chmod ug+x $OURDIR/novaconsole.sh
+    fi
+
     # Just slap these in.
     cat <<EOF >> /etc/nova/nova.conf
 [DEFAULT]
@@ -320,6 +334,13 @@ admin_password = ${NOVA_PASS}
 [glance]
 host = $CONTROLLER
 EOF
+
+    if [ ${ENABLE_NEW_SERIAL_SUPPORT} = 1 ]; then
+	cat <<EOF >> /etc/nova/nova.conf
+[serial_console]
+enabled = true
+EOF
+    fi
 
     su -s /bin/sh -c "nova-manage db sync" nova
 

@@ -77,6 +77,16 @@ novncproxy_base_url = http://${cname}:6080/vnc_auto.html
 EOF
 fi
 
+if [ ${ENABLE_NEW_SERIAL_SUPPORT} = 1 ]; then
+    cat <<EOF >> /etc/nova/nova.conf
+[serial_console]
+enabled = true
+listen = $MGMTIP
+proxyclient_address = $MGMTIP
+base_url=ws://${cname}:6083/
+EOF
+fi
+
 cat <<EOF >> /etc/nova/nova-compute.conf
 
 [DEFAULT]
