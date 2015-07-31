@@ -67,9 +67,11 @@ for lan in ${DATAFLATLANS} ; do
     nmdataip=`cat $OURDIR/data-hosts.${lan} | grep ${NETWORKMANAGER} | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
     allocation_pool=`cat $OURDIR/data-allocation-pool.${lan}`
     cidr=`cat $OURDIR/data-cidr.${lan}`
+    # Make sure to set the right gateway IP (to our router)
+    routeripaddr=`cat $OURDIR/router-ipaddr.$lan`
 
     neutron net-create ${name}-net --shared --provider:physical_network ${lan} --provider:network_type flat
-    neutron subnet-create ${name}-net --name ${name}-subnet --allocation-pool ${allocation_pool} --gateway $nmdataip $cidr
+    neutron subnet-create ${name}-net --name ${name}-subnet --allocation-pool ${allocation_pool} --gateway $routeripaddr $cidr
 
     subnetid=`neutron subnet-show ${name}-subnet | awk '/ id / {print $4}'`
 
@@ -79,15 +81,15 @@ for lan in ${DATAFLATLANS} ; do
 	neutron router-gateway-set ${name}-router ext-net
     #fi
 
-    # Fix up the router interface and dhcp agent port IP addrs.  We can't set
-    # these in the creation commands, so do a port update!
+    # Fix up the dhcp agent port IP addr.  We can't set this in the
+    # creation command, so do a port update!
     ports=`neutron port-list | grep $subnetid | awk '{print $2}'`
     for port in $ports ; do
 	owner=`neutron port-show $port | awk '/ device_owner / {print $4}'`
-	if [ "x$owner" = "xnetwork:router_interface" -a -f $OURDIR/router-ipaddr.$lan ]; then
-	    newipaddr=`cat $OURDIR/router-ipaddr.$lan`
-	    neutron port-update $port --fixed-ip subnet_id=$subnetid,ip_address=$newipaddr
-	fi
+	#if [ "x$owner" = "xnetwork:router_interface" -a -f $OURDIR/router-ipaddr.$lan ]; then
+	#    newipaddr=`cat $OURDIR/router-ipaddr.$lan`
+	#    neutron port-update $port --fixed-ip subnet_id=$subnetid,ip_address=$newipaddr
+	#fi
 	if [ "x$owner" = "xnetwork:dhcp" -a -f $OURDIR/dhcp-agent-ipaddr.$lan ]; then
 	    newipaddr=`cat $OURDIR/dhcp-agent-ipaddr.$lan`
 	    neutron port-update $port --fixed-ip subnet_id=$subnetid,ip_address=$newipaddr
