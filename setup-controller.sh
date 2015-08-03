@@ -875,17 +875,17 @@ if [ -z "${OBJECT_RING_DONE}" ]; then
 
     swift-ring-builder account.builder create 10 3 1
     swift-ring-builder account.builder \
-	add r1z1-${objip}:6002/pv.objectstore.loop.1 100
+	add r1z1-${objip}:6002/swiftv1 100
     swift-ring-builder account.builder rebalance
 
     swift-ring-builder container.builder create 10 3 1
     swift-ring-builder container.builder \
-	add r1z1-${objip}:6001/pv.objectstore.loop.1 100
+	add r1z1-${objip}:6001/swiftv1 100
     swift-ring-builder container.builder rebalance
 
     swift-ring-builder object.builder create 10 3 1
     swift-ring-builder object.builder \
-	add r1z1-${objip}:6000/pv.objectstore.loop.1 100
+	add r1z1-${objip}:6000/swiftv1 100
     swift-ring-builder object.builder rebalance
 
     if [ "${OBJECTHOST}" != "${CONTROLLER}" ]; then
