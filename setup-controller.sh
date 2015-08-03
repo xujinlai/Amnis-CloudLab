@@ -749,14 +749,12 @@ if [ -z "${SWIFT_PASS}" ]; then
     crudini --set /etc/swift/proxy-server.conf DEFAULT swift_dir /etc/swift
 
     pipeline=`crudini --get /etc/swift/proxy-server.conf pipeline:main pipeline`
-    if [ -z "$pipeline" ]; then
-	if [ "$OSCODENAME" = "juno" ]; then
-	    crudini --set /etc/swift/proxy-server.conf pipeline:main pipeline \
-		'authtoken cache healthcheck keystoneauth proxy-logging proxy-server'
-	else
-	    crudini --set /etc/swift/proxy-server.conf pipeline:main pipeline \
-		'catch_errors gatekeeper healthcheck proxy-logging cache container_sync bulk ratelimit authtoken keystoneauth container-quotas account-quotas slo dlo proxy-logging proxy-server'
-	fi
+    if [ "$OSCODENAME" = "juno" ]; then
+	crudini --set /etc/swift/proxy-server.conf pipeline:main pipeline \
+	    'cache authtoken healthcheck keystoneauth proxy-logging proxy-server'
+    else
+	crudini --set /etc/swift/proxy-server.conf pipeline:main pipeline \
+	    'catch_errors gatekeeper healthcheck proxy-logging cache container_sync bulk ratelimit authtoken keystoneauth container-quotas account-quotas slo dlo proxy-logging proxy-server'
     fi
 
     crudini --set /etc/swift/proxy-server.conf \
