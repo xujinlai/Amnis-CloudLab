@@ -118,10 +118,10 @@ wget -O /etc/swift/account-server.conf \
     "https://git.openstack.org/cgit/openstack/swift/plain/etc/account-server.conf-sample?h=stable/${OSCODENAME}"
 
 wget -O /etc/swift/container-server.conf \
-    "  https://git.openstack.org/cgit/openstack/swift/plain/etc/container-server.conf-sample?h=stable/${OSCODENAME}"
+    "https://git.openstack.org/cgit/openstack/swift/plain/etc/container-server.conf-sample?h=stable/${OSCODENAME}"
 
 wget -O /etc/swift/object-server.conf \
-    "  https://git.openstack.org/cgit/openstack/swift/plain/etc/object-server.conf-sample?h=stable/${OSCODENAME}"
+    "https://git.openstack.org/cgit/openstack/swift/plain/etc/object-server.conf-sample?h=stable/${OSCODENAME}"
 
 if [ "$OSCODENAME" = "kilo" ]; then
     wget -O /etc/swift/container-reconciler.conf \
