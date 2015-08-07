@@ -1080,6 +1080,23 @@ EOF
     sed -i -e "s/^\\(.*auth_port.*=.*\\)$/#\1/" /etc/ceilometer/ceilometer.conf
     sed -i -e "s/^\\(.*auth_protocol.*=.*\\)$/#\1/" /etc/ceilometer/ceilometer.conf
 
+    if [ ! -e /etc/ceilometer/event_pipeline.yaml ]; then
+	cat <<EOF > /etc/ceilometer/event_pipeline.yaml
+sources:
+    - name: event_source
+      events:
+          - "*"
+      sinks:
+          - event_sink
+sinks:
+    - name: event_sink
+      transformers:
+      triggers:
+      publishers:
+          - notifier://
+EOF
+    fi
+
     su -s /bin/sh -c "ceilometer-dbsync" ceilometer
 
     service ceilometer-agent-central restart
