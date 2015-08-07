@@ -55,7 +55,7 @@ rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
 auth_strategy = keystone
 core_plugin = ml2
-service_plugins = router
+service_plugins = router,metering
 allow_overlapping_ips = True
 verbose = True
 

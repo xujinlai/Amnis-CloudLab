@@ -39,7 +39,7 @@ EOF
 sysctl -p
 
 $APTGETINSTALL neutron-plugin-ml2 neutron-plugin-openvswitch-agent \
-    neutron-l3-agent neutron-dhcp-agent conntrack
+    neutron-l3-agent neutron-dhcp-agent conntrack neutron-metering-agent
 
 sed -i -e "s/^\\(.*connection.*=.*\\)$/#\1/" /etc/neutron/neutron.conf
 sed -i -e "s/^\\(.*auth_host.*=.*\\)$/#\1/" /etc/neutron/neutron.conf
@@ -55,9 +55,10 @@ rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
 auth_strategy = keystone
 core_plugin = ml2
-service_plugins = router
+service_plugins = router,metering
 allow_overlapping_ips = True
 verbose = True
+notification_driver = messagingv2
 
 [keystone_authtoken]
 auth_uri = http://$CONTROLLER:5000/v2.0
@@ -147,11 +148,22 @@ cat <<EOF >> /etc/neutron/metadata_agent.ini
 verbose = True
 EOF
 
+cat <<EOF >> /etc/neutron/metering_agent.ini
+[DEFAULT]
+debug = True
+driver = neutron.services.metering.drivers.iptables.iptables_driver.IptablesMeteringDriver
+measure_interval = 30
+report_interval = 300
+interface_driver = neutron.agent.linux.interface.OVSInterfaceDriver
+use_namespaces = True
+EOF
+
 service openvswitch-switch restart
 service neutron-plugin-openvswitch-agent restart
 service neutron-l3-agent restart
 service neutron-dhcp-agent restart
 service neutron-metadata-agent restart
+service neutron-metering-agent restart
 
 touch $OURDIR/setup-networkmanager-done
 

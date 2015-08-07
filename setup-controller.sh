@@ -424,7 +424,7 @@ vncserver_listen = ${MGMTIP}
 vncserver_proxyclient_address = ${MGMTIP}
 verbose = True
 core_plugin = ml2
-service_plugins = router
+service_plugins = router,metering
 allow_overlapping_ips = True
 notify_nova_on_port_status_changes = True
 notify_nova_on_port_data_changes = True
@@ -1053,10 +1053,28 @@ os_username = ceilometer
 os_tenant_name = service
 os_password = ${CEILOMETER_PASS}
 
+[notification]
+store_events = true
+disable_non_metric_meters = false
+EOF
+
+    if [ "${OSCODENAME}" = "juno" ]; then
+	cat <<EOF >> /etc/ceilometer/ceilometer.conf
+
 [publisher]
 metering_secret = ${CEILOMETER_SECRET}
-
 EOF
+    else
+	cat <<EOF >> /etc/ceilometer/ceilometer.conf
+
+[service_credentials]
+os_endpoint_type = internalURL
+os_region_name = regionOne
+
+[publisher]
+telemetry_secret = ${CEILOMETER_SECRET}
+EOF
+    fi
 
     sed -i -e "s/^\\(.*auth_host.*=.*\\)$/#\1/" /etc/ceilometer/ceilometer.conf
     sed -i -e "s/^\\(.*auth_port.*=.*\\)$/#\1/" /etc/ceilometer/ceilometer.conf
@@ -1070,6 +1088,10 @@ EOF
     service ceilometer-collector restart
     service ceilometer-alarm-evaluator restart
     service ceilometer-alarm-notifier restart
+
+    # NB: restart the neutron ceilometer agent too
+    fqdn = `getfqdn $NETWORKMANAGER`
+    ssh -o StrictHostKeyChecking=no $fqdn service neutron-metering-agent restart
 
     echo "CEILOMETER_DBPASS=\"${CEILOMETER_DBPASS}\"" >> $SETTINGS
     echo "CEILOMETER_PASS=\"${CEILOMETER_PASS}\"" >> $SETTINGS
