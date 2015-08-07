@@ -434,6 +434,7 @@ nova_region_name = regionOne
 nova_admin_username = nova
 nova_admin_tenant_id = ${service_tenant_id}
 nova_admin_password = ${NOVA_PASS}
+notification_driver = messagingv2
 
 [database]
 connection = mysql://neutron:$NEUTRON_DBPASS@$CONTROLLER/neutron
@@ -1102,7 +1103,16 @@ if [ -z "${TELEMETRY_GLANCE_DONE}" ]; then
 
     cat <<EOF >> /etc/glance/glance-api.conf
 [DEFAULT]
-notification_driver = messaging
+notification_driver = messagingv2
+rpc_backend = rabbit
+rabbit_host = ${CONTROLLER}
+rabbit_userid = ${RABBIT_USER}
+rabbit_password = ${RABBIT_PASS}
+EOF
+
+    cat <<EOF >> /etc/glance/glance-registry.conf
+[DEFAULT]
+notification_driver = messagingv2
 rpc_backend = rabbit
 rabbit_host = ${CONTROLLER}
 rabbit_userid = ${RABBIT_USER}
@@ -1124,7 +1134,7 @@ if [ -z "${TELEMETRY_CINDER_DONE}" ]; then
     cat <<EOF >> /etc/cinder/cinder.conf
 [DEFAULT]
 control_exchange = cinder
-notification_driver = cinder.openstack.common.notifier.rpc_notifier
+notification_driver = messagingv2
 EOF
 
     service cinder-api restart
@@ -1162,6 +1172,18 @@ if [ -z "${TELEMETRY_SWIFT_DONE}" ]; then
 [filter:ceilometer]
 use = egg:ceilometer#swift
 EOF
+
+    if [ "${OSCODENAME}" = "kilo" ]; then
+	cat <<EOF >> /etc/swift/proxy-server.conf
+[filter:ceilometer]
+paste.filter_factory = ceilometermiddleware.swift:filter_factory
+control_exchange = swift
+url = rabbit://${RABBIT_USER}:${RABBIT_PASS}@${CONTROLLER}:5672/
+driver = messagingv2
+topic = notifications
+log_level = WARN
+EOF
+    fi
 
     usermod -a -G ceilometer swift
 

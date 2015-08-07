@@ -37,8 +37,7 @@ cat <<EOF >> /etc/nova/nova.conf
 instance_usage_audit = True
 instance_usage_audit_period = hour
 notify_on_state_change = vm_and_task_state
-notification_driver = nova.openstack.common.notifier.rpc_notifier
-notification_driver = ceilometer.compute.nova_notifier
+notification_driver = messagingv2
 EOF
 
 service nova-compute restart
@@ -60,10 +59,6 @@ admin_tenant_name = service
 admin_user = ceilometer
 admin_password = ${CEILOMETER_PASS}
 
-[publisher]
-# Secret value for signing metering messages (string value)
-metering_secret = ${CEILOMETER_SECRET}
-
 [service_credentials]
 os_auth_url = http://${CONTROLLER}:5000/v2.0
 os_username = ceilometer
@@ -71,6 +66,24 @@ os_tenant_name = service
 os_password = ${CEILOMETER_PASS}
 os_endpoint_type = internalURL
 EOF
+
+if [ "${OSCODENAME}" = "juno" ]; then
+    cat <<EOF >> /etc/ceilometer/ceilometer.conf
+
+[publisher]
+metering_secret = ${CEILOMETER_SECRET}
+EOF
+else
+    cat <<EOF >> /etc/ceilometer/ceilometer.conf
+
+[service_credentials]
+os_endpoint_type = internalURL
+os_region_name = regionOne
+
+[publisher]
+telemetry_secret = ${CEILOMETER_SECRET}
+EOF
+fi
 
 #sed -i -e "s/^\\(.*connection.*=.*\\)$/#\1/" /etc/ceilometer/ceilometer.conf
 sed -i -e "s/^\\(.*auth_host.*=.*\\)$/#\1/" /etc/ceilometer/ceilometer.conf
