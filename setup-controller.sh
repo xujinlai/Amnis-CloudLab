@@ -993,11 +993,12 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	rm /var/lib/mongodb/journal/prealloc.*
 	service mongodb start
 
-	mongo --host ${CONTROLLER} --eval "
-            db = db.getSiblingDB(\"ceilometer\");
-            db.addUser({user: \"ceilometer\",
-            pwd: \"${CEILOMETER_DBPASS}\",
-            roles: [ \"readWrite\", \"dbAdmin\" ]})"
+	MDONE=1
+	while [ $MDONE -ne 0 ]; do 
+	    sleep 1
+	    mongo --host ${CONTROLLER} --eval "db = db.getSiblingDB(\"ceilometer\"); db.addUser({user: \"ceilometer\", pwd: \"${CEILOMETER_DBPASS}\", roles: [ \"readWrite\", \"dbAdmin\" ]})"
+	    MDONE=$?
+	done
     else
 	$APTGETINSTALL mariadb-server python-mysqldb
 
