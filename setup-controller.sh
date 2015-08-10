@@ -1476,6 +1476,70 @@ EOF
 fi
 
 #
+# (Maybe) Install Ironic
+#
+if [ 0 = 1 -a "$OSCODENAME" = "kilo" -a -n "$BAREMETALNODES" -a -z "${IRONIC_DBPASS}" ]; then
+    IRONIC_DBPASS=`$PSWDGEN`
+    IRONIC_PASS=`$PSWDGEN`
+
+    echo "create database ironic character set utf8" | mysql -u root --password="$DB_ROOT_PASS"
+    echo "grant all privileges on ironic.* to 'ironic'@'localhost' identified by '$IRONIC_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+    echo "grant all privileges on ironic.* to 'ironic'@'%' identified by '$IRONIC_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+
+    keystone user-create --name ironic --pass $IRONIC_PASS
+    keystone user-role-add --user ironic --tenant service --role admin
+
+    keystone service-create --name ironic --type baremetal \
+	--description "OpenStack Bare Metal Provisioning Service"
+    keystone endpoint-create \
+	--service-id $(keystone service-list | awk '/ ironic / {print $2}') \
+	--publicurl http://${CONTROLLER}:6385 \
+	--internalurl http://${CONTROLLER}:6385 \
+	--adminurl http://${CONTROLLER}:6385 \
+	--region regionOne
+
+    $APTGETINSTALL ironic-api ironic-conductor python-ironicclient python-ironic
+
+    crudini --set /etc/ironic/ironic.conf \
+	database connection "mysql://ironic:${IRONIC_DBPASS}@$CONTROLLER/ironic?charset=utf8"
+
+    crudini --set /etc/ironic/ironic.conf DEFAULT rabbit_host $CONTROLLER
+    crudini --set /etc/ironic/ironic.conf DEFAULT rabbit_userid ${RABBIT_USER}
+    crudini --set /etc/ironic/ironic.conf DEFAULT rabbit_password ${RABBIT_PASS}
+
+    crudini --set /etc/ironic/ironic.conf DEFAULT verbose true
+    crudini --set /etc/ironic/ironic.conf DEFAULT debug true
+
+    crudini --set /etc/ironic/ironic.conf DEFAULT auth_strategy keystone
+    crudini --set /etc/ironic/ironic.conf \
+	keystone_authtoken auth_uri "http://$CONTROLLER:5000/"
+    crudini --set /etc/ironic/ironic.conf \
+	keystone_authtoken identity_uri "http://$CONTROLLER:35357"
+    crudini --set /etc/ironic/ironic.conf \
+	keystone_authtoken admin_user ironic
+    crudini --set /etc/ironic/ironic.conf \
+	keystone_authtoken admin_password ${IRONIC_PASS}
+    crudini --set /etc/ironic/ironic.conf \
+	keystone_authtoken admin_tenant_name service
+
+    crudini --del /etc/ironic/ironic.conf keystone_authtoken auth_host
+    crudini --del /etc/ironic/ironic.conf keystone_authtoken auth_port
+    crudini --del /etc/ironic/ironic.conf keystone_authtoken auth_protocol
+
+    crudini --set /etc/ironic/ironic.conf neutron url "http://$CONTROLLER:9696"
+
+    crudini --set /etc/ironic/ironic.conf glance glance_host $CONTROLLER
+
+    su -s /bin/sh -c "ironic-dbsync --config-file /etc/ironic/ironic.conf create_schema" ironic
+
+    service ironic-api restart
+    service ironic-conductor restart
+
+    echo "IRONIC_DBPASS=\"${IRONIC_DBPASS}\"" >> $SETTINGS
+    echo "IRONIC_PASS=\"${IRONIC_PASS}\"" >> $SETTINGS
+fi
+
+#
 # Setup some basic images and networks
 #
 if [ -z "${SETUP_BASIC_DONE}" ]; then
