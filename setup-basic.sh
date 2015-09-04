@@ -115,6 +115,28 @@ for lan in ${DATAVLANS} ; do
     #fi
 done
 
+#
+# Setup VXLAN-based networks
+#
+if [ ${DATAVXLANS} -gt 0 ]; then
+    i=0
+    while [ $i -lt ${DATAVXLANS} ]; do
+	LAN="vxlan${i}"
+	#. $OURDIR/info.$LAN
+	. $OURDIR/ipinfo.$LAN
+
+	echo "*** Creating VXLAN data network $LAN and subnet $CIDR ..."
+
+	neutron net-create ${LAN}-net --provider:network_type vxlan
+	neutron subnet-create ${LAN}-net  --name ${LAN}-subnet "$CIDR"
+	neutron router-create ${LAN}-router
+	neutron router-interface-add ${LAN}-router ${LAN}-subnet
+	neutron router-gateway-set ${LAN}-router ext-net
+
+	i=`expr $i + 1`
+    done
+fi
+
 if [ ${DEFAULT_SECGROUP_ENABLE_SSH_ICMP} -eq 1 ]; then
     nova secgroup-add-rule default icmp -1 -1 0.0.0.0/0
     nova secgroup-add-rule default tcp 22 22 0.0.0.0/0

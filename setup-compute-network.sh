@@ -88,6 +88,9 @@ tunnel_id_ranges = 1:1000
 [ml2_type_vlan]
 ${network_vlan_ranges}
 
+[ml2_type_vxlan]
+vni_ranges = 1001:2000
+
 [securitygroup]
 enable_security_group = True
 enable_ipset = True

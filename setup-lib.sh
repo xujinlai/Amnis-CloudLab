@@ -22,7 +22,7 @@ OBJECTLAN=""
 DATATUNNELS=1
 DATAFLATLANS="lan-1"
 DATAVLANS=""
-DATAVXLANS=""
+DATAVXLANS=0
 USE_EXISTING_IPS=1
 DO_APT_INSTALL=1
 DO_APT_UPDATE=1
@@ -509,6 +509,32 @@ done
 echo "${NEXTSPARESUBNET}" > $OURDIR/nextsparesubnet
 
 #
+# Setup IP configuration for neutron vxlan nets
+#
+if [ ${DATAVXLANS} -gt 0 ]; then
+    i=0
+    while [ $i -lt ${DATAVXLANS} ]; do
+	LAN="vxlan${i}"
+	subnet=${NEXTSPARESUBNET}
+
+	if [ -f $OURDIR/ipinfo.$LAN ]; then
+	    i=`expr $i + 1`
+	    continue
+	fi
+
+	echo "LAN='$LAN'" >> $OURDIR/ipinfo.$LAN
+	echo "ALLOCATION_POOL='start=10.${subnet}.1.1,end=10.${subnet}.254.254'" >> $OURDIR/ipinfo.$LAN
+	echo "CIDR='10.$subnet.0.0/255.255.0.0'" >> $OURDIR/ipinfo.$LAN
+
+	NEXTSPARESUBNET=`expr ${NEXTSPARESUBNET} - 1`
+	i=`expr $i + 1`
+    done
+
+    # Save off nextsparesubnet
+    echo "${NEXTSPARESUBNET}" > $OURDIR/nextsparesubnet
+fi
+
+#
 # NB: this IP/mask is only valid after setting up the management network IP
 # addresses because they might not be the Emulab ones.
 #
@@ -618,6 +644,12 @@ if [ ! -f $OURDIR/info.neutron ]; then
 	fi
 	network_types="${network_types}vlan"
     fi
+    if [ -n "${DATAVXLANS}" ]; then
+	if [ -n "${network_types}" ]; then
+	    network_types="${network_types},"
+	fi
+	network_types="${network_types}vxlan"
+    fi
 
     echo "network_types=\"${network_types}\"" >> $OURDIR/info.neutron
 
@@ -681,7 +713,21 @@ if [ ! -f $OURDIR/info.neutron ]; then
         # Just use the first one
 	gre_local_ip="local_ip = $DATAIP"
 	enable_tunneling="enable_tunneling = True"
-	tunnel_types="tunnel_types = gre"
+	tunnel_types=""
+	if [ ${DATATUNNELS} -gt 0 ]; then
+	    if [ -z "${tunnel_types}" ]; then
+		tunnel_types="tunnel_types = gre"
+	    else
+		tunnel_types="${tunnel_types},gre"
+	    fi
+	fi
+	if [ ${DATAVXLANS} -gt 0 ]; then
+	    if [ -z "${tunnel_types}" ]; then
+		tunnel_types="tunnel_types = vxlan"
+	    else
+		tunnel_types="${tunnel_types},vxlan"
+	    fi
+	fi
 
 	break
     done
