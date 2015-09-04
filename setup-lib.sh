@@ -58,13 +58,45 @@ touch $LOCALSETTINGS
 BOOTDIR=/var/emulab/boot
 SWAPPER=`cat $BOOTDIR/swapper`
 
+##
+## Grab our geni creds, and create a GENI credential cert
+##
+#
+# NB: force the install of python-m2crypto if geniuser
+#
+if [ "$SWAPPER" = "geniuser" ]; then
+    dpkg-query -l python-m2crypto | grep -q ii
+    if [ ! $? = 0 ]; then
+	apt-get install python-m2crypto
+    fi
+
+    if [ ! -e $OURDIR/geni.key ]; then
+	geni-get key > $OURDIR/geni.key
+    fi
+    if [ ! -e $OURDIR/geni.certificate ]; then
+	geni-get certificate > $OURDIR/geni.certificate
+    fi
+
+    if [ ! -e /root/.ssl/encrypted.pem ]; then
+	mkdir -p /root/.ssl
+	chmod 600 /root/.ssl
+
+	cat $OURDIR/geni.key > /root/.ssl/encrypted.pem
+	cat $OURDIR/geni.certificate >> /root/.ssl/encrypted.pem
+    fi
+
+    if [ ! -e $OURDIR/manifests.xml ]; then
+	python $DIRNAME/getmanifests.py $OURDIR/manifests
+    fi
+fi
+
 #
 # Suck in user configuration overrides, if we haven't already
 #
 if [ ! -e $OURDIR/parameters ]; then
     touch $OURDIR/parameters
     if [ "$SWAPPER" = "geniuser" ]; then
-	geni-get manifest | sed -n -e 's/^[^<]*<[^:]*:parameter>\([^<]*\)<\/[^:]*:parameter>/\1/p' > $OURDIR/parameters
+	cat $OURDIR/manifests.0.xml | sed -n -e 's/^[^<]*<[^:]*:parameter>\([^<]*\)<\/[^:]*:parameter>/\1/p' > $OURDIR/parameters
     fi
 fi
 . $OURDIR/parameters
@@ -106,7 +138,7 @@ else
 fi
 
 if [ "$SWAPPER" = "geniuser" ]; then
-    PUBLICADDRS=`geni-get manifest | perl -e 'while (<STDIN>) { while ($_ =~ m/\<emulab:ipv4 address="([\d.]+)\" netmask=\"([\d\.]+)\"/g) { print "$1\n"; } }' | xargs`
+    PUBLICADDRS=`cat $OURDIR/manifests.0.xml | perl -e 'while (<STDIN>) { while ($_ =~ m/\<emulab:ipv4 address="([\d.]+)\" netmask=\"([\d\.]+)\"/g) { print "$1\n"; } }' | xargs`
     PUBLICCOUNT=0
     for ip in $PUBLICADDRS ; do
 	PUBLICCOUNT=`expr $PUBLICCOUNT + 1`
@@ -114,33 +146,6 @@ if [ "$SWAPPER" = "geniuser" ]; then
 else
     PUBLICADDRS=""
     PUBLICCOUNT=0
-fi
-
-##
-## Grab our geni creds, and create a GENI credential cert
-##
-#
-# NB: force the install of python-m2crypto if geniuser
-#
-if [ "$SWAPPER" = "geniuser" ]; then
-    dpkg-query -l python-m2crypto | grep -q ii
-    if [ ! $? = 0 ]; then
-	apt-get install python-m2crypto
-    fi
-fi
-if [ ! -e $OURDIR/geni.key ]; then
-    geni-get key > $OURDIR/geni.key
-fi
-if [ ! -e $OURDIR/geni.certificate ]; then
-    geni-get certificate > $OURDIR/geni.certificate
-fi
-
-if [ ! -e /root/.ssl/encrypted.pem ]; then
-    mkdir -p /root/.ssl
-    chmod 600 /root/.ssl
-
-    cat $OURDIR/geni.key > /root/.ssl/encrypted.pem
-    cat $OURDIR/geni.certificate >> /root/.ssl/encrypted.pem
 fi
 
 #
@@ -168,9 +173,12 @@ fi
 # Create a map of node nickname to FQDN.  This supports geni multi-site
 # experiments.
 #
-if [ \( -s /root/.ssl/encrypted.pem \) -a \( ! \( -e $OURDIR/manifests.xml \) \) ]; then
-    python $DIRNAME/getmanifests.py > $OURDIR/manifests.xml
-    cat manifests.xml | sed -e 's/<node /\n<node /g'  | sed -n -e "s/^<node [^>]*client_id=['\"]*\([^'\"]*\)['\"].*<host name=['\"]\([^'\"]*\)['\"].*$/\1\t\2/p" > $OURDIR/fqdn.map
+if [ \( -s $OURDIR/manifests.xml \) -a \( ! \( -s $OURDIR/fqdn.map \) \) ]; then
+    cat manifests.xml | tr -d '\n' | sed -e 's/<node /\n<node /g'  | sed -n -e "s/^<node [^>]*client_id=['\"]*\([^'\"]*\)['\"].*<host name=['\"]\([^'\"]*\)['\"].*$/\1\t\2/p" > $OURDIR/fqdn.map
+    # Add a newline if we wrote anything.
+    if [ -s $OURDIR/fqdn.map ]; then
+	echo '' >> $OURDIR/fqdn.map
+    fi
 fi
 
 #
