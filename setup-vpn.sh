@@ -116,7 +116,7 @@ do
 
     ./build-key $node
 
-    NMIP=`cat $OURDIR/mgmt-hosts | grep $node | head -1 | sed -n -e 's/^\\([0-9]*\\.[0-9]*\\.[0-9]*\\.[0-9]*\\).*$/\\1/p'`
+    NMIP=`cat $OURDIR/mgmt-hosts | grep -E "$node$" | head -1 | sed -n -e 's/^\\([0-9]*\\.[0-9]*\\.[0-9]*\\.[0-9]*\\).*$/\\1/p'`
     echo "ifconfig-push $NMIP 255.255.0.0" \
 	> /etc/openvpn/ccd/$node
 done

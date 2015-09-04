@@ -538,7 +538,7 @@ fi
 # NB: this IP/mask is only valid after setting up the management network IP
 # addresses because they might not be the Emulab ones.
 #
-MGMTIP=`cat /etc/hosts | grep $NODEID | head -1 | sed -n -e 's/^\\([0-9]*\\.[0-9]*\\.[0-9]*\\.[0-9]*\\).*$/\\1/p'`
+MGMTIP=`cat /etc/hosts | grep -E "$NODEID$" | head -1 | sed -n -e 's/^\\([0-9]*\\.[0-9]*\\.[0-9]*\\.[0-9]*\\).*$/\\1/p'`
 MGMTNETMASK=`cat $OURDIR/mgmt-netmask`
 if [ -z "$MGMTLAN" ] ; then
     MGMTMAC=""
@@ -566,7 +566,7 @@ for lan in $DATAFLATLANS ; do
 	continue
     fi
 
-    DATAIP=`cat $OURDIR/data-hosts.$lan | grep $NODEID | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
+    DATAIP=`cat $OURDIR/data-hosts.$lan | grep -E "$NODEID$" | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
     DATANETMASK=`cat $OURDIR/data-netmask.$lan`
     cat ${BOOTDIR}/tmcc/ifconfig | grep "IFACETYPE=vlan" | grep "${lan}"
     if [ $? = 0 ]; then
@@ -598,7 +598,7 @@ for lan in $DATAVLANS ; do
 	continue
     fi
 
-    #DATAIP=`cat $OURDIR/data-hosts.$lan | grep $NODEID | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
+    #DATAIP=`cat $OURDIR/data-hosts.$lan | grep -E "$NODEID$" | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
     #DATANETMASK=`cat $OURDIR/data-netmask.$lan`
     DATAVLAN=1
     DATAMAC=`cat ${BOOTDIR}/tmcc/ifconfig | sed -n -e "s/^.* VMAC=\([0-9a-f:\.]*\) .* LAN=${lan}.*\$/\1/p"`
@@ -744,6 +744,6 @@ fi
 
 getfqdn() {
     n=$1
-    fqdn=`cat $OURDIR/fqdn.map | grep "$n" | cut -f2`
+    fqdn=`cat $OURDIR/fqdn.map | grep -E "$n\s" | cut -f2`
     echo $fqdn
 }
