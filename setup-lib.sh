@@ -414,7 +414,7 @@ EOF
 	    # Setup our allocation pool
 	    #
 	    # First grab all our IP addresses
-	    allips=`cat /root/setup/data-hosts.$lan | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
+	    allips=`cat $OURDIR/data-hosts.$lan | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
 	    gi1=0; gi2=0; gi3=0; gi4=0;
 	    # Figure out the max currently-used IP in this subnet
 	    for ip in ${allips} ; do
