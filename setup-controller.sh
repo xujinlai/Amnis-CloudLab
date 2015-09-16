@@ -121,7 +121,8 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
     sed -i -e "s/^.*provider=.*$/provider=keystone.token.providers.uuid.Provider/" /etc/keystone/keystone.conf
     sed -i -e "s/^.*driver=keystone.token.*$/driver=keystone.token.persistence.backends.sql.Token/" /etc/keystone/keystone.conf
 
-    sed -i -e "s/^.*verbose.*=.*$/verbose=true/" /etc/keystone/keystone.conf
+    crudini --set /etc/keystone/keystone.conf DEFAULT verbose ${VERBOSE_LOGGING}
+    crudini --set /etc/keystone/keystone.conf DEFAULT debug ${DEBUG_LOGGING}
 
     su -s /bin/sh -c "/usr/bin/keystone-manage db_sync" keystone
 
@@ -239,7 +240,8 @@ admin_password = ${GLANCE_PASS}
 [paste_deploy]
 flavor = keystone
 EOF
-    sed -i -e "s/^.*verbose.*=.*$/verbose=true/" /etc/glance/glance-api.conf
+    crudini --set /etc/glance/glance-api.conf DEFAULT verbose ${VERBOSE_LOGGING}
+    crudini --set /etc/glance/glance-api.conf DEFAULT debug ${DEBUG_LOGGING}
 
     sed -i -e "s/^.*connection.*=.*$/connection = mysql:\\/\\/glance:${GLANCE_DBPASS}@$CONTROLLER\\/glance/" /etc/glance/glance-registry.conf
     # Just slap these in.
@@ -254,7 +256,8 @@ admin_password = ${GLANCE_PASS}
 [paste_deploy]
 flavor = keystone
 EOF
-    sed -i -e "s/^.*verbose.*=.*$/verbose=true/" /etc/glance/glance-registry.conf
+    crudini --set /etc/glance/glance-registry.conf DEFAULT verbose ${VERBOSE_LOGGING}
+    crudini --set /etc/glance/glance-registry.conf DEFAULT debug ${DEBUG_LOGGING}
 
     su -s /bin/sh -c "/usr/bin/glance-manage db_sync" glance
 
@@ -319,7 +322,8 @@ auth_strategy = keystone
 my_ip = ${MGMTIP}
 vncserver_listen = ${MGMTIP}
 vncserver_proxyclient_address = ${MGMTIP}
-verbose = True
+verbose = ${VERBOSE_LOGGING}
+debug = ${DEBUG_LOGGING}
 
 [database]
 connection = mysql://nova:$NOVA_DBPASS@$CONTROLLER/nova
@@ -422,7 +426,8 @@ auth_strategy = keystone
 my_ip = ${MGMTIP}
 vncserver_listen = ${MGMTIP}
 vncserver_proxyclient_address = ${MGMTIP}
-verbose = True
+verbose = ${VERBOSE_LOGGING}
+debug = ${DEBUG_LOGGING}
 core_plugin = ml2
 service_plugins = router,metering
 allow_overlapping_ips = True
@@ -661,7 +666,8 @@ rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
 auth_strategy = keystone
 my_ip = ${MGMTIP}
-verbose = True
+verbose = ${VERBOSE_LOGGING}
+debug = ${DEBUG_LOGGING}
 glance_host = ${CONTROLLER}
 volume_group = openstack-volumes
 EOF
@@ -948,7 +954,8 @@ rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
 heat_metadata_server_url = http://${CONTROLLER}:8000
 heat_waitcondition_server_url = http://${CONTROLLER}:8000/v1/waitcondition
-verbose = True
+verbose = ${VERBOSE_LOGGING}
+debug = ${DEBUG_LOGGING}
 auth_strategy = keystone
 
 [keystone_authtoken]
@@ -1042,7 +1049,8 @@ rabbit_host = ${CONTROLLER}
 rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
 auth_strategy = keystone
-verbose = True
+verbose = ${VERBOSE_LOGGING}
+debug = ${DEBUG_LOGGING}
 log_dir = /var/log/ceilometer
 
 [keystone_authtoken]
@@ -1282,7 +1290,8 @@ rpc_backend = rabbit
 rabbit_host = ${CONTROLLER}
 rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
-verbose = True
+verbose = ${VERBOSE_LOGGING}
+debug = ${DEBUG_LOGGING}
 log_dir = /var/log/trove
 trove_auth_url = http://${CONTROLLER}:5000/v2.0
 nova_compute_url = http://${CONTROLLER}:8774/v2
@@ -1303,7 +1312,8 @@ rpc_backend = rabbit
 rabbit_host = ${CONTROLLER}
 rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
-verbose = True
+verbose = ${VERBOSE_LOGGING}
+debug = ${DEBUG_LOGGING}
 log_dir = /var/log/trove
 trove_auth_url = http://${CONTROLLER}:5000/v2.0
 nova_compute_url = http://${CONTROLLER}:8774/v2
@@ -1326,7 +1336,8 @@ rpc_backend = rabbit
 rabbit_host = ${CONTROLLER}
 rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
-verbose = True
+verbose = ${VERBOSE_LOGGING}
+debug = ${DEBUG_LOGGING}
 log_dir = /var/log/trove
 trove_auth_url = http://${CONTROLLER}:5000/v2.0
 nova_compute_url = http://${CONTROLLER}:8774/v2
@@ -1433,7 +1444,8 @@ if [ -z "${SAHARA_DBPASS}" ]; then
     # Just slap these in.
     cat <<EOF >> /etc/sahara/sahara.conf
 [DEFAULT]
-verbose = True
+verbose = ${VERBOSE_LOGGING}
+debug = ${DEBUG_LOGGING}
 auth_strategy = keystone
 use_neutron=true
 
@@ -1511,8 +1523,8 @@ if [ 0 = 1 -a "$OSCODENAME" = "kilo" -a -n "$BAREMETALNODES" -a -z "${IRONIC_DBP
     crudini --set /etc/ironic/ironic.conf DEFAULT rabbit_userid ${RABBIT_USER}
     crudini --set /etc/ironic/ironic.conf DEFAULT rabbit_password ${RABBIT_PASS}
 
-    crudini --set /etc/ironic/ironic.conf DEFAULT verbose true
-    crudini --set /etc/ironic/ironic.conf DEFAULT debug true
+    crudini --set /etc/ironic/ironic.conf DEFAULT verbose ${VERBOSE_LOGGING}
+    crudini --set /etc/ironic/ironic.conf DEFAULT debug ${DEBUG_LOGGING}
 
     crudini --set /etc/ironic/ironic.conf DEFAULT auth_strategy keystone
     crudini --set /etc/ironic/ironic.conf \

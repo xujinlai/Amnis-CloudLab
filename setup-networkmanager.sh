@@ -57,7 +57,8 @@ auth_strategy = keystone
 core_plugin = ml2
 service_plugins = router,metering
 allow_overlapping_ips = True
-verbose = True
+verbose = ${VERBOSE_LOGGING}
+debug = ${DEBUG_LOGGING}
 notification_driver = messagingv2
 
 [keystone_authtoken]
@@ -113,7 +114,8 @@ cat <<EOF >> /etc/neutron/l3_agent.ini
 interface_driver = neutron.agent.linux.interface.OVSInterfaceDriver
 use_namespaces = True
 external_network_bridge = br-ex
-verbose = True
+verbose = ${VERBOSE_LOGGING}
+debug = ${DEBUG_LOGGING}
 EOF
 
 # Just slap these in.
@@ -122,7 +124,8 @@ cat <<EOF >> /etc/neutron/dhcp_agent.ini
 interface_driver = neutron.agent.linux.interface.OVSInterfaceDriver
 dhcp_driver = neutron.agent.linux.dhcp.Dnsmasq
 use_namespaces = True
-verbose = True
+verbose = ${VERBOSE_LOGGING}
+debug = ${DEBUG_LOGGING}
 EOF
 
 # Uncomment if dhcp has trouble due to MTU
@@ -149,7 +152,8 @@ sed -i -e "s/^.*nova_metadata_ip.*=.*$/nova_metadata_ip = $CONTROLLER/" /etc/neu
 sed -i -e "s/^.*metadata_proxy_shared_secret.*=.*$/metadata_proxy_shared_secret = $NEUTRON_METADATA_SECRET/" /etc/neutron/metadata_agent.ini
 cat <<EOF >> /etc/neutron/metadata_agent.ini
 [DEFAULT]
-verbose = True
+verbose = ${VERBOSE_LOGGING}
+debug = ${DEBUG_LOGGING}
 EOF
 
 cat <<EOF >> /etc/neutron/metering_agent.ini

@@ -91,7 +91,8 @@ rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
 auth_strategy = keystone
 my_ip = $MGMTIP
-verbose = True
+verbose = ${VERBOSE_LOGGING}
+debug = ${DEBUG_LOGGING}
 glance_host = ${CONTROLLER}
 
 [keystone_authtoken]

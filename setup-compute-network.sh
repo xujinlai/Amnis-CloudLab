@@ -57,7 +57,8 @@ auth_strategy = keystone
 core_plugin = ml2
 service_plugins = router,metering
 allow_overlapping_ips = True
-verbose = True
+verbose = ${VERBOSE_LOGGING}
+debug = ${DEBUG_LOGGING}
 
 [keystone_authtoken]
 auth_uri = http://$CONTROLLER:5000/v2.0

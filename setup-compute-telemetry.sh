@@ -49,7 +49,8 @@ rabbit_host = ${CONTROLLER}
 rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
 auth_strategy = keystone
-verbose = True
+verbose = ${VERBOSE_LOGGING}
+debug = ${DEBUG_LOGGING}
 log_dir = /var/log/ceilometer
 
 [keystone_authtoken]
