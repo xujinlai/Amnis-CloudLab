@@ -52,6 +52,7 @@ $APTGETINSTALL openvswitch-common openvswitch-switch
 
 # Make sure it's running
 service openvswitch restart
+service openvswitch-switch restart
 
 #
 # Setup the external network
