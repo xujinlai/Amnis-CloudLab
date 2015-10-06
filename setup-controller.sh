@@ -409,6 +409,15 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 
     $APTGETINSTALL neutron-server neutron-plugin-ml2 python-neutronclient
 
+    #
+    # Install a patch to make manual router interfaces less likely to hijack
+    # public addresses.  Ok, forget it, this patch would just have to set the
+    # gateway, not create an "internal" interface.
+    #
+    #if [ ${OSCODENAME} = "kilo" ]; then
+    #	patch -d / -p0 < $DIRNAME/etc/neutron-interface-add.patch.patch
+    #fi
+
     service_tenant_id=`keystone tenant-get service | grep id | cut -d '|' -f 3`
 
 sed -i -e "s/^\\(.*connection.*=.*\\)$/#\1/" /etc/neutron/neutron.conf
