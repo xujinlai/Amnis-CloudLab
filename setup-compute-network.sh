@@ -122,6 +122,29 @@ admin_username = neutron
 admin_password = ${NEUTRON_PASS}
 EOF
 
+#
+# Ok, also put our FQDN into the hosts file so that local applications can
+# resolve that pair even if the network happens to be down.  This happens,
+# for instance, because of our anti-ARP spoofing "patch" to the openvswitch
+# agent (the agent remove_all_flow()s on a switch periodically and inserts a
+# default normal forwarding rule, plus anything it needs --- our patch adds some
+# anti-ARP spoofing rules after remove_all but BEFORE the default normal rule
+# gets added back (this is just the nature of the existing code in Juno and Kilo
+# (the situation is easier to patch more nicely on the master branch, but we
+# don't have Liberty yet)) --- and because it adds the rules via command line
+# using sudo, and sudo tries to lookup the hostname --- this can cause a hang.)
+# Argh, what a pain.  For the rest of this hack, see setup-ovs-node.sh, and
+# setup-networkmanager.sh and setup-compute-network.sh where we patch the 
+# neutron openvswitch agent.
+#
+echo "$MYIP    $NFQDN $PFQDN" >> /etc/hosts
+
+#
+# Patch the neutron openvswitch agent to try to stop inadvertent spoofing on
+# the public emulab/cloudlab control net, sigh.
+#
+patch -d / -p0 < $DIRNAME/etc/neutron-${OSCODENAME}-openvswitch-remove-all-flows-except-system-flows.patch
+
 service openvswitch-switch restart
 service nova-compute restart
 service neutron-plugin-openvswitch-agent restart

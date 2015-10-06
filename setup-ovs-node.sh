@@ -227,21 +227,37 @@ OURNET=`ip addr show br-ex | sed -n -e 's/.*inet \([0-9\.\/]*\) .*/\1/p'`
 # Grab the port that corresponds to our
 OURPORT=`ovs-ofctl show br-ex | sed -n -e "s/[ \t]*\([0-9]*\)(${EXTERNAL_NETWORK_INTERFACE}.*\$/\1/p"`
 
-ovs-ofctl add-flow br-ex \
-    "dl_type=0x0806,nw_proto=0x2,arp_spa=${MYIP},actions=NORMAL"
+#
+# Ok, make the anti-ARP spoofing rules live, and also place them in the right
+# place to be picked up by our neutron openvswitch agent so that when it
+# remove_all_flows() it also installs our "system" defaults.
+#
+mkdir -p /etc/neutron/ovs-default-flows
+FF=/etc/neutron/ovs-default-flows/br-ex
+touch ${FF}
+
+FLOW="dl_type=0x0806,nw_proto=0x2,arp_spa=${MYIP},actions=NORMAL"
+ovs-ofctl add-flow br-ex "$FLOW"
+echo "$FLOW" >> $FF
+
 for addr in $PUBLICADDRS ; do
-    ovs-ofctl add-flow br-ex \
-	"dl_type=0x0806,nw_proto=0x2,arp_spa=${addr},actions=NORMAL"
+    FLOW="dl_type=0x0806,nw_proto=0x2,arp_spa=${addr},actions=NORMAL"
+    ovs-ofctl add-flow br-ex "$FLOW"
+    echo "$FLOW" >> $FF
 done
 # Allow any inbound ARP replies on the control network.
-ovs-ofctl add-flow br-ex \
-    "dl_type=0x0806,nw_proto=0x2,arp_spa=${OURNET},in_port=${OURPORT},actions=NORMAL"
-# Drop any other control network addr ARP replies on the br-ex switch.
-ovs-ofctl add-flow br-ex \
-    "dl_type=0x0806,nw_proto=0x2,arp_spa=${OURNET},actions=drop"
-# Also, drop Emulab vnode control network addr ARP replies on br-ex!
-ovs-ofctl add-flow br-ex \
-    "dl_type=0x0806,nw_proto=0x2,arp_spa=172.16.0.0/12,actions=drop"
+FLOW="dl_type=0x0806,nw_proto=0x2,arp_spa=${OURNET},in_port=${OURPORT},actions=NORMAL"
+ovs-ofctl add-flow br-ex "$FLOW"
+echo "$FLOW" >> $FF
 
+# Drop any other control network addr ARP replies on the br-ex switch.
+FLOW="dl_type=0x0806,nw_proto=0x2,arp_spa=${OURNET},actions=drop"
+ovs-ofctl add-flow br-ex "$FLOW"
+echo "$FLOW" >> $FF
+
+# Also, drop Emulab vnode control network addr ARP replies on br-ex!
+FLOW="dl_type=0x0806,nw_proto=0x2,arp_spa=172.16.0.0/12,actions=drop"
+ovs-ofctl add-flow br-ex "$FLOW"
+echo "$FLOW" >> $FF
 
 exit 0
