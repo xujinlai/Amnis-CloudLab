@@ -202,6 +202,11 @@ echo "export OS_USERNAME=${ADMIN_API}" >> $OURDIR/admin-openrc.sh
 echo "export OS_PASSWORD=${ADMIN_API_PASS}" >> $OURDIR/admin-openrc.sh
 echo "export OS_AUTH_URL=http://$CONTROLLER:35357/v2.0" >> $OURDIR/admin-openrc.sh
 
+echo "OS_TENANT_NAME=\"admin\"" > $OURDIR/admin-openrc.py
+echo "OS_USERNAME=\"${ADMIN_API}\"" >> $OURDIR/admin-openrc.py
+echo "OS_PASSWORD=\"${ADMIN_API_PASS}\"" >> $OURDIR/admin-openrc.py
+echo "OS_AUTH_URL=\"http://$CONTROLLER:35357/v2.0\"" >> $OURDIR/admin-openrc.py
+
 #
 # Install the Image service
 #
