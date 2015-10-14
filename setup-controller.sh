@@ -1134,7 +1134,7 @@ EOF
     service ceilometer-alarm-notifier restart
 
     # NB: restart the neutron ceilometer agent too
-    fqdn = `getfqdn $NETWORKMANAGER`
+    fqdn=`getfqdn $NETWORKMANAGER`
     ssh -o StrictHostKeyChecking=no $fqdn service neutron-metering-agent restart
 
     echo "CEILOMETER_DBPASS=\"${CEILOMETER_DBPASS}\"" >> $SETTINGS
