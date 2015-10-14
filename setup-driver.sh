@@ -18,7 +18,23 @@ echo "*** Setting up root ssh pubkey access across all nodes..."
 # All nodes need to publish public keys, and acquire others'
 $DIRNAME/setup-root-ssh.sh 1> $OURDIR/setup-root-ssh.log 2>&1
 
-if [ "$HOSTNAME" != "$NETWORKMANAGER" ]; then
+if [ "$HOSTNAME" = "$CONTROLLER" ]; then
+    #
+    # Wait for networkmanager setup to touch a special file indicating that
+    # it's finished all the network stuff and we should setup the controller.
+    #
+    echo "*** Waiting for networkmanager to finish network configuration..."
+
+    while [ ! -f $OURDIR/networkmanager-driver-done ]; do
+	sleep 1
+    done
+
+    echo "*** Building an Openstack!"
+
+    exec /bin/sh -c "$DIRNAME/setup-controller.sh 1> $OURDIR/setup-controller.log 2>&1 </dev/null"
+
+    exit 1
+elif [ "$HOSTNAME" != "$NETWORKMANAGER" ]; then
     exit 0;
 fi
 
@@ -83,8 +99,8 @@ echo "*** Moving Interfaces into OpenVSwitch Bridges"
 
 $DIRNAME/setup-ovs.sh 1> $OURDIR/setup-ovs.log 2>&1
 
-echo "*** Building an Openstack!"
+echo "*** Telling controller to set up OpenStack!"
 
-ssh -o StrictHostKeyChecking=no ${CONTROLLER} "sh -c $DIRNAME/setup-controller.sh 1> $OURDIR/setup-controller.log 2>&1 </dev/null &"
+ssh -o StrictHostKeyChecking=no ${CONTROLLER} "/bin/touch $OURDIR/networkmanager-driver-done"
 
 exit 0
