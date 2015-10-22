@@ -33,7 +33,8 @@ control_exchange = cinder
 notification_driver = cinder.openstack.common.notifier.rpc_notifier
 EOF
 
-service cinder-volume restart
+service_restart cinder-volume
+service_enable cinder-volume
 
 touch $OURDIR/setup-storage-telemetry-done
 

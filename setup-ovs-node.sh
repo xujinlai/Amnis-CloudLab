@@ -51,8 +51,10 @@ INTEGRATION_NETWORK_BRIDGE="br-int"
 $APTGETINSTALL openvswitch-common openvswitch-switch
 
 # Make sure it's running
-service openvswitch restart
-service openvswitch-switch restart
+service_restart openvswitch
+service_restart openvswitch-switch
+service_enable openvswitch
+service_enable openvswitch-switch
 
 #
 # Setup the external network
@@ -100,7 +102,7 @@ ifconfig ${EXTERNAL_NETWORK_INTERFACE} 0 up
 ifconfig ${EXTERNAL_NETWORK_BRIDGE} $MYIP netmask $mynetmask up
 route add default gw $mygw
 
-service openvswitch-switch restart
+service_restart openvswitch-switch
 
 #
 # Add the management network config if necessary (if not, it's already a VPN)
@@ -203,7 +205,7 @@ done
 #
 echo `hostname` > /etc/hostname
 
-service openvswitch-switch restart
+service_restart openvswitch-switch
 
 ip route flush cache
 

@@ -145,9 +145,11 @@ echo "$MYIP    $NFQDN $PFQDN" >> /etc/hosts
 #
 patch -d / -p0 < $DIRNAME/etc/neutron-${OSCODENAME}-openvswitch-remove-all-flows-except-system-flows.patch
 
-service openvswitch-switch restart
-service nova-compute restart
-service neutron-plugin-openvswitch-agent restart
+service_restart openvswitch-switch
+service_enable openvswitch-switch
+service_restart nova-compute
+service_restart neutron-plugin-openvswitch-agent
+service_enable neutron-plugin-openvswitch-agent
 
 touch $OURDIR/setup-compute-network-done
 

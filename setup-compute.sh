@@ -111,7 +111,8 @@ if [ ${OSCODENAME} = "juno" ]; then
     patch -d / -p0 < $DIRNAME/etc/nova-juno-root-device-name.patch
 fi
 
-service nova-compute restart
+service_restart nova-compute
+service_enable nova-compute
 
 # XXXX ???
 # rm -f /var/lib/nova/nova.sqlite

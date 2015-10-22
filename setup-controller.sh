@@ -44,7 +44,7 @@ echo "Your OpenStack instance is setting up on `hostname` ." \
 #
 if [ -z "${DB_ROOT_PASS}" ]; then
     $APTGETINSTALL mariadb-server python-mysqldb
-    service mysql stop
+    service_stop mysql
     # Change the root password; secure the users/dbs.
     mysqld_safe --skip-grant-tables --skip-networking &
     sleep 8
@@ -63,7 +63,8 @@ if [ -z "${DB_ROOT_PASS}" ]; then
     echo "character-set-server = utf8" >> /etc/mysql/my.cnf
     echo "max_connections = 5000" >> /etc/mysql/my.cnf
     # Restart it!
-    service mysql restart
+    service_restart mysql
+    service_enable mysql
     # Save the passwd
     echo "DB_ROOT_PASS=\"${DB_ROOT_PASS}\"" >> $SETTINGS
 fi
@@ -73,6 +74,10 @@ fi
 #
 if [ -z "${RABBIT_PASS}" ]; then
     $APTGETINSTALL rabbitmq-server
+
+    service_restart rabbitmq-server
+    rabbitmqctl start_app
+    service_enable rabbitmq-server
 
     cat <<EOF > /etc/rabbitmq/rabbitmq.config
 [
@@ -100,7 +105,8 @@ EOF
     echo "RABBIT_USER=\"${RABBIT_USER}\"" >> $SETTINGS
     echo "RABBIT_PASS=\"${RABBIT_PASS}\"" >> $SETTINGS
 
-    service rabbitmq-server restart
+    service_restart rabbitmq-server
+    rabbitmqctl start_app
 fi
 
 #
@@ -126,7 +132,8 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
 
     su -s /bin/sh -c "/usr/bin/keystone-manage db_sync" keystone
 
-    service keystone restart
+    service_restart keystone
+    service_enable keystone
     rm -f /var/lib/keystone/keystone.db
 
     sleep 8
@@ -266,8 +273,10 @@ EOF
 
     su -s /bin/sh -c "/usr/bin/glance-manage db_sync" glance
 
-    service glance-registry restart
-    service glance-api restart
+    service_restart glance-registry
+    service_enable glance-registry
+    service_restart glance-api
+    service_enable glance-api
     rm -f /var/lib/glance/glance.sqlite
 
     echo "GLANCE_DBPASS=\"${GLANCE_DBPASS}\"" >> $SETTINGS
@@ -353,12 +362,20 @@ EOF
 
     su -s /bin/sh -c "nova-manage db sync" nova
 
-    service nova-api restart
-    service nova-cert restart
-    service nova-consoleauth restart
-    service nova-scheduler restart
-    service nova-conductor restart
-    service nova-novncproxy restart
+    service_restart nova-api
+    service_enable nova-api
+    service_restart nova-cert
+    service_enable nova-cert
+    service_restart nova-consoleauth
+    service_enable nova-consoleauth
+    service_restart nova-scheduler
+    service_enable nova-scheduler
+    service_restart nova-conductor
+    service_enable nova-conductor
+    service_restart nova-novncproxy
+    service_enable nova-novncproxy
+    service_restart nova-serialproxy
+    service_enable nova-serialproxy
 
     rm -f /var/lib/nova/nova.sqlite
 
@@ -519,10 +536,11 @@ EOF
 
     su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade ${OSCODENAME}" neutron
 
-    service nova-api restart
-    service nova-scheduler restart
-    service nova-conductor restart
-    service neutron-server restart
+    service_restart nova-api
+    service_restart nova-scheduler
+    service_restart nova-conductor
+    service_restart neutron-server
+    service_enable neutron-server
 
     echo "NEUTRON_DBPASS=\"${NEUTRON_DBPASS}\"" >> $SETTINGS
     echo "NEUTRON_PASS=\"${NEUTRON_PASS}\"" >> $SETTINGS
@@ -615,8 +633,10 @@ if [ -z "${DASHBOARD_DONE}" ]; then
     sed -i -e 's/^.*ALLOWED_HOSTS = \[.*$/ALLOWED_HOSTS = \["*"\]/' \
 	/etc/openstack-dashboard/local_settings.py
 
-    service apache2 restart
-    service memcached restart
+    service_restart apache2
+    service_enable apache2
+    service_restart memcached
+    service_enable memcached
 
     echo "DASHBOARD_DONE=\"${DASHBOARD_DONE}\"" >> $SETTINGS
 fi
@@ -715,9 +735,12 @@ EOF
 
     su -s /bin/sh -c "/usr/bin/cinder-manage db sync" cinder
 
-    service cinder-scheduler restart
-    service cinder-api restart
-    service cinder-volume restart
+    service_restart cinder-scheduler
+    service_enable cinder-scheduler
+    service_restart cinder-api
+    service_enable cinder-api
+    service_restart cinder-volume
+    service_enable cinder-volume
     rm -f /var/lib/cinder/cinder.sqlite
 
     echo "CINDER_DBPASS=\"${CINDER_DBPASS}\"" >> $SETTINGS
@@ -861,14 +884,14 @@ if [ -z "${SWIFT_PASS}" ]; then
 
     chown -R swift:swift /etc/swift
 
-    service memcached restart
+    service_restart memcached
+    service_restart rsyslog
     if [ ${HAVE_SYSTEMD} -eq 0 ]; then
 	swift-init proxy-server restart
-	service rsyslog restart
     else
 	systemctl restart swift-proxy.service
-	systemctl restart rsyslog.service
-    fi 
+    fi
+    service_enable swift-proxy
 
     echo "SWIFT_PASS=\"${SWIFT_PASS}\"" >> $SETTINGS
     echo "SWIFT_HASH_PATH_PREFIX=\"${SWIFT_HASH_PATH_PREFIX}\"" >> $SETTINGS
@@ -990,9 +1013,12 @@ EOF
 
     su -s /bin/sh -c "/usr/bin/heat-manage db_sync" heat
 
-    service heat-api restart
-    service heat-api-cfn restart
-    service heat-engine restart
+    service_restart heat-api
+    service_enable heat-api
+    service_restart heat-api-cfn
+    service_enable heat-api-cfn
+    service_restart heat-engine
+    service_enable heat-engine
 
     rm -f /var/lib/heat/heat.sqlite
 
@@ -1014,9 +1040,10 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	sed -i -e "s/^.*bind_ip.*=.*$/bind_ip = ${MGMTIP}/" /etc/mongodb.conf
 
 	echo "smallfiles = true" >> /etc/mongodb.conf
-	service mongodb stop
+	service_stop mongodb
 	rm /var/lib/mongodb/journal/prealloc.*
-	service mongodb start
+	service_start mongodb
+	service_enable mongodb
 
 	MDONE=1
 	while [ $MDONE -ne 0 ]; do 
@@ -1126,12 +1153,18 @@ EOF
 
     su -s /bin/sh -c "ceilometer-dbsync" ceilometer
 
-    service ceilometer-agent-central restart
-    service ceilometer-agent-notification restart
-    service ceilometer-api restart
-    service ceilometer-collector restart
-    service ceilometer-alarm-evaluator restart
-    service ceilometer-alarm-notifier restart
+    service_restart ceilometer-agent-central
+    service_enable ceilometer-agent-central
+    service_restart ceilometer-agent-notification
+    service_enable ceilometer-agent-notification
+    service_restart ceilometer-api
+    service_enable ceilometer-api
+    service_restart ceilometer-collector
+    service_enable ceilometer-collector
+    service_restart ceilometer-alarm-evaluator
+    service_enable ceilometer-alarm-evaluator
+    service_restart ceilometer-alarm-notifier
+    service_enable ceilometer-alarm-notifier
 
     # NB: restart the neutron ceilometer agent too
     fqdn=`getfqdn $NETWORKMANAGER`
@@ -1185,8 +1218,8 @@ rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
 EOF
 
-    service glance-registry restart
-    service glance-api restart
+    service_restart glance-registry
+    service_restart glance-api
 
     echo "TELEMETRY_GLANCE_DONE=\"${TELEMETRY_GLANCE_DONE}\"" >> $SETTINGS
 fi
@@ -1203,8 +1236,8 @@ control_exchange = cinder
 notification_driver = messagingv2
 EOF
 
-    service cinder-api restart
-    service cinder-scheduler restart
+    service_restart cinder-api
+    service_restart cinder-scheduler
 
     fqdn=`getfqdn $STORAGEHOST`
 
@@ -1256,7 +1289,8 @@ EOF
     sed -i -e 's/^\(pipeline.*=\)\(.*\)$/\1 ceilometer \2/' /etc/swift/proxy-server.conf
     sed -i -e 's/^\(operator_roles.*=.*\)$/\1,ResellerAdmin/' /etc/swift/proxy-server.conf
 
-    swift-init proxy-server restart
+    service_restart swift-proxy
+    #swift-init proxy-server restart
 
     echo "TELEMETRY_SWIFT_DONE=\"${TELEMETRY_SWIFT_DONE}\"" >> $SETTINGS
 fi
@@ -1401,9 +1435,12 @@ EOF
     # trove-manage --config-file /etc/trove/trove.conf datastore_version_update \
     #    mysql mysql-5.5 mysql $glance_image_ID mysql-server-5.5 1
 
-    service trove-api restart
-    service trove-taskmanager restart
-    service trove-conductor restart
+    service_restart trove-api
+    service_enable trove-api
+    service_restart trove-taskmanager
+    service_enable trove-taskmanager
+    service_restart trove-conductor
+    service_enable trove-conductor
 
     echo "TROVE_DBPASS=\"${TROVE_DBPASS}\"" >> $SETTINGS
     echo "TROVE_PASS=\"${TROVE_PASS}\"" >> $SETTINGS
@@ -1497,8 +1534,10 @@ EOF
 	sahara-engine >>/var/log/sahara/sahara-engine.log 2>&1 &
         #sahara-all >>/var/log/sahara/sahara-all.log 2>&1 &
     else
-	service sahara-api restart
-	service sahara-engine restart
+	service_restart sahara-api
+	service_engine sahara-api
+	service_restart sahara-engine
+	service_engine sahara-engine
     fi
 
     echo "SAHARA_DBPASS=\"${SAHARA_DBPASS}\"" >> $SETTINGS
@@ -1562,8 +1601,10 @@ if [ 0 = 1 -a "$OSCODENAME" = "kilo" -a -n "$BAREMETALNODES" -a -z "${IRONIC_DBP
 
     su -s /bin/sh -c "ironic-dbsync --config-file /etc/ironic/ironic.conf create_schema" ironic
 
-    service ironic-api restart
-    service ironic-conductor restart
+    service_restart ironic-api
+    service_enable ironic-api
+    service_restart ironic-conductor
+    service_enable ironic-conductor
 
     echo "IRONIC_DBPASS=\"${IRONIC_DBPASS}\"" >> $SETTINGS
     echo "IRONIC_PASS=\"${IRONIC_PASS}\"" >> $SETTINGS

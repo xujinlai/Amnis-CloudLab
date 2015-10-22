@@ -189,12 +189,18 @@ echo "$MYIP    $NFQDN $PFQDN" >> /etc/hosts
 #
 patch -d / -p0 < $DIRNAME/etc/neutron-${OSCODENAME}-openvswitch-remove-all-flows-except-system-flows.patch
 
-service openvswitch-switch restart
-service neutron-plugin-openvswitch-agent restart
-service neutron-l3-agent restart
-service neutron-dhcp-agent restart
-service neutron-metadata-agent restart
-service neutron-metering-agent restart
+service_restart openvswitch-switch
+service_enable openvswitch-switch
+service_restart neutron-plugin-openvswitch-agent
+service_enable neutron-plugin-openvswitch-agent
+service_restart neutron-l3-agent
+service_enable neutron-l3-agent
+service_restart neutron-dhcp-agent
+service_enable neutron-dhcp-agent
+service_restart neutron-metadata-agent
+service_enable neutron-metadata-agent
+service_restart neutron-metering-agent
+service_enable neutron-metering-agent
 
 touch $OURDIR/setup-networkmanager-done
 

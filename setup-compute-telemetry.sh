@@ -91,7 +91,8 @@ sed -i -e "s/^\\(.*auth_host.*=.*\\)$/#\1/" /etc/ceilometer/ceilometer.conf
 sed -i -e "s/^\\(.*auth_port.*=.*\\)$/#\1/" /etc/ceilometer/ceilometer.conf
 sed -i -e "s/^\\(.*auth_protocol.*=.*\\)$/#\1/" /etc/ceilometer/ceilometer.conf
 
-service ceilometer-agent-compute restart
+service_restart ceilometer-agent-compute
+service_enable ceilometer-agent-compute
 
 touch $OURDIR/setup-compute-telemetry-done
 

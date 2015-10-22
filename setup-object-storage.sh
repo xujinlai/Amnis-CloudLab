@@ -250,20 +250,33 @@ if [ ${HAVE_SYSTEMD} -eq 0 ]; then
     swift-init all start
     service rsyslog restart
 else
-    systemctl restart rsyslog
-    systemctl restart swift-account.service
-    systemctl restart swift-account-replicator.service
-    systemctl restart swift-account-auditor.service
-    systemctl restart swift-account-reaper.service
-    systemctl restart swift-container.service
-    systemctl restart swift-container-auditor.service
-    systemctl restart swift-container-replicator.service
-    systemctl restart swift-container-sync.service
-    systemctl restart swift-container-updater.service
-    systemctl restart swift-object.service
-    systemctl restart swift-object-auditor.service
-    systemctl restart swift-object-replicator.service
-    systemctl restart swift-object-updater.service
+    service_restart rsyslog
+    service_restart swift-account
+    service_enable swift-account
+    service_restart swift-account-auditor
+    service_enable swift-account-auditor
+    service_restart swift-account-reaper
+    service_enable swift-account-reaper
+    service_restart swift-account-replicator
+    service_enable swift-account-replicator
+    service_restart swift-container
+    service_enable swift-container
+    service_restart swift-container-auditor
+    service_enable swift-container-auditor
+    service_restart swift-container-replicator
+    service_enable swift-container-replicator
+    service_restart swift-container-sync
+    service_enable swift-container-sync
+    service_restart swift-container-updater
+    service_enable swift-container-updater
+    service_restart swift-object
+    service_enable swift-object
+    service_restart swift-object-auditor
+    service_enable swift-object-auditor
+    service_restart swift-object-replicator
+    service_enable swift-object-replicator
+    service_restart swift-object-updater
+    service_enable swift-object-updater
 fi
 
 touch $OURDIR/setup-object-host-done

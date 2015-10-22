@@ -109,7 +109,8 @@ EOF
 fi
 
 service tgt restart
-service cinder-volume restart
+service_restart cinder-volume
+service_enable cinder-volume
 rm -f /var/lib/cinder/cinder.sqlite
 
 echo "LVM=$LVM" >> $LOCALSETTINGS

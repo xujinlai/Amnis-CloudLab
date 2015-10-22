@@ -757,3 +757,48 @@ getfqdn() {
     fqdn=`cat $OURDIR/fqdn.map | grep -E "$n\s" | cut -f2`
     echo $fqdn
 }
+
+service_enable() {
+    service=$1
+    if [ ${HAVE_SYSTEMD} -eq 0 ]; then
+	update-rc.d $service enable
+    else
+	systemctl enable $service
+    fi
+}
+
+service_disable() {
+    service=$1
+    if [ ${HAVE_SYSTEMD} -eq 0 ]; then
+	update-rc.d $service disable
+    else
+	systemctl disable $service
+    fi
+}
+
+service_restart() {
+    service=$1
+    if [ ${HAVE_SYSTEMD} -eq 0 ]; then
+	service $service restart
+    else
+	systemctl restart $service
+    fi
+}
+
+service_stop() {
+    service=$1
+    if [ ${HAVE_SYSTEMD} -eq 0 ]; then
+	service $service stop
+    else
+	systemctl stop $service
+    fi
+}
+
+service_start() {
+    service=$1
+    if [ ${HAVE_SYSTEMD} -eq 0 ]; then
+	service $service start
+    else
+	systemctl start $service
+    fi
+}
