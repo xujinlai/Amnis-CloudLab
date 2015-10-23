@@ -263,6 +263,14 @@ if [ ! ${DO_APT_INSTALL} -eq 1 ]; then
 fi
 
 if [ ! -f $OURDIR/apt-updated -a "${DO_APT_UPDATE}" = "1" ]; then
+    #
+    # Attempt to handle old EOL releases; so far only need to handle utopic
+    #
+    . /etc/lsb-release
+    grep -q old-releases /etc/apt/sources.list
+    if [  $? != 0 -a "x${DISTRIB_CODENAME}" = "xutopic" ]; then
+	sed -i -re 's/([a-z]{2}\.)?archive.ubuntu.com|security.ubuntu.com/old-releases.ubuntu.com/g' /etc/apt/sources.list
+    fi
     apt-get update
     touch $OURDIR/apt-updated
 fi
