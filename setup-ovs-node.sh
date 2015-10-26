@@ -216,6 +216,42 @@ echo "*** Removing Emulab rc.hostnames and rc.ifconfig boot scripts"
 mv /usr/local/etc/emulab/rc/rc.hostnames /usr/local/etc/emulab/rc/rc.hostnames.NO
 mv /usr/local/etc/emulab/rc/rc.ifconfig /usr/local/etc/emulab/rc/rc.ifconfig.NO
 
+if [ ! ${HAVE_SYSTEMD} -eq 0 ] ; then
+    # Maybe this is helpful too
+    update-rc.d networking remove
+    update-rc.d networking defaults
+    # This seems to block systemd from doing its job...
+    systemctl disable ifup-wait-emulab-cnet.service
+    systemctl mask ifup-wait-emulab-cnet.service
+    systemctl stop ifup-wait-emulab-cnet.service
+    #
+    # XXX: fixup a systemd/openvswitch bug
+    # https://bugs.launchpad.net/ubuntu/+source/openvswitch/+bug/1448254
+    #
+    cat <<EOF >/lib/systemd/system/openvswitch-nonetwork.service
+    [Unit]
+Description=Open vSwitch Internal Unit
+PartOf=openvswitch-switch.service
+#Wants=openvswitch-switch.service
+
+# Without this all sorts of looping dependencies occur doh!
+DefaultDependencies=no
+#precedants pulled from isup@ service requirements
+After=apparmor.service local-fs.target systemd-tmpfiles-setup.service
+#subsequent to this service we need the network to start
+Wants=network-pre.target openvswitch-switch.service
+Before=network-pre.target openvswitch-switch.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=-/etc/default/openvswitch-switch
+ExecStart=/usr/share/openvswitch/scripts/ovs-ctl start \
+          --system-id=random $OPTIONS
+ExecStop=/usr/share/openvswitch/scripts/ovs-ctl stop
+EOF
+fi
+
 #
 # Install a basic ARP reply filter that prevents us from sending ARP replies on
 # the control net for anything we're not allowed to use (i.e., we can reply for
