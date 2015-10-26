@@ -111,7 +111,8 @@ echo "*** adding contents of core tarball ..."
 tar xzf "$core" -C mnt
 
 echo "*** fixing root password ..."
-sed -i -e "s@root:[^:]*:@root:${ADMIN_PASS_HASH}:@" mnt/etc/shadow
+#sed -i -e "s@root:[^:]*:@root:${ADMIN_PASS_HASH}:@" mnt/etc/shadow
+sed -i -e "s@root:[^:]*:@root:!:@" mnt/etc/shadow
 
 echo "*** fixing ubuntu password ..."
 sed -i -e "s@ubuntu:[^:]*:@ubuntu:${ADMIN_PASS_HASH}:@" mnt/etc/shadow

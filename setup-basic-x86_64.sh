@@ -48,10 +48,25 @@ cp -p /mnt/etc/passwd $OURDIR/
 cp -p /mnt/etc/group $OURDIR/
 
 echo "*** fixing root password ..."
-sed -i -e "s@root:[^:]*:@root:${ADMIN_PASS_HASH}:@" /mnt/etc/shadow
+#sed -i -e "s@root:[^:]*:@root:${ADMIN_PASS_HASH}:@" /mnt/etc/shadow
+sed -i -e "s@root:[^:]*:@root:!:@" /mnt/etc/shadow
 
 echo "*** fixing ubuntu password ..."
-sed -i -e "s@ubuntu:[^:]*:@ubuntu:${ADMIN_PASS_HASH}:@" /mnt/etc/shadow
+grep ^ubuntu /etc/passwd
+if [ $? -eq 0 ]; then
+    sed -i -e "s@ubuntu:[^:]*:@ubuntu:${ADMIN_PASS_HASH}:@" /mnt/etc/shadow
+else
+    # Have to add the user so that the passwd is actually set...
+    echo "ubuntu:x:1000:1000:Ubuntu:/home/ubuntu:/bin/bash" >> /mnt/etc/passwd
+    echo "ubuntu:!:16731:0:99999:7:::" >> /mnt/etc/shadow
+    echo "ubuntu:x:1000:" >> /mnt/etc/group
+    echo "ubuntu:!::" >> /mnt/etc/gshadow
+
+    mkdir -p /mnt/home/ubuntu
+    chown 1000:1000 /mnt/home/ubuntu
+
+    sed -i -e "s@ubuntu:[^:]*:@ubuntu:${ADMIN_PASS_HASH}:@" /mnt/etc/shadow
+fi
 
 # permit root login!!
 sed -i -e 's/^disable_root: true$/disable_root: false/' /mnt/etc/cloud/cloud.cfg
