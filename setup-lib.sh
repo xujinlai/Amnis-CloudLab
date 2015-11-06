@@ -45,7 +45,9 @@ DEBUG_LOGGING="False"
 ADMIN_API='adminapi'
 ADMIN_API_PASS=`$PSWDGEN`
 ADMIN='admin'
-ADMIN_PASS_HASH='$6$kOIVUcvsnrD/hETx$JahyKoIJf1EFNI2AWCtfzn3ZBoBfaJrRQkjC0kW6VkTwPI9K3TtEWTh/axrHP.e5mmcM96/bTQs1.e7HSKIk10'
+ADMIN_PASS=''
+#ADMIN_PASS_HASH='$6$kOIVUcvsnrD/hETx$JahyKoIJf1EFNI2AWCtfzn3ZBoBfaJrRQkjC0kW6VkTwPI9K3TtEWTh/axrHP.e5mmcM96/bTQs1.e7HSKIk10'
+ADMIN_PASS_HASH=''
 
 OURDIR=/root/setup
 SETTINGS=$OURDIR/settings
@@ -90,6 +92,14 @@ if [ "$SWAPPER" = "geniuser" ]; then
     if [ ! -e $OURDIR/manifests.xml ]; then
 	python $DIRNAME/getmanifests.py $OURDIR/manifests
     fi
+
+    if [ ! -e $OURDIR/encrypted_admin_pass ]; then
+	cat /root/setup/manifests.0.xml | perl -e '@lines = <STDIN>; $all = join("",@lines); if ($all =~ /^.+<[^:]+:password[^>]*>([^<]+)<\/[^:]+:password>.+/igs) { print $1; }' > $OURDIR/encrypted_admin_pass
+    fi
+
+    if [ ! -e $OURDIR/decrypted_admin_pass ]; then
+	openssl smime -decrypt -inform PEM -inkey geni.key -in $OURDIR/encrypted_admin_pass -out $OURDIR/decrypted_admin_pass
+    fi
 fi
 
 #
@@ -102,6 +112,32 @@ if [ ! -e $OURDIR/parameters ]; then
     fi
 fi
 . $OURDIR/parameters
+
+#
+# Ok, to be absolutely safe, if the ADMIN_PASS_HASH we got from params was "",
+# and if admin pass wasn't sent as an encrypted string to us, we have we have
+# to generate a random admin pass and hash it.
+#
+if [ "x${ADMIN_PASS_HASH}" = "x" ] ; then
+    DEC_ADMIN_PASS=`cat $OURDIR/decrypted_admin_pass`
+    if [ "x${DEC_ADMIN_PASS}" = "x" ]; then
+	ADMIN_PASS=`$PSWDGEN`
+	ADMIN_PASS_HASH="`echo \"${ADMIN_PASS}\" | openssl passwd -1 -stdin`"
+
+	# Save it off so we can email the user -- because nobody has the
+	# random pass we just generated!
+	echo "${ADMIN_PASS}" > $OURDIR/random_admin_pass
+    else
+	ADMIN_PASS="${DEC_ADMIN_PASS}"
+	ADMIN_PASS_HASH="`echo \"${ADMIN_PASS}\" | openssl passwd -1 -stdin`"
+    fi
+
+    #
+    # Overwrite the params.
+    #
+    echo "ADMIN_PASS='${ADMIN_PASS}'" >> $OURDIR/parameters
+    echo "ADMIN_PASS_HASH='${ADMIN_PASS_HASH}'" >> $OURDIR/parameters
+fi
 
 BOOTDIR=/var/emulab/boot
 TMCC=/usr/local/etc/emulab/tmcc

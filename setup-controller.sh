@@ -149,10 +149,16 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
 
     # Create the admin tenant
     keystone tenant-create --name admin --description "Admin Tenant"
-    # Create the admin user -- temporarily use the random one for ${ADMIN_API};
-    # we change it right away below manually via sql
-    keystone user-create --name admin --pass ${ADMIN_API_PASS} \
-	--email "${SWAPPER_EMAIL}"
+
+    if [ "x${ADMIN_PASS}" = "x" ]; then
+        # Create the admin user -- temporarily use the random one for
+	# ${ADMIN_API}; we change it right away below manually via sql
+	keystone user-create --name admin --pass ${ADMIN_API_PASS} \
+	    --email "${SWAPPER_EMAIL}"
+    else
+	keystone user-create --name admin --pass ${ADMIN_PASS} \
+	    --email "${SWAPPER_EMAIL}"
+    fi
     # Create the admin role
     keystone role-create --name admin
     # Add the admin tenant and user to the admin role:
@@ -174,11 +180,14 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
         --adminurl http://$CONTROLLER:35357/v2.0 \
         --region regionOne
 
-    #
-    # Update the admin user with the passwd hash from our config
-    #
-    echo "update user set password='${ADMIN_PASS_HASH}' where name='admin'" \
-	| mysql -u root --password=${DB_ROOT_PASS} keystone
+
+    if [ "x${ADMIN_PASS}" = "x" ]; then
+        #
+        # Update the admin user with the passwd hash from our config
+        #
+	echo "update user set password='${ADMIN_PASS_HASH}' where name='admin'" \
+	    | mysql -u root --password=${DB_ROOT_PASS} keystone
+    fi
 
     # Create the adminapi user
     keystone user-create --name ${ADMIN_API} --pass ${ADMIN_API_PASS} \
@@ -1618,14 +1627,21 @@ if [ -z "${SETUP_BASIC_DONE}" ]; then
     echo "SETUP_BASIC_DONE=\"1\"" >> $SETTINGS
 fi
 
+RANDPASSSTRING=""
+if [ -e $OURDIR/rand_admin_pass ]; then
+    RANDPASSSTRING="We generated a random OpenStack admin and instance VM password for you, since one wasn't supplied.  The password is '${ADMIN_PASS}'"
+fi
+
 echo "***"
 echo "*** Done with OpenStack Setup!"
 echo "***"
 echo "*** Login to your shiny new cloud at "
-echo "  http://$CONTROLLER.$EEID.$EPID.${OURDOMAIN}/horizon/auth/login/?next=/horizon/project/instances/ !"
+echo "  http://$CONTROLLER.$EEID.$EPID.${OURDOMAIN}/horizon/auth/login/?next=/horizon/project/instances/ !  ${RANDPASSSTRING}"
 echo "***"
 
-echo "Your OpenStack instance has completed setup!  Browse to http://$CONTROLLER.$EEID.$EPID.${OURDOMAIN}/horizon/auth/login/?next=/horizon/project/instances/ ." \
+
+
+echo "Your OpenStack instance has completed setup!  Browse to http://$CONTROLLER.$EEID.$EPID.${OURDOMAIN}/horizon/auth/login/?next=/horizon/project/instances/ .  ${RANDPASSSTRING}" \
     |  mail -s "OpenStack Instance Finished Setting Up" ${SWAPPER_EMAIL}
 
 exit 0
