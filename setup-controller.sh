@@ -76,8 +76,12 @@ if [ -z "${RABBIT_PASS}" ]; then
     $APTGETINSTALL rabbitmq-server
 
     service_restart rabbitmq-server
-    rabbitmqctl start_app
     service_enable rabbitmq-server
+    rabbitmqctl start_app
+    while [ ! $? -eq 0 ]; do
+	sleep 1
+	rabbitmqctl start_app
+    done
 
     cat <<EOF > /etc/rabbitmq/rabbitmq.config
 [
@@ -105,8 +109,13 @@ EOF
     echo "RABBIT_USER=\"${RABBIT_USER}\"" >> $SETTINGS
     echo "RABBIT_PASS=\"${RABBIT_PASS}\"" >> $SETTINGS
 
+    rabbitmqctl stop_app
     service_restart rabbitmq-server
     rabbitmqctl start_app
+    while [ ! $? -eq 0 ]; do
+	sleep 1
+	rabbitmqctl start_app
+    done
 fi
 
 #
