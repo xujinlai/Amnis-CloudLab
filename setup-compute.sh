@@ -64,7 +64,7 @@ if [ "$ARCH" = "aarch64" ] ; then
     cat <<EOF >> /etc/nova/nova.conf
 [DEFAULT]
 vnc_enabled = False
-vncserver_listen = 0.0.0.0
+vncserver_listen = ${MGMTIP}
 vncserver_proxyclient_address = $MGMTIP
 novncproxy_base_url = http://${cname}:6080/vnc_auto.html
 EOF
@@ -72,7 +72,7 @@ else
     cat <<EOF >> /etc/nova/nova.conf
 [DEFAULT]
 vnc_enabled = True
-vncserver_listen = 0.0.0.0
+vncserver_listen = ${MGMTIP}
 vncserver_proxyclient_address = $MGMTIP
 novncproxy_base_url = http://${cname}:6080/vnc_auto.html
 EOF
