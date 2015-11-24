@@ -1553,9 +1553,9 @@ EOF
         #sahara-all >>/var/log/sahara/sahara-all.log 2>&1 &
     else
 	service_restart sahara-api
-	service_engine sahara-api
+	service_enable sahara-api
 	service_restart sahara-engine
-	service_engine sahara-engine
+	service_enable sahara-engine
     fi
 
     echo "SAHARA_DBPASS=\"${SAHARA_DBPASS}\"" >> $SETTINGS
