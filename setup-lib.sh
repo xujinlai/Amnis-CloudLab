@@ -25,6 +25,7 @@ DATAVLANS=""
 DATAVXLANS=0
 USE_EXISTING_IPS=1
 DO_APT_INSTALL=1
+DO_APT_UPGRADE=0
 DO_APT_UPDATE=1
 ENABLE_NEW_SERIAL_SUPPORT=0
 DO_UBUNTU_CLOUDARCHIVE=1
@@ -69,8 +70,8 @@ SWAPPER=`cat $BOOTDIR/swapper`
 # NB: force the install of python-m2crypto if geniuser
 #
 if [ "$SWAPPER" = "geniuser" ]; then
-    dpkg-query -l python-m2crypto | grep -q ii
-    if [ ! $? = 0 ]; then
+    dpkg -s python-m2crypto >/dev/null 2>&1
+    if [ ! $? -eq 0 ]; then
 	apt-get install python-m2crypto
     fi
 
@@ -293,8 +294,8 @@ export DEBIAN_FRONTEND=noninteractive
 #  -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
 APTGETINSTALLOPTS='-y'
 APTGETINSTALL="apt-get install $APTGETINSTALLOPTS"
-# Don't install/update packages if this is not set
-if [ ! ${DO_APT_INSTALL} -eq 1 ]; then
+# Don't install/upgrade packages if this is not set
+if [ ${DO_APT_INSTALL} -eq 0 ]; then
     APTGETINSTALL="/bin/true ${APTGETINSTALL}"
 fi
 
@@ -311,6 +312,47 @@ if [ ! -f $OURDIR/apt-updated -a "${DO_APT_UPDATE}" = "1" ]; then
     touch $OURDIR/apt-updated
 fi
 
+are_packages_installed() {
+    retval=1
+    while [ ! -z "$1" ] ; do
+	dpkg -s "$1" >/dev/null 2>&1
+	if [ ! $? -eq 0 ] ; then
+	    retval=0
+	fi
+	shift
+    done
+    return $retval
+}
+
+maybe_install_packages() {
+    if [ ! ${DO_APT_UPGRADE} -eq 0 ] ; then
+        # Just do an install/upgrade to make sure the package(s) are installed
+	# and upgraded; we want to try to upgrade the package.
+	$APTGETINSTALL $@
+	return $?
+    else
+	# Ok, check if the package is installed; if it is, don't install.
+	# Otherwise, install (and maybe upgrade, due to dependency side effects).
+	# Also, optimize so that we try to install or not install all the
+	# packages at once if none are installed.
+	are_packages_installed $@
+	if [ $? -eq 1 ]; then
+	    return 0
+	fi
+
+	retval=0
+	while [ ! -z "$1" ] ; do
+	    are_packages_installed $1
+	    if [ $? -eq 0 ]; then
+		$APTGETINSTALL $1
+		retval=`expr $retval \| $?`
+	    fi
+	    shift
+	done
+	return $retval
+    fi
+}
+
 if [ ! -f /etc/apt/sources.list.d/cloudarchive-${OSCODENAME}.list \
     -a ! -f $OURDIR/cloudarchive-added \
     -a "${DO_UBUNTU_CLOUDARCHIVE}" = "1" ]; then
@@ -326,7 +368,7 @@ fi
 #
 # We rely on crudini in a few spots, instead of sed whacking.
 #
-$APTGETINSTALL crudini
+maybe_install_packages crudini
 
 #
 # Create IP addresses for the Management and Data networks, as necessary.

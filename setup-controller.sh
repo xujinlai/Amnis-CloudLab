@@ -35,7 +35,7 @@ fi
 #
 # Setup mail to users
 #
-$APTGETINSTALL dma
+maybe_install_packages dma
 echo "Your OpenStack instance is setting up on `hostname` ." \
     |  mail -s "OpenStack Instance Setting Up" ${SWAPPER_EMAIL} &
 
@@ -43,7 +43,7 @@ echo "Your OpenStack instance is setting up on `hostname` ." \
 # Install the database
 #
 if [ -z "${DB_ROOT_PASS}" ]; then
-    $APTGETINSTALL mariadb-server python-mysqldb
+    maybe_install_packages mariadb-server python-mysqldb
     service_stop mysql
     # Change the root password; secure the users/dbs.
     mysqld_safe --skip-grant-tables --skip-networking &
@@ -73,7 +73,7 @@ fi
 # Install a message broker
 #
 if [ -z "${RABBIT_PASS}" ]; then
-    $APTGETINSTALL rabbitmq-server
+    maybe_install_packages rabbitmq-server
 
     service_restart rabbitmq-server
     service_enable rabbitmq-server
@@ -127,7 +127,7 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
     echo "grant all privileges on keystone.* to 'keystone'@'localhost' identified by '$KEYSTONE_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on keystone.* to 'keystone'@'%' identified by '$KEYSTONE_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
 
-    $APTGETINSTALL keystone python-keystoneclient
+    maybe_install_packages keystone python-keystoneclient
 
     ADMIN_TOKEN=`$PSWDGEN`
 
@@ -255,7 +255,7 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	--adminurl http://$CONTROLLER:9292 \
 	--region regionOne
 
-    $APTGETINSTALL glance python-glanceclient
+    maybe_install_packages glance python-glanceclient
 
     sed -i -e "s/^.*connection.*=.*$/connection = mysql:\\/\\/glance:${GLANCE_DBPASS}@$CONTROLLER\\/glance/" /etc/glance/glance-api.conf
     # Just slap these in.
@@ -309,7 +309,7 @@ if [ -z "${NOVA_DBPASS}" ]; then
     NOVA_PASS=`$PSWDGEN`
 
     # Make sure we're consistent with the clients
-    $APTGETINSTALL nova-api
+    maybe_install_packages nova-api
 
     echo "create database nova" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on nova.* to 'nova'@'localhost' identified by '$NOVA_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
@@ -326,11 +326,11 @@ if [ -z "${NOVA_DBPASS}" ]; then
 	--adminurl http://$CONTROLLER:8774/v2/%\(tenant_id\)s \
 	--region regionOne
 
-    $APTGETINSTALL nova-api nova-cert nova-conductor nova-consoleauth \
+    maybe_install_packages nova-api nova-cert nova-conductor nova-consoleauth \
 	nova-novncproxy nova-scheduler python-novaclient
 
     if [ ${ENABLE_NEW_SERIAL_SUPPORT} = 1 ]; then
-	$APTGETINSTALL nova-serialproxy
+	maybe_install_packages nova-serialproxy
 	mkdir -p $OURDIR/src
 	( cd $OURDIR/src && git clone https://github.com/larsks/novaconsole )
 	( cd $OURDIR/src && git clone https://github.com/liris/websocket-client )
@@ -447,7 +447,7 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	--internalurl http://$CONTROLLER:9696 \
 	--region regionOne
 
-    $APTGETINSTALL neutron-server neutron-plugin-ml2 python-neutronclient
+    maybe_install_packages neutron-server neutron-plugin-ml2 python-neutronclient
 
     #
     # Install a patch to make manual router interfaces less likely to hijack
@@ -644,7 +644,7 @@ fi
 if [ -z "${DASHBOARD_DONE}" ]; then
     DASHBOARD_DONE=1
 
-    $APTGETINSTALL openstack-dashboard apache2 libapache2-mod-wsgi memcached python-memcache
+    maybe_install_packages openstack-dashboard apache2 libapache2-mod-wsgi memcached python-memcache
 
     sed -i -e "s/OPENSTACK_HOST.*=.*\$/OPENSTACK_HOST = \"${CONTROLLER}\"/" \
 	/etc/openstack-dashboard/local_settings.py
@@ -702,7 +702,7 @@ if [ -z "${CINDER_DBPASS}" ]; then
 	--adminurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
 	--region regionOne
 
-    $APTGETINSTALL cinder-api cinder-scheduler python-cinderclient
+    maybe_install_packages cinder-api cinder-scheduler python-cinderclient
 
     sed -i -e "s/^\\(.*volume_group.*=.*\\)$/#\1/" /etc/cinder/cinder.conf
 
@@ -801,7 +801,7 @@ if [ -z "${SWIFT_PASS}" ]; then
 	--adminurl http://${CONTROLLER}:8080 \
 	--region regionOne
 
-    $APTGETINSTALL swift swift-proxy python-swiftclient \
+    maybe_install_packages swift swift-proxy python-swiftclient \
 	python-keystoneclient python-keystonemiddleware memcached
 
     mkdir -p /etc/swift
@@ -997,7 +997,7 @@ if [ -z "${HEAT_DBPASS}" ]; then
 	--adminurl http://${CONTROLLER}:8000/v1 \
 	--region regionOne
 
-    $APTGETINSTALL heat-api heat-api-cfn heat-engine python-heatclient
+    maybe_install_packages heat-api heat-api-cfn heat-engine python-heatclient
 
     sed -i -e "s/^.*connection.*=.*$/connection = mysql:\\/\\/heat:${HEAT_DBPASS}@$CONTROLLER\\/heat/" /etc/heat/heat.conf
     # Just slap these in.
@@ -1053,7 +1053,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
     CEILOMETER_SECRET=`$PSWDGEN`
 
     if [ "${CEILOMETER_USE_MONGODB}" = "1" ]; then
-	$APTGETINSTALL mongodb-server python-pymongo
+	maybe_install_packages mongodb-server python-pymongo
 
 	sed -i -e "s/^.*bind_ip.*=.*$/bind_ip = ${MGMTIP}/" /etc/mongodb.conf
 
@@ -1070,7 +1070,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    MDONE=$?
 	done
     else
-	$APTGETINSTALL mariadb-server python-mysqldb
+	maybe_install_packages mariadb-server python-mysqldb
 
 	echo "create database ceilometer" | mysql -u root --password="$DB_ROOT_PASS"
 	echo "grant all privileges on ceilometer.* to 'ceilometer'@'localhost' identified by '$CEILOMETER_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
@@ -1089,7 +1089,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	--adminurl http://${CONTROLLER}:8777 \
 	--region regionOne
 
-    $APTGETINSTALL ceilometer-api ceilometer-collector \
+    maybe_install_packages ceilometer-api ceilometer-collector \
 	ceilometer-agent-central ceilometer-agent-notification \
 	ceilometer-alarm-evaluator ceilometer-alarm-notifier \
 	python-ceilometerclient python-bson
@@ -1279,7 +1279,7 @@ if [ -z "${TELEMETRY_SWIFT_DONE}" ]; then
 
     chmod g+w /var/log/ceilometer
 
-    $APTGETINSTALL python-ceilometerclient
+    maybe_install_packages python-ceilometerclient
 
     keystone role-create --name ResellerAdmin
     keystone user-role-add --tenant service --user ceilometer \
@@ -1321,15 +1321,15 @@ if [ -z "${TROVE_DBPASS}" ]; then
     TROVE_PASS=`$PSWDGEN`
 
     # trove on Ubuntu Vivid was broken at the time this was done...
-    $APTGETINSTALL trove-common
+    maybe_install_packages trove-common
     if [ ! $? -eq 0 ]; then
 	touch /var/lib/trove/trove_test.sqlite
 	chown trove:trove /var/lib/trove/trove_test.sqlite
 	crudini --set /etc/trove/trove.conf database connection sqlite:////var/lib/trove/trove_test.sqlite
-	$APTGETINSTALL trove-common
+	maybe_install_packages trove-common
     fi
 
-    $APTGETINSTALL python-trove python-troveclient python-glanceclient \
+    maybe_install_packages python-trove python-troveclient python-glanceclient \
 	trove-api trove-taskmanager trove-conductor
 
     echo "create database trove" | mysql -u root --password="$DB_ROOT_PASS"
@@ -1493,16 +1493,16 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 
     if [ ${APT_HAS_SAHARA} -eq 0 ]; then
         # XXX: http://askubuntu.com/questions/555093/openstack-juno-sahara-data-processing-on-14-04
-	$APTGETINSTALL python-pip
+	maybe_install_packages python-pip
         # sahara deps
-	$APTGETINSTALL python-eventlet python-flask python-oslo.serialization
+	maybe_install_packages python-eventlet python-flask python-oslo.serialization
 	pip install sahara
     else
 	# This may fail because sahara's migration scripts use ALTER TABLE,
         # which sqlite doesn't support
-	$APTGETINSTALL sahara-common 
+	maybe_install_packages sahara-common 
 	aserr=$?
-	$APTGETINSTALL sahara-api sahara-engine
+	maybe_install_packages sahara-api sahara-engine
     fi
 
     mkdir -p /etc/sahara
@@ -1536,7 +1536,7 @@ EOF
     # If the apt-get install had failed, do it again so that the configure
     # step can succeed ;)
     if [ ! $aserr -eq 0 ]; then
-	$APTGETINSTALL sahara-common sahara-api sahara-engine
+	maybe_install_packages sahara-common sahara-api sahara-engine
     fi
 
     sahara-db-manage --config-file /etc/sahara/sahara.conf upgrade head
@@ -1585,7 +1585,7 @@ if [ 0 = 1 -a "$OSCODENAME" = "kilo" -a -n "$BAREMETALNODES" -a -z "${IRONIC_DBP
 	--adminurl http://${CONTROLLER}:6385 \
 	--region regionOne
 
-    $APTGETINSTALL ironic-api ironic-conductor python-ironicclient python-ironic
+    maybe_install_packages ironic-api ironic-conductor python-ironicclient python-ironic
 
     crudini --set /etc/ironic/ironic.conf \
 	database connection "mysql://ironic:${IRONIC_DBPASS}@$CONTROLLER/ironic?charset=utf8"

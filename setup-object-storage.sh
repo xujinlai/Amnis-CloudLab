@@ -30,7 +30,7 @@ if [ -f $LOCALSETTINGS ]; then
     . $LOCALSETTINGS
 fi
 
-$APTGETINSTALL xfsprogs rsync
+maybe_install_packages xfsprogs rsync
 
 #
 # First try to make LVM volumes; fall back to loop device in /storage.  We use
@@ -112,7 +112,7 @@ service rsync start
 mkdir -p /var/log/swift
 chown -R syslog.adm /var/log/swift
 
-$APTGETINSTALL swift swift-account swift-container swift-object
+maybe_install_packages swift swift-account swift-container swift-object
 
 wget -O /etc/swift/account-server.conf \
     "https://git.openstack.org/cgit/openstack/swift/plain/etc/account-server.conf-sample?h=stable/${OSCODENAME}"

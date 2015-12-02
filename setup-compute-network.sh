@@ -39,7 +39,7 @@ EOF
 
 sysctl -p
 
-$APTGETINSTALL neutron-plugin-ml2 neutron-plugin-openvswitch-agent
+maybe_install_packages neutron-plugin-ml2 neutron-plugin-openvswitch-agent
 
 sed -i -e "s/^\\(.*connection.*=.*\\)$/#\1/" /etc/neutron/neutron.conf
 sed -i -e "s/^\\(.*auth_host.*=.*\\)$/#\1/" /etc/neutron/neutron.conf

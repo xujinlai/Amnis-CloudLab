@@ -30,7 +30,7 @@ fi
 echo "*** Building an ARM64 image ..."
 
 # need growpart
-$APTGETINSTALL cloud-guest-utils
+maybe_install_packages cloud-guest-utils
 
 # Grab some files
 wget http://boss.utah.cloudlab.us/downloads/vmlinuz-3.13.0-40-arm64-generic

@@ -29,8 +29,8 @@ if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
 
-$APTGETINSTALL nova-compute sysfsutils
-$APTGETINSTALL libguestfs-tools libguestfs0 python-guestfs
+maybe_install_packages nova-compute sysfsutils
+maybe_install_packages libguestfs-tools libguestfs0 python-guestfs
 
 cat <<EOF >> /etc/nova/nova.conf
 [DEFAULT]

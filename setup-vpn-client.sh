@@ -16,7 +16,7 @@ fi
 # Grab our libs
 . "`dirname $0`/setup-lib.sh"
 
-$APTGETINSTALL openvpn
+maybe_install_packages openvpn
 
 cp -p $OURDIR/$HOSTNAME.crt $OURDIR/$HOSTNAME.key /etc/openvpn/
 cp -p $OURDIR/ca.crt /etc/openvpn

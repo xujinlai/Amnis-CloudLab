@@ -38,7 +38,7 @@ EOF
 
 sysctl -p
 
-$APTGETINSTALL neutron-plugin-ml2 neutron-plugin-openvswitch-agent \
+maybe_install_packages neutron-plugin-ml2 neutron-plugin-openvswitch-agent \
     neutron-l3-agent neutron-dhcp-agent conntrack neutron-metering-agent
 
 sed -i -e "s/^\\(.*connection.*=.*\\)$/#\1/" /etc/neutron/neutron.conf

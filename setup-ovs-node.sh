@@ -48,7 +48,7 @@ INTEGRATION_NETWORK_BRIDGE="br-int"
 #
 # Otherwise, first we need openvswitch.
 #
-$APTGETINSTALL openvswitch-common openvswitch-switch
+maybe_install_packages openvswitch-common openvswitch-switch
 
 # Make sure it's running
 service_restart openvswitch

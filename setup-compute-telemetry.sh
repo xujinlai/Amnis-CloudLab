@@ -29,7 +29,7 @@ fi
 
 
 
-$APTGETINSTALL ceilometer-agent-compute
+maybe_install_packages ceilometer-agent-compute
 
 # Just slap these in.
 cat <<EOF >> /etc/nova/nova.conf

@@ -32,7 +32,7 @@ fi
 
 ARCH=`uname -m`
 
-$APTGETINSTALL lvm2
+maybe_install_packages lvm2
 
 if [ "$ARCH" = "aarch64" ]; then
     # XXX: have to copy the .bak versions back into place on uBoot-nodes.
@@ -76,7 +76,7 @@ if [ $LVM -eq 0 ] ; then
     vgcreate $VGNAME /dev/loop0
 fi
 
-$APTGETINSTALL cinder-volume python-mysqldb
+maybe_install_packages cinder-volume python-mysqldb
 
 if [ "${STORAGEHOST}" != "${CONTROLLER}" ]; then
     # Just slap these in.

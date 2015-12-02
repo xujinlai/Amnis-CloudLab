@@ -22,7 +22,7 @@ if [ "$HOSTNAME" != "$NETWORKMANAGER" ]; then
     exit 0;
 fi
 
-$APTGETINSTALL openvpn easy-rsa
+maybe_install_packages openvpn easy-rsa
 
 #
 # Get our server CA config set up.
