@@ -1488,8 +1488,12 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 	--region regionOne
 
     aserr=0
-    apt-cache search ^sahara\$ | grep -q ^sahara\$
-    APT_HAS_SAHARA=$?
+    apt-cache search ^sahara\$ | grep -q sahara
+    if [ $? -eq 0 ] ; then
+	APT_HAS_SAHARA=1
+    else
+	APT_HAS_SAHARA=0
+    fi
 
     if [ ${APT_HAS_SAHARA} -eq 0 ]; then
         # XXX: http://askubuntu.com/questions/555093/openstack-juno-sahara-data-processing-on-14-04
