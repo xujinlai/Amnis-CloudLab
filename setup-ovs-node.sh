@@ -228,6 +228,27 @@ if [ ! ${HAVE_SYSTEMD} -eq 0 ] ; then
     # XXX: fixup a systemd/openvswitch bug
     # https://bugs.launchpad.net/ubuntu/+source/openvswitch/+bug/1448254
     #
+    #
+    # Also, if our init is systemd, fixup the openvswitch service to
+    # come up and go down before remote-fs.target .  Somehow,
+    # openvswitch-switch always goes down way, way before the rest of
+    # the network is brought down.  remote-fs.target seems to be one of
+    # the last services to be killed before the network target is
+    # brought down, and if there's an NFS mount, NFS might require
+    # communication with the remote server to umount the mount.  This
+    # affects us because there are Emulab/Cloudlab NFS mounts over the
+    # control net device, and we bridge the control net device into the
+    # br-ex openvswitch bridge.  To complete the story, once the
+    # openvswitch-switch daemon goes down, you have about 30 seconds
+    # before the bridge starts acting really flaky... it appears to go
+    # down and quit forwarding traffic for awhile, then will pop back to
+    # life periodically for 10-second chunks.  So, we hackily "fix" this
+    # by making the openswitch-nonetwork service dependent on
+    # remote-fs.target ... and since that target is one of the last to
+    # go down before the real network is brought down, this seems to
+    # work.  Ugh!  So to fix that, we also add the remote-fs.target
+    # Before dependency to the "patch" listed in the above bug report.
+    #
     cat <<EOF >/lib/systemd/system/openvswitch-nonetwork.service
     [Unit]
 Description=Open vSwitch Internal Unit
@@ -240,7 +261,7 @@ DefaultDependencies=no
 After=apparmor.service local-fs.target systemd-tmpfiles-setup.service
 #subsequent to this service we need the network to start
 Wants=network-pre.target openvswitch-switch.service
-Before=network-pre.target openvswitch-switch.service
+Before=network-pre.target openvswitch-switch.service remote-fs.target
 
 [Service]
 Type=oneshot
@@ -250,6 +271,8 @@ ExecStart=/usr/share/openvswitch/scripts/ovs-ctl start \
           --system-id=random $OPTIONS
 ExecStop=/usr/share/openvswitch/scripts/ovs-ctl stop
 EOF
+
+    systemctl daemon-reload
 fi
 
 #
