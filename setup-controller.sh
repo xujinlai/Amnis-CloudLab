@@ -1641,7 +1641,7 @@ if [ -z "${SETUP_BASIC_DONE}" ]; then
 fi
 
 RANDPASSSTRING=""
-if [ -e $OURDIR/rand_admin_pass ]; then
+if [ -e $OURDIR/random_admin_pass ]; then
     RANDPASSSTRING="We generated a random OpenStack admin and instance VM password for you, since one wasn't supplied.  The password is '${ADMIN_PASS}'"
 fi
 
