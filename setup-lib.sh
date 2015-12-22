@@ -109,7 +109,6 @@ if [ "$SWAPPER" = "geniuser" ]; then
 	    # Fall back to geni-get
 	    echo "WARNING: falling back to getting manifest from AM, not Portal -- multi-site experiments will not work fully!"
 	    geni-get manifest > $OURDIR/manifests.0.xml
-	    cp -p $OURDIR/manifests.0.xml $OURDIR/manifests.xml
 	fi
     fi
 
