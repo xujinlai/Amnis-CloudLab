@@ -77,9 +77,21 @@ if [ "$SWAPPER" = "geniuser" ]; then
 
     if [ ! -e $OURDIR/geni.key ]; then
 	geni-get key > $OURDIR/geni.key
+	cat $OURDIR/geni.key | grep -q END\ .\*\PRIVATE\ KEY
+	if [ $? -eq 0 ]; then
+	    HAS_GENI_KEY=1
+	else
+	    HAS_GENI_KEY=0
+	fi
     fi
     if [ ! -e $OURDIR/geni.certificate ]; then
 	geni-get certificate > $OURDIR/geni.certificate
+	cat $OURDIR/geni.certificate | grep -q END\ CERTIFICATE
+	if [ $? -eq 0 ]; then
+	    HAS_GENI_CERT=1
+	else
+	    HAS_GENI_CERT=0
+	fi
     fi
 
     if [ ! -e /root/.ssl/encrypted.pem ]; then
@@ -91,14 +103,21 @@ if [ "$SWAPPER" = "geniuser" ]; then
     fi
 
     if [ ! -e $OURDIR/manifests.xml ]; then
-	python $DIRNAME/getmanifests.py $OURDIR/manifests
+	if [ $HAS_GENI_CERT -eq 1 ]; then
+	    python $DIRNAME/getmanifests.py $OURDIR/manifests
+	else
+	    # Fall back to geni-get
+	    echo "WARNING: falling back to getting manifest from AM, not Portal -- multi-site experiments will not work fully!"
+	    geni-get manifest > $OURDIR/manifests.0.xml
+	    cp -p $OURDIR/manifests.0.xml $OURDIR/manifests.xml
+	fi
     fi
 
     if [ ! -e $OURDIR/encrypted_admin_pass ]; then
 	cat /root/setup/manifests.0.xml | perl -e '@lines = <STDIN>; $all = join("",@lines); if ($all =~ /^.+<[^:]+:password[^>]*>([^<]+)<\/[^:]+:password>.+/igs) { print $1; }' > $OURDIR/encrypted_admin_pass
     fi
 
-    if [ ! -e $OURDIR/decrypted_admin_pass ]; then
+    if [ ! -e $OURDIR/decrypted_admin_pass -a -s $OURDIR/encrypted_admin_pass ]; then
 	openssl smime -decrypt -inform PEM -inkey geni.key -in $OURDIR/encrypted_admin_pass -out $OURDIR/decrypted_admin_pass
     fi
 fi
