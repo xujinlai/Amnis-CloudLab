@@ -253,15 +253,10 @@ if [ ! ${HAVE_SYSTEMD} -eq 0 ] ; then
     [Unit]
 Description=Open vSwitch Internal Unit
 PartOf=openvswitch-switch.service
-#Wants=openvswitch-switch.service
-
-# Without this all sorts of looping dependencies occur doh!
 DefaultDependencies=no
-#precedants pulled from isup@ service requirements
-After=apparmor.service local-fs.target systemd-tmpfiles-setup.service
-#subsequent to this service we need the network to start
 Wants=network-pre.target openvswitch-switch.service
-Before=network-pre.target openvswitch-switch.service remote-fs.target
+Before=network-pre.target remote-fs.target
+After=local-fs.target
 
 [Service]
 Type=oneshot
@@ -272,6 +267,7 @@ ExecStart=/usr/share/openvswitch/scripts/ovs-ctl start \
 ExecStop=/usr/share/openvswitch/scripts/ovs-ctl stop
 EOF
 
+    systemctl enable openvswitch-switch
     systemctl daemon-reload
 fi
 

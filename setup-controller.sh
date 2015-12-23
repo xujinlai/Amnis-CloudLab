@@ -415,6 +415,8 @@ if [ -z "${NOVA_COMPUTENODES_DONE}" ]; then
 	scp -o StrictHostKeyChecking=no $SETTINGS admin-openrc.sh $fqdn:$OURDIR
 
 	$SSH $fqdn $DIRNAME/setup-compute.sh
+
+	touch $OURDIR/compute-done-${node}
     done
 
     echo "NOVA_COMPUTENODES_DONE=\"${NOVA_COMPUTENODES_DONE}\"" >> $SETTINGS
@@ -428,7 +430,7 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
     NEUTRON_PASS=`$PSWDGEN`
     NEUTRON_METADATA_SECRET=`$PSWDGEN`
 
-    . $OURDIR/info.neutron
+    . $OURDIR/neutron.vars
 
     echo "create database neutron" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on neutron.* to 'neutron'@'localhost' identified by '$NEUTRON_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
@@ -596,6 +598,8 @@ if [ -z "${NEUTRON_COMPUTENODES_DONE}" ]; then
 	scp -o StrictHostKeyChecking=no $SETTINGS $fqdn:$SETTINGS
 
 	ssh -o StrictHostKeyChecking=no $fqdn $DIRNAME/setup-compute-network.sh
+
+	touch $OURDIR/compute-network-done-${node}
     done
 
     echo "NEUTRON_COMPUTENODES_DONE=\"${NEUTRON_COMPUTENODES_DONE}\"" >> $SETTINGS
@@ -1207,6 +1211,8 @@ if [ -z "${TELEMETRY_COMPUTENODES_DONE}" ]; then
 	scp -o StrictHostKeyChecking=no $SETTINGS $fqdn:$SETTINGS
 
 	ssh -o StrictHostKeyChecking=no $fqdn $DIRNAME/setup-compute-telemetry.sh
+
+	touch $OURDIR/compute-telemetry-done-${node}
     done
 
     echo "TELEMETRY_COMPUTENODES_DONE=\"${TELEMETRY_COMPUTENODES_DONE}\"" >> $SETTINGS

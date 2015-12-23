@@ -2,7 +2,27 @@
 
 DIRNAME=`dirname $0`
 
+#
+# Setup our core vars
+#
+OURDIR=/root/setup
+SETTINGS=$OURDIR/settings
+LOCALSETTINGS=$OURDIR/settings.local
+TOPOMAP=$OURDIR/topomap
+BOOTDIR=/var/emulab/boot
+TMCC=/usr/local/etc/emulab/tmcc
+
+mkdir -p $OURDIR
+touch $SETTINGS
+touch $LOCALSETTINGS
+cd $OURDIR
+
+#LOCKFILE="lockfile -1 -r -1 "
+LOCKFILE="lockfile-create --retry-count 65535 "
+RMLOCKFILE="lockfile-remove "
 PSWDGEN="openssl rand -hex 10"
+SSH="ssh -o StrictHostKeyChecking=no"
+SCP="scp -p -o StrictHostKeyChecking=no"
 
 #
 # Our default configuration
@@ -50,18 +70,20 @@ ADMIN_PASS=''
 #ADMIN_PASS_HASH='$6$kOIVUcvsnrD/hETx$JahyKoIJf1EFNI2AWCtfzn3ZBoBfaJrRQkjC0kW6VkTwPI9K3TtEWTh/axrHP.e5mmcM96/bTQs1.e7HSKIk10'
 ADMIN_PASS_HASH=''
 
-OURDIR=/root/setup
-SETTINGS=$OURDIR/settings
-LOCALSETTINGS=$OURDIR/settings.local
-TOPOMAP=$OURDIR/topomap
-
-mkdir -p $OURDIR
-cd $OURDIR
-touch $SETTINGS
-touch $LOCALSETTINGS
-
-BOOTDIR=/var/emulab/boot
 SWAPPER=`cat $BOOTDIR/swapper`
+
+##
+## Are we updating?
+##
+if [ "x$UPDATING" = "x" ]; then
+    UPDATING=0
+else
+    $LOCKFILE $OURDIR/UPDATING
+fi
+# We might store any new nodes here
+NEWNODELIST=""
+# We might store any missing nodes here
+OLDNODELIST=""
 
 ##
 ## Grab our geni creds, and create a GENI credential cert
@@ -83,6 +105,8 @@ if [ "$SWAPPER" = "geniuser" ]; then
 	else
 	    HAS_GENI_KEY=0
 	fi
+    else
+	HAS_GENI_KEY=1
     fi
     if [ ! -e $OURDIR/geni.certificate ]; then
 	geni-get certificate > $OURDIR/geni.certificate
@@ -92,6 +116,8 @@ if [ "$SWAPPER" = "geniuser" ]; then
 	else
 	    HAS_GENI_CERT=0
 	fi
+    else
+	HAS_GENI_CERT=1
     fi
 
     if [ ! -e /root/.ssl/encrypted.pem ]; then
@@ -102,7 +128,7 @@ if [ "$SWAPPER" = "geniuser" ]; then
 	cat $OURDIR/geni.certificate >> /root/.ssl/encrypted.pem
     fi
 
-    if [ ! -e $OURDIR/manifests.xml ]; then
+    if [ ! -e $OURDIR/manifests.xml -o $UPDATING -ne 0 ]; then
 	if [ $HAS_GENI_CERT -eq 1 ]; then
 	    python $DIRNAME/getmanifests.py $OURDIR/manifests
 	else
@@ -158,9 +184,6 @@ if [ "x${ADMIN_PASS_HASH}" = "x" ] ; then
     echo "ADMIN_PASS_HASH='${ADMIN_PASS_HASH}'" >> $OURDIR/parameters
 fi
 
-BOOTDIR=/var/emulab/boot
-TMCC=/usr/local/etc/emulab/tmcc
-
 CREATOR=`cat $BOOTDIR/creator`
 SWAPPER=`cat $BOOTDIR/swapper`
 NODEID=`cat $BOOTDIR/nickname | cut -d . -f 1`
@@ -186,8 +209,6 @@ else
     OSCODENAME="juno"
 fi
 
-SSH="ssh -o StrictHostKeyChecking=no"
-
 if [ "$SWAPPER" = "geniuser" ]; then
     SWAPPER_EMAIL=`geni-get slice_email`
 else
@@ -209,8 +230,23 @@ fi
 # Grab our topomap so we can see how many nodes we have.
 # NB: only safe to use topomap for non-fqdn things.
 #
-if [ ! -f $TOPOMAP ]; then
+if [ ! -f $TOPOMAP -o $UPDATING -ne 0 ]; then
+    if [ -f $TOPOMAP ]; then
+	cp -p $TOPOMAP $TOPOMAP.old
+    fi
     $TMCC topomap | gunzip > $TOPOMAP
+    if [ -f $TOPOMAP.old ]; then
+	diff -u $TOPOMAP.old $TOPOMAP > $TOPOMAP.diff
+	#
+	# NB: this does assume that nodes either leave all the lans, or join
+	# all the lans.  We don't try to distinguish anything else.
+	#
+	NEWNODELIST=`cat topomap.diff | sed -n -e 's/^\+\([a-zA-Z0-9\-]*\),.*:.*$/\1/p' | uniq | xargs`
+	OLDNODELIST=`cat topomap.diff | sed -n -e 's/^\-\([a-zA-Z0-9\-]*\),.*:.*$/\1/p' | uniq | xargs`
+
+	# Just remove the fqdn map and let it be recalculated below
+	rm -f $OURDIR/fqdn.map
+    fi
 fi
 
 #
@@ -305,6 +341,12 @@ if [ ! $? = 0 ]; then
     echo "STORAGEHOST=\"${STORAGEHOST}\"" >> $SETTINGS
     echo "OBJECTHOST=\"${OBJECTHOST}\"" >> $SETTINGS
     echo "COMPUTENODES=\"${COMPUTENODES}\"" >> $SETTINGS
+elif [ $UPDATING -ne 0 ]; then
+    sed -i -e "s/^\(CONTROLLER=\"[^\"]*\"\)\$/CONTROLLER=\"$CONTROLLER\"/" $SETTINGS
+    sed -i -e "s/^\(NETWORKMANAGER=\"[^\"]*\"\)\$/NETWORKMANAGER=\"$NETWORKMANAGER\"/" $SETTINGS
+    sed -i -e "s/^\(STORAGEHOST=\"[^\"]*\"\)\$/STORAGEHOST=\"$STORAGEHOST\"/" $SETTINGS
+    sed -i -e "s/^\(OBJECTHOST=\"[^\"]*\"\)\$/OBJECTHOST=\"$OBJECTHOST\"/" $SETTINGS
+    sed -i -e "s/^\(COMPUTENODES=\"[^\"]*\"\)\$/COMPUTENODES=\"$COMPUTENODES\"/" $SETTINGS
 fi
 
 # Setup apt-get to not prompt us
@@ -410,19 +452,31 @@ else
     NEXTSPARESUBNET=`cat $OURDIR/nextsparesubnet`
 fi
 
-if [ ! -f $OURDIR/mgmt-hosts ] ; then
+if [ ! -f $OURDIR/mgmt-hosts -o $UPDATING -ne 0 ] ; then
     echo "*** Setting up Management and Data Network IP Addresses"
 
     if [ -z "${MGMTLAN}" -o ${USE_EXISTING_IPS} -eq 0 ]; then
-	echo "255.255.0.0" > $OURDIR/mgmt-netmask
-	echo "192.168.0.1 $NETWORKMANAGER" > $OURDIR/mgmt-hosts
-	echo "192.168.0.3 $CONTROLLER" >> $OURDIR/mgmt-hosts
-	o3=0
-	o4=5
+	if [ $UPDATING -eq 0 ]; then
+	    echo "255.255.0.0" > $OURDIR/mgmt-netmask
+	    echo "192.168.0.1 $NETWORKMANAGER" > $OURDIR/mgmt-hosts
+	    echo "192.168.0.3 $CONTROLLER" >> $OURDIR/mgmt-hosts
+	    o3=0
+	    o4=5
+	else
+	    o3=`cat $OURDIR/mgmt-o3`
+	    o4=`cat $OURDIR/mgmt-o4`
+	fi
+
 	for node in $NODES
 	do
 	    [ "$node" = "$CONTROLLER" -o "$node" = "$NETWORKMANAGER" ] \
 		&& continue
+
+	    # If it already exists, skip it.
+	    grep -q ${node}\$ $OURDIR/mgmt-hosts
+	    if [ $? -eq 0 ]; then
+		continue
+	    fi
 
 	    echo "192.168.$o3.$o4 $node" >> $OURDIR/mgmt-hosts
 
@@ -433,6 +487,10 @@ if [ ! -f $OURDIR/mgmt-hosts ] ; then
 		o3=`expr $o3 + 1`
 	    fi
 	done
+
+	# Save off our octets for later
+	echo "$o3" > $OURDIR/mgmt-o3
+	echo "$o4" > $OURDIR/mgmt-o4
     else
 	cat $TOPOMAP | grep -v '^#' | sed -e 's/,/ /' \
 	    | sed -n -e "s/\([a-zA-Z0-9_\-]*\) .*${MGMTLAN}:\([0-9\.]*\).*\$/\2\t\1/p" \
@@ -456,23 +514,38 @@ if [ ! -f $OURDIR/mgmt-hosts ] ; then
     #
     if [ ${USE_EXISTING_IPS} -eq 0 ]; then
 	for lan in $DATAFLATLANS $DATAVLANS; do
-	    echo "255.255.0.0" > $OURDIR/data-netmask.$lan
-	    echo "10.$NEXTSPARESUBNET.0.0/255.255.0.0" > $OURDIR/data-cidr.$lan
-	    echo "10.$NEXTSPARESUBNET.0.0" > $OURDIR/data-network.$lan
-	    echo "10.$NEXTSPARESUBNET.0.1 $NETWORKMANAGER" > $OURDIR/data-hosts.$lan
-	    echo "10.$NEXTSPARESUBNET.0.3 $CONTROLLER" >> $OURDIR/data-hosts.$lan
+	    if [ $UPDATING -eq 0 ]; then
+		prefix="10.$NEXTSPARESUBNET"
+		echo "$prefix" > $OURDIR/data-prefix.$lan
+		echo "255.255.0.0" > $OURDIR/data-netmask.$lan
+		echo "$prefix.0.0/255.255.0.0" > $OURDIR/data-cidr.$lan
+		echo "$prefix.0.0" > $OURDIR/data-network.$lan
+		echo "$prefix.0.1 $NETWORKMANAGER" > $OURDIR/data-hosts.$lan
+		echo "$prefix.0.3 $CONTROLLER" >> $OURDIR/data-hosts.$lan
 
-            #
-            # Now set static IPs for the compute nodes.
-            #
-	    o3=1
-	    o4=1
+                #
+                # Now set static IPs for the compute nodes.
+                #
+		o3=1
+		o4=1
+	    else
+		prefix=`cat $OURDIR/data-prefix.$lan`
+		o3=`cat $OURDIR/data-o3.$lan`
+		o4=`cat $OURDIR/data-o4.$lan`
+	    fi
+
 	    for node in $NODES
 	    do
 		[ "$node" = "$CONTROLLER" -o "$node" = "$NETWORKMANAGER" ] \
 		    && continue
 
-		echo "10.$NEXTSPARESUBNET.$o3.$o4 $node" >> $OURDIR/data-hosts
+                # If it already exists, skip it.
+		grep -q ${node}\$ $OURDIR/data-hosts.$lan
+		if [ $? -eq 0 ]; then
+		    continue
+		fi
+
+		echo "$prefix.$o3.$o4 $node" >> $OURDIR/data-hosts
 
                 # Skip 2 for openvpn tun tunnels
 		o4=`expr $o4 + 1`
@@ -482,18 +555,38 @@ if [ ! -f $OURDIR/mgmt-hosts ] ; then
 		fi
 	    done
 
-	    # Start the pool at the next availble addr!  Don't skip.
-	    # XXX: could cause problems for adding new phys hosts... oh well.
-	    o3=`expr $o3 + 10`
-	    # Also save two addrs, one for the dhcp agent, and one for the
-	    # router interface
-	    echo "start=10.$NEXTSPARESUBNET.$o3.3,end=10.$NEXTSPARESUBNET.254.254" \
-		> $OURDIR/data-allocation-pool.$lan
+	    if [ $o3 -gt 128 ]; then
+		echo "ERROR: more physical hosts than $prefix.$o3 ; aborting!"
+		exit 1
+	    fi
 
-	    echo "10.$NEXTSPARESUBNET.$o3.1" > $OURDIR/router-ipaddr.$lan
-	    echo "10.$NEXTSPARESUBNET.$o3.2" > $OURDIR/dhcp-agent-ipaddr.$lan
+	    # Save off our octets for later
+	    echo $o3 > $OURDIR/data-o3.$lan
+	    echo $o4 > $OURDIR/data-o4.$lan
 
-	    NEXTSPARESUBNET=`expr $NEXTSPARESUBNET + 1`
+	    if [ $UPDATING -eq 0 ]; then
+	        # Start the pool at the next availble addr!  Don't skip.
+	        # XXX: could cause problems for adding new phys hosts... oh well.
+		o3=`expr $o3 + 10`
+		if [ $SUPPORT_DYNAMIC_NODES -eq 1 ]; then
+		    # Well, ok, so, let's just start at 128.  Why?  That
+		    # leaves us room for 128*255-N physical hosts, plus
+		    # 128*255 virtual machines at any time (and
+		    # openstack will reuse ip addrs I'm sure).  So we
+		    # have a long time before phys node wraparound...
+		    echo "*** Changing from calculated o3=$o3/o4=$o4 to o3=128/o4=$o4 to support dynamic nodes..."
+		    o3=128
+		fi
+	        # Also save two addrs, one for the dhcp agent, and one for the
+	        # router interface
+		echo "start=$prefix.$o3.3,end=10.$NEXTSPARESUBNET.254.254" \
+		    > $OURDIR/data-allocation-pool.$lan
+
+		echo "$prefix.$o3.1" > $OURDIR/router-ipaddr.$lan
+		echo "$prefix.$o3.2" > $OURDIR/dhcp-agent-ipaddr.$lan
+
+		NEXTSPARESUBNET=`expr $NEXTSPARESUBNET + 1`
+	    fi
 	done
     else
 	for lan in $DATAFLATLANS ; do
@@ -516,59 +609,72 @@ EOF
 	    echo "$network/$netmask" > $OURDIR/data-cidr.$lan
 	    echo "$network" > $OURDIR/data-network.$lan
 
-	    #
-	    # Setup our allocation pool
-	    #
-	    # First grab all our IP addresses
-	    allips=`cat $OURDIR/data-hosts.$lan | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
-	    gi1=0; gi2=0; gi3=0; gi4=0;
-	    # Figure out the max currently-used IP in this subnet
-	    for ip in ${allips} ; do
-		IFS=.
-		read -r i1 i2 i3 i4 <<EOF
+	    if [ $UPDATING -eq 0 ]; then
+	        #
+	        # Setup our allocation pool
+	        #
+	        # First grab all our IP addresses
+		allips=`cat $OURDIR/data-hosts.$lan | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
+		gi1=0; gi2=0; gi3=0; gi4=0;
+	        # Figure out the max currently-used IP in this subnet
+		for ip in ${allips} ; do
+		    IFS=.
+		    read -r i1 i2 i3 i4 <<EOF
 $ip
 EOF
-		unset IFS
-		if [ $i1 -gt $gi1 ]; then gi1=$i1; gi2=0;gi3=0;gi4=0; fi
-		if [ $i2 -gt $gi2 ]; then gi2=$i2; gi3=0;gi4=0; fi
-		if [ $i3 -gt $gi3 ]; then gi3=$i3; gi4=0; fi
-		if [ $i4 -gt $gi4 ]; then gi4=$i4; fi
-	    done
-	    # Get the next available one...
-	    # Note, we don't try to stay inside the netmask :(
-	    gi4=`expr $gi4 + 1`
-	    if [ $gi4 = 255 ]; then gi4=1; gi3=`expr $gi3 + 1`; fi
-	    if [ $gi3 = 255 ]; then gi3=1; gi2=`expr $gi2 + 1`; fi
-	    if [ $gi2 = 255 ]; then gi2=1; gi1=`expr $gi1 + 1`; fi
+		    unset IFS
+		    if [ $i1 -gt $gi1 ]; then gi1=$i1; gi2=0;gi3=0;gi4=0; fi
+		    if [ $i2 -gt $gi2 ]; then gi2=$i2; gi3=0;gi4=0; fi
+		    if [ $i3 -gt $gi3 ]; then gi3=$i3; gi4=0; fi
+		    if [ $i4 -gt $gi4 ]; then gi4=$i4; fi
+		done
+	        # Get the next available one...
+	        # Note, we don't try to stay inside the netmask :(
+		gi4=`expr $gi4 + 1`
+		if [ $gi4 = 255 ]; then gi4=1; gi3=`expr $gi3 + 1`; fi
+		if [ $gi3 = 255 ]; then gi3=1; gi2=`expr $gi2 + 1`; fi
+		if [ $gi2 = 255 ]; then gi2=1; gi1=`expr $gi1 + 1`; fi
 
-	    endaddr=`printf "%d.%d.%d.%d\n" "$((i1 | ((~m1)+256)))" "$((i2 | ((~m2)+256)))" "$((i3 | ((~m3)+256)))" "$((i4 | ((~m4)+256)))"`
+		endaddr=`printf "%d.%d.%d.%d\n" "$((i1 | ((~m1)+256)))" "$((i2 | ((~m2)+256)))" "$((i3 | ((~m3)+256)))" "$((i4 | ((~m4)+256)))"`
 
-	    #
-            # So, this previous calculation is correct, but openstack doesn't
-	    # like 255 in any of the octets!  Argh!  So, "fix" any that have it.
-            # Argh...
-            #
-	    IFS=.
-	    read -r i1 i2 i3 i4 <<EOF
+	        #
+                # So, this previous calculation is correct, but openstack doesn't
+	        # like 255 in any of the octets!  Argh!  So, "fix" any that have it.
+                # Argh...
+                #
+		IFS=.
+		read -r i1 i2 i3 i4 <<EOF
 $endaddr
 EOF
-	    unset IFS
-	    if [ $i1 = 255 ]; then i1=254; fi
-	    if [ $i2 = 255 ]; then i2=254; fi
-	    if [ $i3 = 255 ]; then i3=254; fi
-	    if [ $i4 = 255 ]; then i4=254; fi
-	    endaddr="$i1.$i2.$i3.$i4"
+		unset IFS
+		if [ $i1 = 255 ]; then i1=254; fi
+		if [ $i2 = 255 ]; then i2=254; fi
+		if [ $i3 = 255 ]; then i3=254; fi
+		if [ $i4 = 255 ]; then i4=254; fi
+		endaddr="$i1.$i2.$i3.$i4"
 
-	    # Also save two addrs, one for the dhcp agent, and one for the
-	    # router interface
-	    echo "$gi1.$gi2.$gi3.$gi4" > $OURDIR/router-ipaddr.$lan
-	    gi4=`expr $gi4 + 1`
-	    echo "$gi1.$gi2.$gi3.$gi4" > $OURDIR/dhcp-agent-ipaddr.$lan
-	    gi4=`expr $gi4 + 1`
-	    # Start the pool at the next availble addr!  Don't skip.
-	    # XXX: could cause problems for adding new phys hosts... oh well.
-	    echo "start=$gi1.$gi2.$gi3.$gi4,end=$endaddr" \
-		> $OURDIR/data-allocation-pool.$lan
+	        # Also save two addrs, one for the dhcp agent, and one for the
+	        # router interface
+		echo "$gi1.$gi2.$gi3.$gi4" > $OURDIR/router-ipaddr.$lan
+		gi4=`expr $gi4 + 1`
+		echo "$gi1.$gi2.$gi3.$gi4" > $OURDIR/dhcp-agent-ipaddr.$lan
+		gi4=`expr $gi4 + 1`
+	        # Start the pool at the next availble addr!  Don't skip.
+	        # XXX: could cause problems for adding new phys hosts... oh well.
+		if [ $SUPPORT_DYNAMIC_NODES -eq 1 ]; then
+		    # Well, ok, so, let's just start at 128.  Why?  That
+		    # leaves us room for 128*255-N physical hosts, plus
+		    # 128*255 virtual machines at any time (and
+		    # openstack will reuse ip addrs I'm sure).  So we
+		    # have a long time before phys node wraparound...
+		    echo "*** Changing from gi3=$gi3/gi4=$gi4 to gi3=128/gi4=1 to support dynamic nodes..."
+		    gi3=128
+		    gi4=1
+		fi
+		# Write the allocation pool.
+		echo "start=$gi1.$gi2.$gi3.$gi4,end=$endaddr" \
+		    > $OURDIR/data-allocation-pool.$lan
+	    fi
 	done
     fi
 
@@ -734,7 +840,7 @@ done
 ## Setup some one-time neutron configuration variables, based on our network
 ## configuration
 ##
-if [ ! -f $OURDIR/info.neutron ]; then
+if [ ! -f $OURDIR/neutron.vars ]; then
     #
     # Which type drives do we want to configure?
     #
@@ -765,7 +871,7 @@ if [ ! -f $OURDIR/info.neutron ]; then
 	network_types="${network_types}vxlan"
     fi
 
-    echo "network_types=\"${network_types}\"" >> $OURDIR/info.neutron
+    echo "network_types=\"${network_types}\"" >> $OURDIR/neutron.vars
 
     #
     # What are our flat networks?
@@ -778,7 +884,7 @@ if [ ! -f $OURDIR/info.neutron ]; then
 	flat_networks="${flat_networks}${lan}"
     done
 
-    echo "flat_networks=\"${flat_networks}\"" >> $OURDIR/info.neutron
+    echo "flat_networks=\"${flat_networks}\"" >> $OURDIR/neutron.vars
 
     #
     # Figure out the bridge mappings
@@ -799,7 +905,7 @@ if [ ! -f $OURDIR/info.neutron ]; then
 	fi
     done
 
-    echo "bridge_mappings=\"${bridge_mappings}\"" >> $OURDIR/info.neutron
+    echo "bridge_mappings=\"${bridge_mappings}\"" >> $OURDIR/neutron.vars
 
     #
     # Figure out the network_vlan_ranges
@@ -813,7 +919,7 @@ if [ ! -f $OURDIR/info.neutron ]; then
 	network_vlan_ranges="${network_vlan_ranges}${DATAVLANDEV}:${DATAVLANTAG}:${DATAVLANTAG}"
     done
 
-    echo "network_vlan_ranges=\"network_vlan_ranges=${network_vlan_ranges}\"" >> $OURDIR/info.neutron
+    echo "network_vlan_ranges=\"network_vlan_ranges=${network_vlan_ranges}\"" >> $OURDIR/neutron.vars
 
     #
     # What's our first flat network, which will host our GRE tunnels?
@@ -846,10 +952,17 @@ if [ ! -f $OURDIR/info.neutron ]; then
 	break
     done
 
-    echo "gre_local_ip=\"${gre_local_ip}\"" >> $OURDIR/info.neutron
-    echo "enable_tunneling=\"${enable_tunneling}\"" >> $OURDIR/info.neutron
-    echo "tunnel_types=\"${tunnel_types}\"" >> $OURDIR/info.neutron
+    echo "gre_local_ip=\"${gre_local_ip}\"" >> $OURDIR/neutron.vars
+    echo "enable_tunneling=\"${enable_tunneling}\"" >> $OURDIR/neutron.vars
+    echo "tunnel_types=\"${tunnel_types}\"" >> $OURDIR/neutron.vars
 
+fi
+
+##
+## Finally, if we had been UPDATING, remove the lockfile!
+##
+if [ $UPDATING -ne 0 ]; then
+    $RMLOCKFILE $OURDIR/UPDATING
 fi
 
 ##

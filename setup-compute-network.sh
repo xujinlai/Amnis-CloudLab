@@ -28,7 +28,7 @@ if [ -f $SETTINGS ]; then
 fi
 
 # Grab the neutron configuration we computed in setup-lib.sh
-. $OURDIR/info.neutron
+. $OURDIR/neutron.vars
 
 cat <<EOF >> /etc/sysctl.conf
 net.ipv4.conf.all.rp_filter=0

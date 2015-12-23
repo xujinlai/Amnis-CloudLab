@@ -22,21 +22,28 @@ if [ "$HOSTNAME" != "$NETWORKMANAGER" ]; then
     exit 0;
 fi
 
-maybe_install_packages openvpn easy-rsa
+if [ ! -f $OURDIR/vpn-server-done ]; then
+    maybe_install_packages openvpn easy-rsa
+fi
+
+# Only copy files later on to new nodes...
+NEWVPNNODES=""
 
 #
 # Get our server CA config set up.
 #
 export EASY_RSA="/etc/openvpn/easy-rsa"
 
-mkdir -p $EASY_RSA
-cp -r /usr/share/easy-rsa/* $EASY_RSA
-cd $EASY_RSA
-# Batch mode
-sed -i -e s/--interact/--batch/ $EASY_RSA/build-ca
-sed -i -e s/--interact/--batch/ $EASY_RSA/build-key-server
-sed -i -e s/--interact/--batch/ $EASY_RSA/build-key
-sed -i -e s/DEBUG=0/DEBUG=1/ $EASY_RSA/pkitool
+if [ ! -f $OURDIR/vpn-server-done ]; then
+    mkdir -p $EASY_RSA
+    cp -r /usr/share/easy-rsa/* $EASY_RSA
+    cd $EASY_RSA
+    # Batch mode
+    sed -i -e s/--interact/--batch/ $EASY_RSA/build-ca
+    sed -i -e s/--interact/--batch/ $EASY_RSA/build-key-server
+    sed -i -e s/--interact/--batch/ $EASY_RSA/build-key
+    sed -i -e s/DEBUG=0/DEBUG=1/ $EASY_RSA/pkitool
+fi
 
 export OPENSSL="openssl"
 export PKCS11TOOL="pkcs11-tool"
@@ -61,29 +68,37 @@ export KEY_OU=$KEY_CN
 export KEY_ALTNAMES="DNS:$NETWORKMANAGER"
 
 mkdir -p $KEY_DIR
-
 cd $EASY_RSA
-./clean-all
-./build-ca
-# We needed a CN for the CA build -- but now we have to drop it cause
-# the build-key* scripts don't want it set -- they set it to the first arg,
-# and behave badly if it IS set.
-unset KEY_CN
-./build-key-server $NETWORKMANAGER
-cp -p $KEY_DIR/$NETWORKMANAGER.crt $KEY_DIR/$NETWORKMANAGER.key $KEY_DIR/ca.crt \
-    /etc/openvpn/
 
-if [ -f $DIRNAME/etc/dh2048.pem ]; then
-    cp $DIRNAME/etc/dh2048.pem /etc/openvpn
-else
-    ./build-dh
-    cp -p $KEY_DIR/dh2048.pem /etc/openvpn/
-fi
+if [ ! -f $OURDIR/vpn-server-done ]; then
 
-#
-# Get openvpn setup and restarted.
-#
-cat <<EOF > /etc/openvpn/server.conf
+    # Fixup the openssl.cnf files
+    for file in `ls -1 /etc/openvpn/easy-rsa/openssl*.cnf | xargs` ; do
+	sed -i -e 's/^\(subjectAltName=.*\)$/#\1/' $file
+    done
+
+    export KEY_CN="OSMgmtVPN"
+    ./clean-all
+    ./build-ca
+    # We needed a CN for the CA build -- but now we have to drop it cause
+    # the build-key* scripts don't want it set -- they set it to the first arg,
+    # and behave badly if it IS set.
+    unset KEY_CN
+    ./build-key-server $NETWORKMANAGER
+    cp -p $KEY_DIR/$NETWORKMANAGER.crt $KEY_DIR/$NETWORKMANAGER.key $KEY_DIR/ca.crt \
+	/etc/openvpn/
+
+    if [ -f $DIRNAME/etc/dh2048.pem ]; then
+	cp $DIRNAME/etc/dh2048.pem /etc/openvpn
+    else
+	./build-dh
+	cp -p $KEY_DIR/dh2048.pem /etc/openvpn/
+    fi
+
+    #
+    # Get openvpn setup and restarted.
+    #
+    cat <<EOF > /etc/openvpn/server.conf
 local $MYIP
 port 1194
 proto udp
@@ -104,7 +119,20 @@ status openvpn-status.log
 verb 3
 EOF
 
-mkdir -p /etc/openvpn/ccd
+    mkdir -p /etc/openvpn/ccd
+
+    #
+    # Get the server up
+    #
+    if [ ${HAVE_SYSTEMD} -eq 1 ]; then
+	systemctl enable openvpn@server.service
+	systemctl start openvpn@server.service
+    else
+	service openvpn restart
+    fi
+
+    touch $OURDIR/vpn-server-done
+fi
 
 #
 # Now build keys and set static IPs for the controller and the
@@ -112,8 +140,15 @@ mkdir -p /etc/openvpn/ccd
 #
 for node in $NODES
 do
+    if [ -f /etc/openvpn/ccd/$node ]; then
+	continue
+    fi
+
+    NEWVPNNODES="${NEWVPNNODES} $node"
+
     fqdn=`getfqdn $node`
 
+    export KEY_CN="$node"
     ./build-key $node
 
     NMIP=`cat $OURDIR/mgmt-hosts | grep -E "$node$" | head -1 | sed -n -e 's/^\\([0-9]*\\.[0-9]*\\.[0-9]*\\.[0-9]*\\).*$/\\1/p'`
@@ -126,7 +161,6 @@ unset KEY_PROVINCE
 unset KEY_CITY
 unset KEY_ORG
 unset KEY_EMAIL
-unset KEY_CN
 unset KEY_NAME
 unset KEY_OU
 unset KEY_ALTNAMES
@@ -143,21 +177,11 @@ unset CA_EXPIRE
 unset KEY_EXPIRE
 
 #
-# Get the server up
-#
-if [ ${HAVE_SYSTEMD} -eq 1 ]; then
-    systemctl enable openvpn@server.service
-    systemctl start openvpn@server.service
-else
-    service openvpn restart
-fi
-
-#
 # Get the hosts files setup to point to the new management network
 # and setup the VPN on the clients.
 #
 cat $OURDIR/mgmt-hosts > /etc/hosts
-for node in $NODES
+for node in $NEWVPNNODES
 do
     [ "$node" = "$NETWORKMANAGER" ] && continue
 
