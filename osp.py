@@ -111,6 +111,9 @@ pc.defineParameter("networkManagerHost", "Name of network manager node",
 pc.defineParameter("computeHostBaseName", "Base name of compute node(s)",
                    portal.ParameterType.STRING, "cp", advanced=True,
                    longDescription="The base string of the short name of the compute nodes (node names will look like cp-1, cp-2, ... or cp-s2-1, cp-s2-2, ... (for nodes at Site 2, if you request those)).  You shold leave this alone unless you really want the hostname to change.")
+pc.defineParameter("osNodeType", "Hardware type of all nodes",
+                   portal.ParameterType.STRING, "", advanced=True,
+                   longDescription="A specific hardware type to use for each node.  Cloudlab clusters all have machines of specific types.  When you set this field to a value that is a specific hardware type, you will only be able to instantiate this profile on clusters with machines of that type.  If unset, when you instantiate the profile, the resulting experiment may have machines of any available type allocated.")
 #pc.defineParameter("blockStorageHost", "Name of block storage server node",
 #                   portal.ParameterType.STRING, "ctl")
 #pc.defineParameter("objectStorageHost", "Name of object storage server node",
@@ -442,6 +445,9 @@ else:
 # Add the controller node.
 #
 controller = RSpec.RawPC(params.controllerHost)
+if params.osNodeType:
+    controller.hardware_type = params.osNodeType
+    pass
 controller.Site("1")
 controller.disk_image = "urn:publicid:IDN+utah.cloudlab.us+image+emulab-ops//%s-%s" % (image_os,image_tag_cn)
 i = 0
@@ -470,6 +476,9 @@ rspec.addResource(controller)
 # Add the network manager (neutron) node.
 #
 networkManager = RSpec.RawPC(params.networkManagerHost)
+if params.osNodeType:
+    networkManager.hardware_type = params.osNodeType
+    pass
 networkManager.Site("1")
 networkManager.disk_image = "urn:publicid:IDN+utah.cloudlab.us+image+emulab-ops//%s-%s" % (image_os,image_tag_nm)
 i = 0
@@ -518,6 +527,9 @@ for i in range(1,params.computeNodeCountSite2 + 1):
 for (siteNumber,cpnameList) in computeNodeNamesBySite.iteritems():
     for cpname in cpnameList:
         cpnode = RSpec.RawPC(cpname)
+        if params.osNodeType:
+            cpnode.hardware_type = params.osNodeType
+        pass
         cpnode.Site(str(siteNumber))
         cpnode.disk_image = "urn:publicid:IDN+utah.cloudlab.us+image+emulab-ops//%s-%s" % (image_os,image_tag_cp)
         i = 0
