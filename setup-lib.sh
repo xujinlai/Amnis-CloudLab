@@ -86,12 +86,34 @@ NEWNODELIST=""
 OLDNODELIST=""
 
 ##
+## Detect if this was a geni experiment
+##
+grep GENIUSER $SETTINGS
+if [ ! $? -eq 0 ]; then
+    geni-get slice_urn >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+	GENIUSER=1
+	echo "GENIUSER=1" >> $SETTINGS
+    else
+	GENIUSER=0
+	echo "GENIUSER=0" >> $SETTINGS
+    fi
+else
+    grep GENIUSER=1 $SETTINGS
+    if [ $? -eq 0 ]; then
+	GENIUSER=1
+    else
+	GENIUSER=0
+    fi
+fi
+
+##
 ## Grab our geni creds, and create a GENI credential cert
 ##
 #
 # NB: force the install of python-m2crypto if geniuser
 #
-if [ "$SWAPPER" = "geniuser" ]; then
+if [ $GENIUSER -eq 1 ]; then
     dpkg -s python-m2crypto >/dev/null 2>&1
     if [ ! $? -eq 0 ]; then
 	apt-get install python-m2crypto
@@ -152,7 +174,7 @@ fi
 #
 if [ ! -e $OURDIR/parameters ]; then
     touch $OURDIR/parameters
-    if [ "$SWAPPER" = "geniuser" ]; then
+    if [ $GENIUSER -eq 1 ]; then
 	cat $OURDIR/manifests.0.xml | sed -n -e 's/^[^<]*<[^:]*:parameter>\([^<]*\)<\/[^:]*:parameter>/\1/p' > $OURDIR/parameters
     fi
 fi
@@ -209,13 +231,13 @@ else
     OSCODENAME="juno"
 fi
 
-if [ "$SWAPPER" = "geniuser" ]; then
+if [ $GENIUSER -eq 1 ]; then
     SWAPPER_EMAIL=`geni-get slice_email`
 else
     SWAPPER_EMAIL="$SWAPPER@$OURDOMAIN"
 fi
 
-if [ "$SWAPPER" = "geniuser" ]; then
+if [ $GENIUSER -eq 1 ]; then
     PUBLICADDRS=`cat $OURDIR/manifests.0.xml | perl -e 'while (<STDIN>) { while ($_ =~ m/\<emulab:ipv4 address="([\d.]+)\" netmask=\"([\d\.]+)\"/g) { print "$1\n"; } }' | xargs`
     PUBLICCOUNT=0
     for ip in $PUBLICADDRS ; do

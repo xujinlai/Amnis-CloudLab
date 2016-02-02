@@ -47,7 +47,11 @@ if [ ! -f /root/.ssh/${KEYNAME} ]; then
     ssh-keygen -t rsa -f /root/.ssh/${KEYNAME} -N ''
 fi
 
-if [ "$SWAPPER" = "geniuser" ]; then
+if [ -f $SETTINGS ]; then
+    . $SETTINGS
+fi
+
+if [ $GENIUSER -eq 1 ]; then
     SHAREDIR=/proj/$EPID/exp/$EEID/tmp
 
     cp /root/.ssh/${KEYNAME}.pub $SHAREDIR/$HOSTNAME
