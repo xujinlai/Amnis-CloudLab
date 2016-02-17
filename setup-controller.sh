@@ -60,6 +60,7 @@ __openstack() {
 # Setup mail to users
 #
 maybe_install_packages dma
+echo `hostname` > /etc/mailname
 echo "Your OpenStack instance is setting up on `hostname` ." \
     |  mail -s "OpenStack Instance Setting Up" ${SWAPPER_EMAIL} &
 
