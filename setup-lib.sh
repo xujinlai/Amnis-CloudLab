@@ -58,6 +58,7 @@ KEYSTONEAPIVERSION=""
 TOKENTIMEOUT=14400
 SESSIONTIMEOUT=14400
 CEILOMETER_USE_WSGI=0
+QUOTASOFF=1
 #
 # We have an 'adminapi' user that gets a random password.  Then, we have
 # the dashboard and instance password, that comes in from geni-lib/rspec as a

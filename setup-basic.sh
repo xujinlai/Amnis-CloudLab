@@ -165,4 +165,29 @@ if [ $GENIUSER -eq 1 ] ; then
     $DIRNAME/setup-user-info.py
 fi
 
+if [ $QUOTASOFF -eq 1 ]; then
+    nova quota-class-update --instances -1 default
+    nova quota-class-update --cores -1 default
+    nova quota-class-update --ram -1 default
+    nova quota-class-update --floating-ips -1 default
+    nova quota-class-update --fixed-ips -1 default
+    nova quota-class-update --metadata-items -1 default
+    nova quota-class-update --injected-files -1 default
+    nova quota-class-update --injected-file-content-bytes -1 default
+    nova quota-class-update --injected-file-path-bytes -1 default
+    nova quota-class-update --key-pairs -1 default
+    nova quota-class-update --security-groups -1 default
+    nova quota-class-update --security-group-rules -1 default
+    nova quota-class-update --server-groups -1 default
+    nova quota-class-update --server-group-members -1 default
+
+    cinder quota-class-update --volumes -1 default
+    cinder quota-class-update --snapshots -1 default
+    cinder quota-class-update --gigabytes -1 default
+    # Guess you can't set these via CLI?
+    #cinder quota-class-update --backup-_gigabytes -1 default
+    #cinder quota-class-update --backups -1 default
+    #cinder quota-class-update --per-volume-gigabytes -1 default
+fi
+
 exit 0
