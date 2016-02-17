@@ -311,6 +311,9 @@ EOF
 	service_restart keystone
 	service_enable keystone
     else
+	service_stop keystone
+	service_disable keystone
+
 	service_restart apache2
 	service_enable apache2
     fi
