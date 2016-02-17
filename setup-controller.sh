@@ -25,6 +25,30 @@ if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
 
+#
+# openstack CLI commands seem flakey sometimes on Kilo and Liberty.
+# Don't know if it's WSGI, mysql dropping connections, an NTP
+# thing... but until it gets solved more permanently, have to retry :(.
+#
+__openstack() {
+    __err=1
+    __debug=
+    __times=0
+    while [ $__times -lt 16 -a ! $__err -eq 0 ]; do
+	openstack $__debug "$@"
+	__err=$?
+        if [ $__err -eq 0 ]; then
+            break
+        fi
+	__debug=" --debug "
+	__times=`expr $__times + 1`
+	if [ $__times -gt 1 ]; then
+	    echo "ERROR: openstack command failed: sleeping and trying again!"
+	    sleep 8
+	fi
+    done
+}
+
 # Make sure our repos are setup.
 #apt-get install ubuntu-cloud-keyring
 #echo "deb http://ubuntu-cloud.archive.canonical.com/ubuntu" \
@@ -38,6 +62,13 @@ fi
 maybe_install_packages dma
 echo "Your OpenStack instance is setting up on `hostname` ." \
     |  mail -s "OpenStack Instance Setting Up" ${SWAPPER_EMAIL} &
+
+#
+# If we're >= Kilo, we might need the openstack CLI command.
+#
+if [ $OSVERSION -ge $OSKILO ]; then
+    maybe_install_packages python-openstackclient
+fi
 
 #
 # Install the database
@@ -119,6 +150,15 @@ EOF
 fi
 
 #
+# If Keystone API Version v3, we have to supply a --domain sometimes.
+#
+DOMARG=""
+#if [ $OSVERSION -gt $OSKILO ]; then
+if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
+    DOMARG="--domain default"
+fi
+
+#
 # Install the Identity Service
 #
 if [ -z "${KEYSTONE_DBPASS}" ]; then
@@ -128,21 +168,151 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
     echo "grant all privileges on keystone.* to 'keystone'@'%' identified by '$KEYSTONE_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
 
     maybe_install_packages keystone python-keystoneclient
+    if [ $OSVERSION -ge $OSKILO ]; then
+	maybe_install_packages memcached python-memcache apache2
+    fi
 
     ADMIN_TOKEN=`$PSWDGEN`
 
-    sed -i -e "s/^.*admin_token.*=.*$/admin_token=$ADMIN_TOKEN/" /etc/keystone/keystone.conf
-    sed -i -e "s/^.*connection.*=.*$/connection=mysql:\\/\\/keystone:${KEYSTONE_DBPASS}@$CONTROLLER\\/keystone/" /etc/keystone/keystone.conf
-    sed -i -e "s/^.*provider=.*$/provider=keystone.token.providers.uuid.Provider/" /etc/keystone/keystone.conf
-    sed -i -e "s/^.*driver=keystone.token.*$/driver=keystone.token.persistence.backends.sql.Token/" /etc/keystone/keystone.conf
+    crudini --set /etc/keystone/keystone.conf DEFAULT admin_token "$ADMIN_TOKEN"
+    crudini --set /etc/keystone/keystone.conf database connection \
+	"mysql://keystone:${KEYSTONE_DBPASS}@$CONTROLLER/keystone"
+
+    crudini --set /etc/keystone/keystone.conf token expiration ${TOKENTIMEOUT}
+
+    if [ $OSVERSION -le $OSJUNO ]; then
+	crudini --set /etc/keystone/keystone.conf token provider \
+	    'keystone.token.providers.uuid.Provider'
+	crudini --set /etc/keystone/keystone.conf token driver \
+	    'keystone.token.persistence.backends.sql.Token'
+    elif [ $OSVERSION -le $OSKILO ]; then
+	crudini --set /etc/keystone/keystone.conf token provider \
+	    'keystone.token.providers.uuid.Provider'
+	crudini --set /etc/keystone/keystone.conf token driver \
+	    'keystone.token.persistence.backends.memcache.Token'
+	crudini --set /etc/keystone/keystone.conf revoke driver \
+	    'keystone.contrib.revoke.backends.sql.Revoke'
+	crudini --set /etc/keystone/keystone.conf memcache servers \
+	    'localhost:11211'
+    else
+	crudini --set /etc/keystone/keystone.conf token provider 'uuid'
+	#crudini --set /etc/keystone/keystone.conf token driver 'memcache'
+	crudini --set /etc/keystone/keystone.conf token driver 'sql'
+	crudini --set /etc/keystone/keystone.conf revoke driver 'sql'
+	#crudini --set /etc/keystone/keystone.conf memcache servers \
+	#    'localhost:11211'
+    fi
 
     crudini --set /etc/keystone/keystone.conf DEFAULT verbose ${VERBOSE_LOGGING}
     crudini --set /etc/keystone/keystone.conf DEFAULT debug ${DEBUG_LOGGING}
 
     su -s /bin/sh -c "/usr/bin/keystone-manage db_sync" keystone
 
-    service_restart keystone
-    service_enable keystone
+    if [ $OSVERSION -eq $OSKILO ]; then
+	cat <<EOF >/etc/apache2/sites-available/wsgi-keystone.conf
+Listen 5000
+Listen 35357
+
+<VirtualHost *:5000>
+    WSGIDaemonProcess keystone-public processes=5 threads=1 user=keystone display-name=%{GROUP}
+    WSGIProcessGroup keystone-public
+    WSGIScriptAlias / /var/www/cgi-bin/keystone/main
+    WSGIApplicationGroup %{GLOBAL}
+    WSGIPassAuthorization On
+    <IfVersion >= 2.4>
+      ErrorLogFormat "%{cu}t %M"
+    </IfVersion>
+    LogLevel info
+    ErrorLog /var/log/apache2/keystone-error.log
+    CustomLog /var/log/apache2/keystone-access.log combined
+</VirtualHost>
+
+<VirtualHost *:35357>
+    WSGIDaemonProcess keystone-admin processes=5 threads=1 user=keystone display-name=%{GROUP}
+    WSGIProcessGroup keystone-admin
+    WSGIScriptAlias / /var/www/cgi-bin/keystone/admin
+    WSGIApplicationGroup %{GLOBAL}
+    WSGIPassAuthorization On
+    <IfVersion >= 2.4>
+      ErrorLogFormat "%{cu}t %M"
+    </IfVersion>
+    LogLevel info
+    ErrorLog /var/log/apache2/keystone-error.log
+    CustomLog /var/log/apache2/keystone-access.log combined
+</VirtualHost>
+EOF
+
+	ln -s /etc/apache2/sites-available/wsgi-keystone.conf \
+	    /etc/apache2/sites-enabled
+
+	mkdir -p /var/www/cgi-bin/keystone
+	wget -O /var/www/cgi-bin/keystone/admin "http://git.openstack.org/cgit/openstack/keystone/plain/httpd/keystone.py?h=stable/${OSCODENAME}"
+	cp -p /var/www/cgi-bin/keystone/admin /var/www/cgi-bin/keystone/main 
+	chown -R keystone:keystone /var/www/cgi-bin/keystone
+	chmod 755 /var/www/cgi-bin/keystone/*
+    elif [ $OSVERSION -ge $OSLIBERTY ]; then
+	cat <<EOF >/etc/apache2/sites-available/wsgi-keystone.conf
+Listen 5000
+Listen 35357
+
+<VirtualHost *:5000>
+    WSGIDaemonProcess keystone-public processes=5 threads=1 user=keystone group=keystone display-name=%{GROUP}
+    WSGIProcessGroup keystone-public
+    WSGIScriptAlias / /usr/bin/keystone-wsgi-public
+    WSGIApplicationGroup %{GLOBAL}
+    WSGIPassAuthorization On
+    <IfVersion >= 2.4>
+      ErrorLogFormat "%{cu}t %M"
+    </IfVersion>
+    ErrorLog /var/log/apache2/keystone.log
+    CustomLog /var/log/apache2/keystone_access.log combined
+
+    <Directory /usr/bin>
+        <IfVersion >= 2.4>
+            Require all granted
+        </IfVersion>
+        <IfVersion < 2.4>
+            Order allow,deny
+            Allow from all
+        </IfVersion>
+    </Directory>
+</VirtualHost>
+
+<VirtualHost *:35357>
+    WSGIDaemonProcess keystone-admin processes=5 threads=1 user=keystone group=keystone display-name=%{GROUP}
+    WSGIProcessGroup keystone-admin
+    WSGIScriptAlias / /usr/bin/keystone-wsgi-admin
+    WSGIApplicationGroup %{GLOBAL}
+    WSGIPassAuthorization On
+    <IfVersion >= 2.4>
+      ErrorLogFormat "%{cu}t %M"
+    </IfVersion>
+    ErrorLog /var/log/apache2/keystone.log
+    CustomLog /var/log/apache2/keystone_access.log combined
+
+    <Directory /usr/bin>
+        <IfVersion >= 2.4>
+            Require all granted
+        </IfVersion>
+        <IfVersion < 2.4>
+            Order allow,deny
+            Allow from all
+        </IfVersion>
+    </Directory>
+</VirtualHost>
+EOF
+
+	ln -s /etc/apache2/sites-available/wsgi-keystone.conf \
+	    /etc/apache2/sites-enabled
+    fi
+
+    if [ $OSVERSION -le $OSJUNO ]; then
+	service_restart keystone
+	service_enable keystone
+    else
+	service_restart apache2
+	service_enable apache2
+    fi
     rm -f /var/lib/keystone/keystone.db
 
     sleep 8
@@ -153,41 +323,98 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
         >> /var/spool/cron/crontabs/keystone
 
     # Create admin token
-    export OS_SERVICE_TOKEN=$ADMIN_TOKEN
-    export OS_SERVICE_ENDPOINT=http://$CONTROLLER:35357/v2.0
+    if [ $OSVERSION -lt $OSKILO ]; then
+	export OS_SERVICE_TOKEN=$ADMIN_TOKEN
+	export OS_SERVICE_ENDPOINT=http://$CONTROLLER:35357/$KAPISTR
+    else
+	export OS_TOKEN=$ADMIN_TOKEN
+	export OS_URL=http://$CONTROLLER:35357/$KAPISTR
 
-    # Create the admin tenant
-    keystone tenant-create --name admin --description "Admin Tenant"
+	if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
+	    export OS_IDENTITY_API_VERSION=3
+	else
+	    export OS_IDENTITY_API_VERSION=2.0
+	fi
+    fi
+
+    if [ $OSVERSION -lt $OSKILO ]; then
+        # Create the service tenant:
+	keystone tenant-create --name service --description "Service Tenant"
+        # Create the service entity for the Identity service:
+	keystone service-create --name keystone --type identity \
+            --description "OpenStack Identity Service"
+        # Create the API endpoint for the Identity service:
+	keystone endpoint-create \
+            --service-id `keystone service-list | awk '/ identity / {print $2}'` \
+            --publicurl http://$CONTROLLER:5000/v2.0 \
+            --internalurl http://$CONTROLLER:5000/v2.0 \
+            --adminurl http://$CONTROLLER:35357/v2.0 \
+            --region $REGION
+    else
+	__openstack service create \
+	    --name keystone --description "OpenStack Identity" identity
+
+	if [ $KEYSTONEAPIVERSION -lt 3 ]; then
+	    __openstack endpoint create \
+		--publicurl http://${CONTROLLER}:5000/${KAPISTR} \
+		--internalurl http://${CONTROLLER}:5000/${KAPISTR} \
+		--adminurl http://${CONTROLLER}:35357/${KAPISTR} \
+		--region $REGION identity
+	else
+	    __openstack endpoint create --region $REGION \
+		identity public http://${CONTROLLER}:5000/${KAPISTR}
+	    __openstack endpoint create --region $REGION \
+		identity internal http://${CONTROLLER}:5000/${KAPISTR}
+	    __openstack endpoint create --region $REGION \
+		identity admin http://${CONTROLLER}:35357/${KAPISTR}
+	fi
+    fi
 
     if [ "x${ADMIN_PASS}" = "x" ]; then
         # Create the admin user -- temporarily use the random one for
-	# ${ADMIN_API}; we change it right away below manually via sql
-	keystone user-create --name admin --pass ${ADMIN_API_PASS} \
-	    --email "${SWAPPER_EMAIL}"
+        # ${ADMIN_API}; we change it right away below manually via sql
+	APSWD="${ADMIN_API_PASS}"
     else
-	keystone user-create --name admin --pass ${ADMIN_PASS} \
-	    --email "${SWAPPER_EMAIL}"
+	APSWD="${ADMIN_PASS}"
     fi
-    # Create the admin role
-    keystone role-create --name admin
-    # Add the admin tenant and user to the admin role:
-    keystone user-role-add --tenant admin --user admin --role admin
-    # Create the _member_ role:
-    keystone role-create --name _member_
-    # Add the admin tenant and user to the _member_ role:
-    keystone user-role-add --tenant admin --user admin --role _member_
-    # Create the service tenant:
-    keystone tenant-create --name service --description "Service Tenant"
-    # Create the service entity for the Identity service:
-    keystone service-create --name keystone --type identity \
-        --description "OpenStack Identity Service"
-    # Create the API endpoint for the Identity service:
-    keystone endpoint-create \
-        --service-id `keystone service-list | awk '/ identity / {print $2}'` \
-        --publicurl http://$CONTROLLER:5000/v2.0 \
-        --internalurl http://$CONTROLLER:5000/v2.0 \
-        --adminurl http://$CONTROLLER:35357/v2.0 \
-        --region regionOne
+
+    if [ $OSVERSION -eq $OSJUNO ]; then
+        # Create the admin tenant
+	keystone tenant-create --name admin --description "Admin Tenant"
+	keystone user-create --name admin --pass "${APSWD}" \
+	    --email "${SWAPPER_EMAIL}"
+        # Create the admin role
+	keystone role-create --name admin
+        # Add the admin tenant and user to the admin role:
+	keystone user-role-add --tenant admin --user admin --role admin
+        # Create the _member_ role:
+	keystone role-create --name _member_
+        # Add the admin tenant and user to the _member_ role:
+	keystone user-role-add --tenant admin --user admin --role _member_
+
+        # Create the adminapi user
+	keystone user-create --name ${ADMIN_API} --pass ${ADMIN_API_PASS} \
+	    --email "${SWAPPER_EMAIL}"
+	keystone user-role-add --tenant admin --user ${ADMIN_API} --role admin
+	keystone user-role-add --tenant admin --user ${ADMIN_API} --role _member_
+    else
+	__openstack project create $DOMARG --description "Admin Project" admin
+	__openstack user create $DOMARG --password "${APSWD}" \
+	    --email "${SWAPPER_EMAIL}" admin
+	__openstack role create admin
+	__openstack role add --project admin --user admin admin
+
+	__openstack role create user
+	__openstack role add --project admin --user admin user
+
+	__openstack project create $DOMARG --description "Service Project" service
+
+        # Create the adminapi user
+	__openstack user create $DOMARG --password ${ADMIN_API_PASS} \
+	    --email "${SWAPPER_EMAIL}" ${ADMIN_API}
+	__openstack role add --project admin --user ${ADMIN_API} admin
+	__openstack role add --project admin --user ${ADMIN_API} user
+    fi
 
 
     if [ "x${ADMIN_PASS}" = "x" ]; then
@@ -198,15 +425,14 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
 	    | mysql -u root --password=${DB_ROOT_PASS} keystone
     fi
 
-    # Create the adminapi user
-    keystone user-create --name ${ADMIN_API} --pass ${ADMIN_API_PASS} \
-	--email "${SWAPPER_EMAIL}"
-    keystone user-role-add --tenant admin --user ${ADMIN_API} --role admin
-    keystone user-role-add --tenant admin --user ${ADMIN_API} --role _member_
+    if [ $OSVERSION -lt $OSKILO ]; then
+	unset OS_SERVICE_TOKEN OS_SERVICE_ENDPOINT
+    else
+	unset OS_TOKEN OS_URL
+	unset OS_IDENTITY_API_VERSION
+    fi
 
-    unset OS_SERVICE_TOKEN OS_SERVICE_ENDPOINT
-
-    sed -i -e "s/^.*admin_token.*$/#admin_token =/" /etc/keystone/keystone.conf
+    crudini --del /etc/keystone/keystone.conf DEFAULT admin_token
 
     # Save the passwd
     echo "ADMIN_API=\"${ADMIN_API}\"" >> $SETTINGS
@@ -215,22 +441,86 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
 fi
 
 #
+# Create the admin-openrc.{sh,py} files.
+#
+echo "export OS_TENANT_NAME=admin" > $OURDIR/admin-openrc-oldcli.sh
+echo "export OS_USERNAME=${ADMIN_API}" >> $OURDIR/admin-openrc-oldcli.sh
+echo "export OS_PASSWORD=${ADMIN_API_PASS}" >> $OURDIR/admin-openrc-oldcli.sh
+echo "export OS_AUTH_URL=http://$CONTROLLER:35357/v2.0" >> $OURDIR/admin-openrc-oldcli.sh
+
+echo "OS_TENANT_NAME=\"admin\"" > $OURDIR/admin-openrc-oldcli.py
+echo "OS_USERNAME=\"${ADMIN_API}\"" >> $OURDIR/admin-openrc-oldcli.py
+echo "OS_PASSWORD=\"${ADMIN_API_PASS}\"" >> $OURDIR/admin-openrc-oldcli.py
+echo "OS_AUTH_URL=\"http://$CONTROLLER:35357/v2.0\"" >> $OURDIR/admin-openrc-oldcli.py
+if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
+    echo "OS_IDENTITY_API_VERSION=3" >> $OURDIR/admin-openrc-oldcli.py
+else
+    echo "OS_IDENTITY_API_VERSION=2.0" >> $OURDIR/admin-openrc-oldcli.py
+fi
+
+#
+# These trigger a bug with the openstack client -- it doesn't choose v2.0
+# if they're set.
+#
+if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
+    echo "export OS_PROJECT_DOMAIN_ID=default" > $OURDIR/admin-openrc-newcli.sh
+    echo "export OS_USER_DOMAIN_ID=default" >> $OURDIR/admin-openrc-newcli.sh
+fi
+echo "export OS_PROJECT_NAME=admin" >> $OURDIR/admin-openrc-newcli.sh
+echo "export OS_TENANT_NAME=admin" >> $OURDIR/admin-openrc-newcli.sh
+echo "export OS_USERNAME=${ADMIN_API}" >> $OURDIR/admin-openrc-newcli.sh
+echo "export OS_PASSWORD=${ADMIN_API_PASS}" >> $OURDIR/admin-openrc-newcli.sh
+echo "export OS_AUTH_URL=http://$CONTROLLER:35357/${KAPISTR}" >> $OURDIR/admin-openrc-newcli.sh
+if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
+    echo "export OS_IDENTITY_API_VERSION=3" >> $OURDIR/admin-openrc-newcli.sh
+else
+    echo "export OS_IDENTITY_API_VERSION=2.0" >> $OURDIR/admin-openrc-newcli.sh
+fi
+if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
+    echo "OS_PROJECT_DOMAIN_ID=\"default\"" > $OURDIR/admin-openrc-newcli.py
+    echo "OS_USER_DOMAIN_ID=\"default\"" >> $OURDIR/admin-openrc-newcli.py
+fi
+echo "OS_PROJECT_NAME=\"admin\"" >> $OURDIR/admin-openrc-newcli.py
+echo "OS_TENANT_NAME=\"admin\"" >> $OURDIR/admin-openrc-newcli.py
+echo "OS_USERNAME=\"${ADMIN_API}\"" >> $OURDIR/admin-openrc-newcli.py
+echo "OS_PASSWORD=\"${ADMIN_API_PASS}\"" >> $OURDIR/admin-openrc-newcli.py
+echo "OS_AUTH_URL=\"http://$CONTROLLER:35357/${KAPISTR}\"" >> $OURDIR/admin-openrc-newcli.py
+if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
+    echo "OS_IDENTITY_API_VERSION=3" >> $OURDIR/admin-openrc-newcli.py
+else
+    echo "OS_IDENTITY_API_VERSION=2.0" >> $OURDIR/admin-openrc-newcli.py
+fi
+
+#
 # From here on out, we need to be the adminapi user.
 #
-export OS_TENANT_NAME=admin
-export OS_USERNAME=${ADMIN_API}
-export OS_PASSWORD=${ADMIN_API_PASS}
-export OS_AUTH_URL=http://$CONTROLLER:35357/v2.0
+if [ $OSVERSION -eq $OSJUNO ]; then
+    export OS_TENANT_NAME=admin
+    export OS_USERNAME=${ADMIN_API}
+    export OS_PASSWORD=${ADMIN_API_PASS}
+    export OS_AUTH_URL=http://$CONTROLLER:35357/${KAPISTR}
 
-echo "export OS_TENANT_NAME=admin" > $OURDIR/admin-openrc.sh
-echo "export OS_USERNAME=${ADMIN_API}" >> $OURDIR/admin-openrc.sh
-echo "export OS_PASSWORD=${ADMIN_API_PASS}" >> $OURDIR/admin-openrc.sh
-echo "export OS_AUTH_URL=http://$CONTROLLER:35357/v2.0" >> $OURDIR/admin-openrc.sh
+    ln -sf $OURDIR/admin-openrc-oldcli.sh $OURDIR/admin-openrc.sh
+    ln -sf $OURDIR/admin-openrc-oldcli.py $OURDIR/admin-openrc.py
+else
+    if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
+	export OS_PROJECT_DOMAIN_ID=default
+	export OS_USER_DOMAIN_ID=default
+    fi
+    export OS_PROJECT_NAME=admin
+    export OS_TENANT_NAME=admin
+    export OS_USERNAME=${ADMIN_API}
+    export OS_PASSWORD=${ADMIN_API_PASS}
+    export OS_AUTH_URL=http://${CONTROLLER}:35357/${KAPISTR}
+    if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
+	export OS_IDENTITY_API_VERSION=3
+    else
+	export OS_IDENTITY_API_VERSION=2.0
+    fi
 
-echo "OS_TENANT_NAME=\"admin\"" > $OURDIR/admin-openrc.py
-echo "OS_USERNAME=\"${ADMIN_API}\"" >> $OURDIR/admin-openrc.py
-echo "OS_PASSWORD=\"${ADMIN_API_PASS}\"" >> $OURDIR/admin-openrc.py
-echo "OS_AUTH_URL=\"http://$CONTROLLER:35357/v2.0\"" >> $OURDIR/admin-openrc.py
+    ln -sf $OURDIR/admin-openrc-newcli.sh $OURDIR/admin-openrc.sh
+    ln -sf $OURDIR/admin-openrc-newcli.py $OURDIR/admin-openrc.py
+fi
 
 #
 # Install the Image service
@@ -243,51 +533,144 @@ if [ -z "${GLANCE_DBPASS}" ]; then
     echo "grant all privileges on glance.* to 'glance'@'localhost' identified by '$GLANCE_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on glance.* to 'glance'@'%' identified by '$GLANCE_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
 
-    keystone user-create --name glance --pass $GLANCE_PASS
-    keystone user-role-add --user glance --tenant service --role admin
-    keystone service-create --name glance --type image \
-	--description "OpenStack Image Service"
+    if [ $OSVERSION -lt $OSKILO ]; then
+	keystone user-create --name glance --pass $GLANCE_PASS
+	keystone user-role-add --user glance --tenant service --role admin
+	keystone service-create --name glance --type image \
+	    --description "OpenStack Image Service"
 
-    keystone endpoint-create \
-	--service-id `keystone service-list | awk '/ image / {print $2}'` \
-	--publicurl http://$CONTROLLER:9292 \
-	--internalurl http://$CONTROLLER:9292 \
-	--adminurl http://$CONTROLLER:9292 \
-	--region regionOne
+	keystone endpoint-create \
+	    --service-id `keystone service-list | awk '/ image / {print $2}'` \
+	    --publicurl http://$CONTROLLER:9292 \
+	    --internalurl http://$CONTROLLER:9292 \
+	    --adminurl http://$CONTROLLER:9292 \
+	    --region $REGION
+    else
+	__openstack user create $DOMARG --password $GLANCE_PASS glance
+	__openstack role add --user glance --project service admin
+	__openstack service create --name glance \
+	    --description "OpenStack Image Service" image
+
+	if [ $KEYSTONEAPIVERSION -lt 3 ]; then
+	    __openstack endpoint create \
+		--publicurl http://$CONTROLLER:9292 \
+		--internalurl http://$CONTROLLER:9292 \
+		--adminurl http://$CONTROLLER:9292 \
+		--region $REGION image
+	else
+	    __openstack endpoint create --region $REGION \
+		image public http://$CONTROLLER:9292
+	    __openstack endpoint create --region $REGION \
+		image internal http://$CONTROLLER:9292
+	    __openstack endpoint create --region $REGION \
+		image admin http://$CONTROLLER:9292
+	fi
+    fi
 
     maybe_install_packages glance python-glanceclient
 
-    sed -i -e "s/^.*connection.*=.*$/connection = mysql:\\/\\/glance:${GLANCE_DBPASS}@$CONTROLLER\\/glance/" /etc/glance/glance-api.conf
-    # Just slap these in.
-    cat <<EOF >> /etc/glance/glance-api.conf
-[keystone_authtoken]
-auth_uri = http://$CONTROLLER:5000/v2.0
-identity_uri = http://$CONTROLLER:35357
-admin_tenant_name = service
-admin_user = glance
-admin_password = ${GLANCE_PASS}
-
-[paste_deploy]
-flavor = keystone
-EOF
+    crudini --set /etc/glance/glance-api.conf database connection \
+	"mysql://glance:${GLANCE_DBPASS}@$CONTROLLER/glance"
+    #crudini --set /etc/glance/glance-api.conf DEFAULT rpc_backend rabbit
+    crudini --set /etc/glance/glance-api.conf DEFAULT auth_strategy keystone
     crudini --set /etc/glance/glance-api.conf DEFAULT verbose ${VERBOSE_LOGGING}
     crudini --set /etc/glance/glance-api.conf DEFAULT debug ${DEBUG_LOGGING}
+    crudini --set /etc/glance/glance-api.conf paste_deploy flavor keystone
 
-    sed -i -e "s/^.*connection.*=.*$/connection = mysql:\\/\\/glance:${GLANCE_DBPASS}@$CONTROLLER\\/glance/" /etc/glance/glance-registry.conf
-    # Just slap these in.
-    cat <<EOF >> /etc/glance/glance-registry.conf
-[keystone_authtoken]
-auth_uri = http://$CONTROLLER:5000/v2.0
-identity_uri = http://$CONTROLLER:35357
-admin_tenant_name = service
-admin_user = glance
-admin_password = ${GLANCE_PASS}
+    if [ $OSVERSION -eq $OSJUNO ]; then
+	#crudini --set /etc/glance/glance-api.conf DEFAULT rabbit_host $CONTROLLER
+	#crudini --set /etc/glance/glance-api.conf DEFAULT rabbit_userid ${RABBIT_USER}
+	#crudini --set /etc/glance/glance-api.conf DEFAULT rabbit_password "${RABBIT_PASS}"
 
-[paste_deploy]
-flavor = keystone
-EOF
+	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
+	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
+	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
+	    identity_uri http://${CONTROLLER}:35357
+	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
+	    admin_tenant_name service
+	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
+	    admin_user glance
+	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
+	    admin_password "${GLANCE_PASS}"
+    else
+	#crudini --set /etc/glance/glance-api.conf oslo_messaging_rabbit \
+	#    rabbit_host $CONTROLLER
+	#crudini --set /etc/glance/glance-api.conf oslo_messaging_rabbit \
+	#    rabbit_userid ${RABBIT_USER}
+	#crudini --set /etc/glance/glance-api.conf oslo_messaging_rabbit \
+	#    rabbit_password "${RABBIT_PASS}"
+
+	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
+	    auth_uri http://${CONTROLLER}:5000
+	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
+	    auth_url http://${CONTROLLER}:35357
+	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
+	    auth_plugin password
+	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
+	    project_domain_id default
+	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
+	    user_domain_id default
+	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
+	    project_name service
+	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
+	    username glance
+	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
+	    password "${GLANCE_PASS}"
+	crudini --set /etc/glance/glance-api.conf glance_store default_store file
+	crudini --set /etc/glance/glance-api.conf glance_store \
+	    filesystem_store_datadir /var/lib/glance/images/
+	crudini --set /etc/glance/glance-api.conf DEFAULT notification_driver noop
+    fi
+
+    crudini --set /etc/glance/glance-registry.conf database \
+	connection "mysql://glance:${GLANCE_DBPASS}@$CONTROLLER/glance"
+    #crudini --set /etc/glance/glance-registry.conf DEFAULT rpc_backend rabbit
+    crudini --set /etc/glance/glance-registry.conf DEFAULT auth_strategy keystone
     crudini --set /etc/glance/glance-registry.conf DEFAULT verbose ${VERBOSE_LOGGING}
     crudini --set /etc/glance/glance-registry.conf DEFAULT debug ${DEBUG_LOGGING}
+    crudini --set /etc/glance/glance-registry.conf paste_deploy flavor keystone
+
+    if [ $OSVERSION -eq $OSJUNO ]; then
+	#crudini --set /etc/glance/glance-registry.conf DEFAULT rabbit_host $CONTROLLER
+	#crudini --set /etc/glance/glance-registry.conf DEFAULT rabbit_userid ${RABBIT_USER}
+	#crudini --set /etc/glance/glance-registry.conf DEFAULT rabbit_password "${RABBIT_PASS}"
+
+	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
+	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	    identity_uri http://${CONTROLLER}:35357
+	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	    admin_tenant_name service
+	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	    admin_user glance
+	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	    admin_password "${GLANCE_PASS}"
+    else
+	#crudini --set /etc/glance/glance-registry.conf oslo_messaging_rabbit \
+	#    rabbit_host $CONTROLLER
+	#crudini --set /etc/glance/glance-registry.conf oslo_messaging_rabbit \
+	#    rabbit_userid ${RABBIT_USER}
+	#crudini --set /etc/glance/glance-registry.conf oslo_messaging_rabbit \
+	#    rabbit_password "${RABBIT_PASS}"
+
+	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	    auth_uri http://${CONTROLLER}:5000
+	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	    auth_url http://${CONTROLLER}:35357
+	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	    auth_plugin password
+	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	    project_domain_id default
+	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	    user_domain_id default
+	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	    project_name service
+	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	    username glance
+	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	    password "${GLANCE_PASS}"
+	crudini --set /etc/glance/glance-registry.conf DEFAULT notification_driver noop
+    fi
 
     su -s /bin/sh -c "/usr/bin/glance-manage db_sync" glance
 
@@ -315,16 +698,38 @@ if [ -z "${NOVA_DBPASS}" ]; then
     echo "grant all privileges on nova.* to 'nova'@'localhost' identified by '$NOVA_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on nova.* to 'nova'@'%' identified by '$NOVA_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
 
-    keystone user-create --name nova --pass $NOVA_PASS
-    keystone user-role-add --user nova --tenant service --role admin
-    keystone service-create --name nova --type compute \
-	--description "OpenStack Compute Service"
-    keystone endpoint-create \
-	--service-id `keystone service-list | awk '/ compute / {print $2}'` \
-	--publicurl http://$CONTROLLER:8774/v2/%\(tenant_id\)s \
-	--internalurl http://$CONTROLLER:8774/v2/%\(tenant_id\)s \
-	--adminurl http://$CONTROLLER:8774/v2/%\(tenant_id\)s \
-	--region regionOne
+    if [ $OSVERSION -eq $OSJUNO ]; then
+	keystone user-create --name nova --pass $NOVA_PASS
+	keystone user-role-add --user nova --tenant service --role admin
+	keystone service-create --name nova --type compute \
+	    --description "OpenStack Compute Service"
+	keystone endpoint-create \
+	    --service-id `keystone service-list | awk '/ compute / {print $2}'` \
+	    --publicurl http://$CONTROLLER:8774/v2/%\(tenant_id\)s \
+	    --internalurl http://$CONTROLLER:8774/v2/%\(tenant_id\)s \
+	    --adminurl http://$CONTROLLER:8774/v2/%\(tenant_id\)s \
+	    --region $REGION
+    else
+	__openstack user create $DOMARG --password $NOVA_PASS nova
+	__openstack role add --user nova --project service admin
+	__openstack service create --name nova \
+	    --description "OpenStack Compute Service" compute
+
+	if [ $KEYSTONEAPIVERSION -lt 3 ]; then
+	    __openstack endpoint create \
+		--publicurl http://$CONTROLLER:8774/v2/%\(tenant_id\)s \
+		--internalurl http://$CONTROLLER:8774/v2/%\(tenant_id\)s \
+		--adminurl http://$CONTROLLER:8774/v2/%\(tenant_id\)s \
+		--region $REGION compute
+	else
+	    __openstack endpoint create --region $REGION \
+		compute public http://${CONTROLLER}:8774/v2/%\(tenant_id\)s
+	    __openstack endpoint create --region $REGION \
+		compute internal http://${CONTROLLER}:8774/v2/%\(tenant_id\)s
+	    __openstack endpoint create --region $REGION \
+		compute admin http://${CONTROLLER}:8774/v2/%\(tenant_id\)s
+	fi
+    fi
 
     maybe_install_packages nova-api nova-cert nova-conductor nova-consoleauth \
 	nova-novncproxy nova-scheduler python-novaclient
@@ -343,39 +748,88 @@ EOF
 	chmod ug+x $OURDIR/novaconsole.sh
     fi
 
-    # Just slap these in.
-    cat <<EOF >> /etc/nova/nova.conf
-[DEFAULT]
-rpc_backend = rabbit
-rabbit_host = $CONTROLLER
-rabbit_userid = ${RABBIT_USER}
-rabbit_password = ${RABBIT_PASS}
-auth_strategy = keystone
-my_ip = ${MGMTIP}
-vncserver_listen = ${MGMTIP}
-vncserver_proxyclient_address = ${MGMTIP}
-verbose = ${VERBOSE_LOGGING}
-debug = ${DEBUG_LOGGING}
+    crudini --set /etc/nova/nova.conf database connection \
+	"mysql://nova:$NOVA_DBPASS@$CONTROLLER/nova"
+    crudini --set /etc/nova/nova.conf DEFAULT rpc_backend rabbit
+    crudini --set /etc/nova/nova.conf DEFAULT auth_strategy keystone
+    crudini --set /etc/nova/nova.conf DEFAULT my_ip ${MGMTIP}
+    crudini --set /etc/nova/nova.conf glance host $CONTROLLER
+    crudini --set /etc/nova/nova.conf DEFAULT verbose ${VERBOSE_LOGGING}
+    crudini --set /etc/nova/nova.conf DEFAULT debug ${DEBUG_LOGGING}
 
-[database]
-connection = mysql://nova:$NOVA_DBPASS@$CONTROLLER/nova
+    if [ $OSVERSION -lt $OSKILO ]; then
+	crudini --set /etc/nova/nova.conf DEFAULT rabbit_host $CONTROLLER
+	crudini --set /etc/nova/nova.conf DEFAULT rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/nova/nova.conf DEFAULT rabbit_password "${RABBIT_PASS}"
 
-[keystone_authtoken]
-auth_uri = http://$CONTROLLER:5000/v2.0
-identity_uri = http://$CONTROLLER:35357
-admin_tenant_name = service
-admin_user = nova
-admin_password = ${NOVA_PASS}
+	crudini --set /etc/nova/nova.conf keystone_authtoken \
+	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
+	crudini --set /etc/nova/nova.conf keystone_authtoken \
+	    identity_uri http://${CONTROLLER}:35357
+	crudini --set /etc/nova/nova.conf keystone_authtoken \
+	    admin_tenant_name service
+	crudini --set /etc/nova/nova.conf keystone_authtoken \
+	    admin_user nova
+	crudini --set /etc/nova/nova.conf keystone_authtoken \
+	    admin_password "${NOVA_PASS}"
+    else
+	crudini --set /etc/nova/nova.conf oslo_messaging_rabbit \
+	    rabbit_host $CONTROLLER
+	crudini --set /etc/nova/nova.conf oslo_messaging_rabbit \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/nova/nova.conf oslo_messaging_rabbit \
+	    rabbit_password "${RABBIT_PASS}"
 
-[glance]
-host = $CONTROLLER
-EOF
+	crudini --set /etc/nova/nova.conf keystone_authtoken \
+	    auth_uri http://${CONTROLLER}:5000
+	crudini --set /etc/nova/nova.conf keystone_authtoken \
+	    auth_url http://${CONTROLLER}:35357
+	crudini --set /etc/nova/nova.conf keystone_authtoken \
+	    auth_plugin password
+	crudini --set /etc/nova/nova.conf keystone_authtoken \
+	    project_domain_id default
+	crudini --set /etc/nova/nova.conf keystone_authtoken \
+	    user_domain_id default
+	crudini --set /etc/nova/nova.conf keystone_authtoken \
+	    project_name service
+	crudini --set /etc/nova/nova.conf keystone_authtoken \
+	    username nova
+	crudini --set /etc/nova/nova.conf keystone_authtoken \
+	    password "${NOVA_PASS}"
+    fi
+
+    if [ $OSVERSION -lt $OSLIBERTY ]; then
+	crudini --set /etc/nova/nova.conf DEFAULT vncserver_listen ${MGMTIP}
+	crudini --set /etc/nova/nova.conf DEFAULT vncserver_proxyclient_address ${MGMTIP}
+    else
+	crudini --set /etc/nova/nova.conf vnc vncserver_listen ${MGMTIP}
+	crudini --set /etc/nova/nova.conf vnc vncserver_proxyclient_address ${MGMTIP}
+    fi
+
+    #
+    # Apparently on Kilo and before, the default filters did not include
+    # DiskFilter, but in Liberty it does.  This causes us problems for
+    # our small root partition :).
+    #
+    if [ $OSVERSION -eq $OSKILO ]; then
+	crudini --set /etc/nova/nova.conf DEFAULT scheduler_available_filters \
+	    nova.scheduler.filters.all_filters
+	crudini --set /etc/nova/nova.conf DEFAULT scheduler_default_filters \
+	    'RetryFilter, AvailabilityZoneFilter, RamFilter, ComputeFilter, ComputeCapabilitiesFilter, ImagePropertiesFilter, ServerGroupAntiAffinityFilter, ServerGroupAffinityFilter'
+    elif [ $OSVERSION -ge $OSLIBERTY ]; then
+	crudini --set /etc/nova/nova.conf DEFAULT scheduler_available_filters \
+	    nova.scheduler.filters.all_filters
+	crudini --set /etc/nova/nova.conf DEFAULT scheduler_default_filters \
+	    'RetryFilter, AvailabilityZoneFilter, RamFilter, ComputeFilter, ComputeCapabilitiesFilter, ImagePropertiesFilter, ServerGroupAntiAffinityFilter, ServerGroupAffinityFilter'
+    fi
+
+    if [ $OSVERSION -ge $OSKILO ]; then
+	crudini --set /etc/nova/nova.conf oslo_concurrency \
+	    lock_path /var/lib/nova/tmp
+    fi
 
     if [ ${ENABLE_NEW_SERIAL_SUPPORT} = 1 ]; then
-	cat <<EOF >> /etc/nova/nova.conf
-[serial_console]
-enabled = true
-EOF
+	crudini --set /etc/nova/nova.conf serial_console enabled true
     fi
 
     su -s /bin/sh -c "nova-manage db sync" nova
@@ -436,18 +890,40 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
     echo "grant all privileges on neutron.* to 'neutron'@'localhost' identified by '$NEUTRON_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on neutron.* to 'neutron'@'%' identified by '$NEUTRON_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
 
-    keystone user-create --name neutron --pass ${NEUTRON_PASS}
-    keystone user-role-add --user neutron --tenant service --role admin
+    if [ $OSVERSION -eq $OSJUNO ]; then
+	keystone user-create --name neutron --pass ${NEUTRON_PASS}
+	keystone user-role-add --user neutron --tenant service --role admin
 
-    keystone service-create --name neutron --type network \
-	--description "OpenStack Networking Service"
+	keystone service-create --name neutron --type network \
+	    --description "OpenStack Networking Service"
 
-    keystone endpoint-create \
-	--service-id `keystone service-list | awk '/ network / {print $2}'` \
-	--publicurl http://$CONTROLLER:9696 \
-	--adminurl http://$CONTROLLER:9696 \
-	--internalurl http://$CONTROLLER:9696 \
-	--region regionOne
+	keystone endpoint-create \
+	    --service-id `keystone service-list | awk '/ network / {print $2}'` \
+	    --publicurl http://$CONTROLLER:9696 \
+	    --adminurl http://$CONTROLLER:9696 \
+	    --internalurl http://$CONTROLLER:9696 \
+	    --region $REGION
+    else
+	__openstack user create $DOMARG --password $NEUTRON_PASS neutron
+	__openstack role add --user neutron --project service admin
+	__openstack service create --name neutron \
+	    --description "OpenStack Networking Service" network
+
+	if [ $KEYSTONEAPIVERSION -lt 3 ]; then
+	    __openstack endpoint create \
+		--publicurl http://${CONTROLLER}:9696 \
+		--adminurl http://${CONTROLLER}:9696 \
+		--internalurl http://${CONTROLLER}:9696 \
+		--region $REGION network
+	else
+	    __openstack endpoint create --region $REGION \
+		network public http://${CONTROLLER}:9696
+	    __openstack endpoint create --region $REGION \
+		network internal http://${CONTROLLER}:9696
+	    __openstack endpoint create --region $REGION \
+		network admin http://${CONTROLLER}:9696
+	fi
+    fi
 
     maybe_install_packages neutron-server neutron-plugin-ml2 python-neutronclient
 
@@ -460,99 +936,158 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
     #	patch -d / -p0 < $DIRNAME/etc/neutron-interface-add.patch.patch
     #fi
 
-    service_tenant_id=`keystone tenant-get service | grep id | cut -d '|' -f 3`
+    crudini --set /etc/neutron/neutron.conf \
+	database connection "mysql://neutron:$NEUTRON_DBPASS@$CONTROLLER/neutron"
 
-sed -i -e "s/^\\(.*connection.*=.*\\)$/#\1/" /etc/neutron/neutron.conf
-sed -i -e "s/^\\(.*auth_host.*=.*\\)$/#\1/" /etc/neutron/neutron.conf
-sed -i -e "s/^\\(.*auth_port.*=.*\\)$/#\1/" /etc/neutron/neutron.conf
-sed -i -e "s/^\\(.*auth_protocol.*=.*\\)$/#\1/" /etc/neutron/neutron.conf
+    crudini --del /etc/neutron/neutron.conf keystone_authtoken auth_host
+    crudini --del /etc/neutron/neutron.conf keystone_authtoken auth_port
+    crudini --del /etc/neutron/neutron.conf keystone_authtoken auth_protocol
 
-    cat <<EOF >> /etc/neutron/neutron.conf
-[DEFAULT]
-rpc_backend = rabbit
-rabbit_host = $CONTROLLER
-rabbit_userid = ${RABBIT_USER}
-rabbit_password = ${RABBIT_PASS}
-auth_strategy = keystone
-my_ip = ${MGMTIP}
-vncserver_listen = ${MGMTIP}
-vncserver_proxyclient_address = ${MGMTIP}
-verbose = ${VERBOSE_LOGGING}
-debug = ${DEBUG_LOGGING}
-core_plugin = ml2
-service_plugins = router,metering
-allow_overlapping_ips = True
-notify_nova_on_port_status_changes = True
-notify_nova_on_port_data_changes = True
-nova_url = http://$CONTROLLER:8774/v2
-nova_admin_auth_url = http://$CONTROLLER:35357/v2.0
-nova_region_name = regionOne
-nova_admin_username = nova
-nova_admin_tenant_id = ${service_tenant_id}
-nova_admin_password = ${NOVA_PASS}
-notification_driver = messagingv2
+    crudini --set /etc/neutron/neutron.conf DEFAULT rpc_backend rabbit
+    crudini --set /etc/neutron/neutron.conf DEFAULT auth_strategy keystone
+    crudini --set /etc/neutron/neutron.conf DEFAULT verbose ${VERBOSE_LOGGING}
+    crudini --set /etc/neutron/neutron.conf DEFAULT debug ${DEBUG_LOGGING}
+    crudini --set /etc/neutron/neutron.conf DEFAULT core_plugin ml2
+    crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins 'router,metering'
+    crudini --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips True
 
-[database]
-connection = mysql://neutron:$NEUTRON_DBPASS@$CONTROLLER/neutron
+    if [ $OSVERSION -le $OSKILO ]; then
+	crudini --set /etc/neutron/neutron.conf DEFAULT my_ip ${MGMTIP}
+    fi
 
-[keystone_authtoken]
-auth_uri = http://$CONTROLLER:5000/v2.0
-identity_uri = http://$CONTROLLER:35357
-admin_tenant_name = service
-admin_user = neutron
-admin_password = ${NEUTRON_PASS}
+    if [ $OSVERSION -lt $OSKILO ]; then
+	crudini --set /etc/neutron/neutron.conf DEFAULT rabbit_host $CONTROLLER
+	crudini --set /etc/neutron/neutron.conf DEFAULT rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/neutron/neutron.conf DEFAULT rabbit_password "${RABBIT_PASS}"
 
-[glance]
-host = $CONTROLLER
-EOF
+	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
+	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	    identity_uri http://${CONTROLLER}:35357
+	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	    admin_tenant_name service
+	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	    admin_user neutron
+	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	    admin_password "${NEUTRON_PASS}"
+    else
+	crudini --set /etc/neutron/neutron.conf oslo_messaging_rabbit \
+	    rabbit_host $CONTROLLER
+	crudini --set /etc/neutron/neutron.conf oslo_messaging_rabbit \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/neutron/neutron.conf oslo_messaging_rabbit \
+	    rabbit_password "${RABBIT_PASS}"
 
-fwdriver="neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver"
-if [ ${DISABLE_SECURITY_GROUPS} -eq 1 ]; then
-    fwdriver="neutron.agent.firewall.NoopFirewallDriver"
-fi
+	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	    auth_uri http://${CONTROLLER}:5000
+	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	    auth_url http://${CONTROLLER}:35357
+	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	    auth_plugin password
+	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	    project_domain_id default
+	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	    user_domain_id default
+	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	    project_name service
+	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	    username neutron
+	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	    password "${NEUTRON_PASS}"
+    fi
 
-    cat <<EOF >> /etc/neutron/plugins/ml2/ml2_conf.ini
-[ml2]
-type_drivers = ${network_types}
-tenant_network_types = ${network_types}
-mechanism_drivers = openvswitch
+    crudini --set /etc/neutron/neutron.conf DEFAULT \
+	notify_nova_on_port_status_changes True
+    crudini --set /etc/neutron/neutron.conf DEFAULT \
+	notify_nova_on_port_data_changes True
+    crudini --set /etc/neutron/neutron.conf DEFAULT \
+	nova_url http://$CONTROLLER:8774/v2
 
-[ml2_type_flat]
-flat_networks = ${flat_networks}
+    if [ $OSVERSION -eq $OSJUNO ]; then
+	service_tenant_id=`keystone tenant-get service | grep id | cut -d '|' -f 3`
 
-[ml2_type_gre]
-tunnel_id_ranges = 1:1000
+	crudini --set /etc/neutron/neutron.conf DEFAULT \
+	    nova_admin_auth_url http://$CONTROLLER:35357/${KAPISTR}
+	crudini --set /etc/neutron/neutron.conf DEFAULT nova_region_name $REGION
+	crudini --set /etc/neutron/neutron.conf DEFAULT nova_admin_username nova
+	crudini --set /etc/neutron/neutron.conf DEFAULT \
+	    nova_admin_tenant_id ${service_tenant_id}
+	crudini --set /etc/neutron/neutron.conf DEFAULT \
+	    nova_admin_password ${NOVA_PASS}
+	crudini --set /etc/neutron/neutron.conf DEFAULT \
+	    notification_driver = messagingv2
+    else
+	crudini --set /etc/neutron/neutron.conf nova \
+	    auth_url http://$CONTROLLER:35357
+	crudini --set /etc/neutron/neutron.conf nova auth_plugin password
+	crudini --set /etc/neutron/neutron.conf nova project_domain_id default
+	crudini --set /etc/neutron/neutron.conf nova user_domain_id default
+	crudini --set /etc/neutron/neutron.conf nova region_name $REGION
+	crudini --set /etc/neutron/neutron.conf nova project_name service
+	crudini --set /etc/neutron/neutron.conf nova username nova
+	crudini --set /etc/neutron/neutron.conf nova password ${NOVA_PASS}
+    fi
 
+    fwdriver="neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver"
+    if [ ${DISABLE_SECURITY_GROUPS} -eq 1 ]; then
+	fwdriver="neutron.agent.firewall.NoopFirewallDriver"
+    fi
+
+    crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
+	type_drivers ${network_types}
+    crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
+	tenant_network_types ${network_types}
+    crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
+	mechanism_drivers openvswitch
+    crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat \
+	flat_networks ${flat_networks}
+    crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_gre \
+	tunnel_id_ranges 1:1000
+cat <<EOF >>/etc/neutron/plugins/ml2/ml2_conf.ini
 [ml2_type_vlan]
 ${network_vlan_ranges}
-
-[ml2_type_vxlan]
-vni_ranges = 3000:4000
-#vxlan_group = 224.0.0.1
-
-[securitygroup]
-enable_security_group = True
-enable_ipset = True
-firewall_driver = $fwdriver
 EOF
+    crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vxlan \
+	vni_ranges 3000:4000
+#    crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vxlan \
+#	vxlan_group 224.0.0.1
+    crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup \
+	enable_security_group True
+    crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup \
+	enable_ipset True
+    crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup \
+	firewall_driver $fwdriver
 
-    cat <<EOF >> /etc/nova/nova.conf
-[DEFAULT]
-network_api_class = nova.network.neutronv2.api.API
-security_group_api = neutron
-linuxnet_interface_driver = nova.network.linux_net.LinuxOVSInterfaceDriver
-firewall_driver = nova.virt.firewall.NoopFirewallDriver
+    crudini --set /etc/nova/nova.conf DEFAULT \
+	network_api_class nova.network.neutronv2.api.API
+    crudini --set /etc/nova/nova.conf DEFAULT \
+	security_group_api neutron
+    crudini --set /etc/nova/nova.conf DEFAULT \
+	linuxnet_interface_driver nova.network.linux_net.LinuxOVSInterfaceDriver
+    crudini --set /etc/nova/nova.conf DEFAULT \
+	firewall_driver nova.virt.firewall.NoopFirewallDriver
 
-[neutron]
-url = http://$CONTROLLER:9696
-auth_strategy = keystone
-admin_auth_url = http://$CONTROLLER:35357/v2.0
-admin_tenant_name = service
-admin_username = neutron
-admin_password = ${NEUTRON_PASS}
-service_metadata_proxy = True
-metadata_proxy_shared_secret = ${NEUTRON_METADATA_SECRET}
-EOF
+    crudini --set /etc/nova/nova.conf neutron \
+	url http://$CONTROLLER:9696
+    crudini --set /etc/nova/nova.conf neutron \
+	auth_strategy keystone
+    if [ $OSVERSION -le $OSKILO ]; then
+	crudini --set /etc/nova/nova.conf neutron \
+	    admin_auth_url http://$CONTROLLER:35357/${KAPISTR}
+    else
+	crudini --set /etc/nova/nova.conf neutron \
+	    auth_url http://$CONTROLLER:35357
+    fi
+    crudini --set /etc/nova/nova.conf neutron \
+	admin_tenant_name service
+    crudini --set /etc/nova/nova.conf neutron \
+	admin_username neutron
+    crudini --set /etc/nova/nova.conf neutron \
+	admin_password ${NEUTRON_PASS}
+    crudini --set /etc/nova/nova.conf neutron \
+	service_metadata_proxy True
+    crudini --set /etc/nova/nova.conf neutron \
+	metadata_proxy_shared_secret ${NEUTRON_METADATA_SECRET}
 
     su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade ${OSCODENAME}" neutron
 
@@ -570,7 +1105,7 @@ fi
 #
 # Install the Network service on the networkmanager
 #
-if [ -z "${NEUTRON_NETWORKMANAGER_DONE}" ]; then
+if [ -z "${NEUTRON_NETWORKMANAGER_DONE}" -a ! "$CONTROLLER" = "$NETWORKMANAGER" ]; then
     NEUTRON_NETWORKMANAGER_DONE=1
 
     fqdn=`getfqdn $NETWORKMANAGER`
@@ -611,7 +1146,7 @@ fi
 if [ -z "${NEUTRON_NETWORKS_DONE}" ]; then
     NEUTRON_NETWORKS_DONE=1
 
-    if [ "$OSCODENAME" = "kilo" ]; then
+    if [ "$OSCODENAME" = "kilo" -o "$OSCODENAME" = "liberty" ]; then
 	neutron net-create ext-net --shared --router:external \
 	    --provider:physical_network external --provider:network_type flat
     else
@@ -654,6 +1189,33 @@ if [ -z "${DASHBOARD_DONE}" ]; then
 	/etc/openstack-dashboard/local_settings.py
     sed -i -e 's/^.*ALLOWED_HOSTS = \[.*$/ALLOWED_HOSTS = \["*"\]/' \
 	/etc/openstack-dashboard/local_settings.py
+    grep -q SESSION_TIMEOUT /etc/openstack-dashboard/local_settings.py
+    if [ $? -eq 0 ]; then
+	sed -i -e "s/^.*SESSION_TIMEOUT.*=.*\$/SESSION_TIMEOUT = ${SESSIONTIMEOUT}/" \
+	    /etc/openstack-dashboard/local_settings.py
+    else
+	echo "SESSION_TIMEOUT = ${SESSIONTIMEOUT}" \
+	    >> /etc/openstack-dashboard/local_settings.py
+    fi
+    grep -q OPENSTACK_KEYSTONE_DEFAULT_ROLE /etc/openstack-dashboard/local_settings.py
+    if [ $? -eq 0 ]; then
+	sed -i -e "s/^.*OPENSTACK_KEYSTONE_DEFAULT_ROLE.*=.*\$/OPENSTACK_KEYSTONE_DEFAULT_ROLE = \"user\"/" \
+	    /etc/openstack-dashboard/local_settings.py
+    else
+	echo "OPENSTACK_KEYSTONE_DEFAULT_ROLE = \"user\"" \
+	    >> /etc/openstack-dashboard/local_settings.py
+    fi
+
+    if [ $OSVERSION -ge $OSKILO ]; then
+	cat <<EOF >> /etc/openstack-dashboard/local_settings.py
+CACHES = {
+    'default': {
+         'BACKEND': 'django.core.cache.backends.memcached.MemcachedCache',
+         'LOCATION': '127.0.0.1:11211',
+    }
+}
+EOF
+    fi
 
     service_restart apache2
     service_enable apache2
@@ -675,12 +1237,13 @@ if [ -z "${CINDER_DBPASS}" ]; then
     echo "grant all privileges on cinder.* to 'cinder'@'localhost' identified by '$CINDER_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on cinder.* to 'cinder'@'%' identified by '$CINDER_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
 
-    keystone user-create --name cinder --pass $CINDER_PASS
-    keystone user-role-add --user cinder --tenant service --role admin
-    keystone service-create --name cinder --type volume \
-	--description "OpenStack Block Storage Service"
-    keystone service-create --name cinderv2 --type volumev2 \
-	--description "OpenStack Block Storage Service"
+    if [ $OSVERSION -eq $OSJUNO ]; then
+	keystone user-create --name cinder --pass $CINDER_PASS
+	keystone user-role-add --user cinder --tenant service --role admin
+	keystone service-create --name cinder --type volume \
+	    --description "OpenStack Block Storage Service"
+	keystone service-create --name cinderv2 --type volumev2 \
+	    --description "OpenStack Block Storage Service"
 
 #    if [ $OSCODENAME = 'juno' ]; then
 	keystone endpoint-create \
@@ -688,7 +1251,7 @@ if [ -z "${CINDER_DBPASS}" ]; then
 	    --publicurl http://${CONTROLLER}:8776/v1/%\(tenant_id\)s \
 	    --internalurl http://${CONTROLLER}:8776/v1/%\(tenant_id\)s \
 	    --adminurl http://${CONTROLLER}:8776/v1/%\(tenant_id\)s \
-	    --region regionOne
+	    --region $REGION
 #    else
 #	# Kilo uses the v2 endpoint even for v1 service
 #	keystone endpoint-create \
@@ -696,64 +1259,124 @@ if [ -z "${CINDER_DBPASS}" ]; then
 #	    --publicurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
 #	    --internalurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
 #	    --adminurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
-#	    --region regionOne
+#	    --region $REGION
  #   fi
 
-    keystone endpoint-create \
-	--service-id `keystone service-list | awk '/ volumev2 / {print $2}'` \
-	--publicurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
-	--internalurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
-	--adminurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
-	--region regionOne
+        keystone endpoint-create \
+	    --service-id `keystone service-list | awk '/ volumev2 / {print $2}'` \
+	    --publicurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
+	    --internalurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
+	    --adminurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
+	    --region $REGION
+    else
+	__openstack user create $DOMARG --password $CINDER_PASS cinder
+	__openstack role add --user cinder --project service admin
+	__openstack service create --name cinder \
+	    --description "OpenStack Block Storage Service" volume
+	__openstack service create --name cinderv2 \
+	    --description "OpenStack Block Storage Service" volumev2
+
+	if [ $KEYSTONEAPIVERSION -lt 3 ]; then
+	    __openstack endpoint create \
+		--publicurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
+		--internalurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
+		--adminurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
+		--region $REGION \
+		volume
+	    __openstack endpoint create \
+		--publicurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
+		--internalurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
+		--adminurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
+		--region $REGION \
+		volumev2
+	else
+	    __openstack endpoint create --region $REGION \
+		volume public http://${CONTROLLER}:8776/v1/%\(tenant_id\)s
+	    __openstack endpoint create --region $REGION \
+		volume internal http://${CONTROLLER}:8776/v1/%\(tenant_id\)s
+	    __openstack endpoint create --region $REGION \
+		volume admin http://${CONTROLLER}:8776/v1/%\(tenant_id\)s
+
+	    __openstack endpoint create --region $REGION \
+		volumev2 public http://${CONTROLLER}:8776/v2/%\(tenant_id\)s
+	    __openstack endpoint create --region $REGION \
+		volumev2 internal http://${CONTROLLER}:8776/v2/%\(tenant_id\)s
+	    __openstack endpoint create --region $REGION \
+		volumev2 admin http://${CONTROLLER}:8776/v2/%\(tenant_id\)s
+	fi
+    fi
 
     maybe_install_packages cinder-api cinder-scheduler python-cinderclient
 
-    sed -i -e "s/^\\(.*volume_group.*=.*\\)$/#\1/" /etc/cinder/cinder.conf
+    crudini --set /etc/cinder/cinder.conf \
+	database connection "mysql://cinder:$CINDER_DBPASS@$CONTROLLER/cinder"
 
-    # Just slap these in.
-    cat <<EOF >> /etc/cinder/cinder.conf
-[database]
-connection = mysql://cinder:${CINDER_DBPASS}@$CONTROLLER/cinder
+    crudini --del /etc/cinder/cinder.conf keystone_authtoken auth_host
+    crudini --del /etc/cinder/cinder.conf keystone_authtoken auth_port
+    crudini --del /etc/cinder/cinder.conf keystone_authtoken auth_protocol
 
-[DEFAULT]
-rpc_backend = rabbit
-rabbit_host = ${CONTROLLER}
-rabbit_userid = ${RABBIT_USER}
-rabbit_password = ${RABBIT_PASS}
-auth_strategy = keystone
-my_ip = ${MGMTIP}
-verbose = ${VERBOSE_LOGGING}
-debug = ${DEBUG_LOGGING}
-glance_host = ${CONTROLLER}
-volume_group = openstack-volumes
-EOF
+    crudini --set /etc/cinder/cinder.conf DEFAULT rpc_backend rabbit
+    crudini --set /etc/cinder/cinder.conf DEFAULT auth_strategy keystone
+    crudini --set /etc/cinder/cinder.conf DEFAULT verbose ${VERBOSE_LOGGING}
+    crudini --set /etc/cinder/cinder.conf DEFAULT debug ${DEBUG_LOGGING}
+    crudini --set /etc/cinder/cinder.conf DEFAULT my_ip ${MGMTIP}
 
-    if [ $OSCODENAME = 'juno' ] ; then
-	cat <<EOF >> /etc/cinder/cinder.conf
-[keystone_authtoken]
-auth_uri = http://$CONTROLLER:5000/v2.0
-identity_uri = http://$CONTROLLER:35357
-admin_tenant_name = service
-admin_user = cinder
-admin_password = ${CINDER_PASS}
-EOF
+    if [ $OSVERSION -lt $OSKILO ]; then
+	crudini --set /etc/cinder/cinder.conf DEFAULT rabbit_host $CONTROLLER
+	crudini --set /etc/cinder/cinder.conf DEFAULT rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/cinder/cinder.conf DEFAULT rabbit_password "${RABBIT_PASS}"
+
+	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
+	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	    identity_uri http://${CONTROLLER}:35357
+	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	    admin_tenant_name service
+	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	    admin_user cinder
+	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	    admin_password "${CINDER_PASS}"
     else
-	cat <<EOF >> /etc/cinder/cinder.conf
-[keystone_authtoken]
-auth_uri = http://$CONTROLLER:5000
-auth_url = http://$CONTROLLER:35357
-auth_plugin = password
-project_domain_id = default
-user_domain_id = default
-project_name = service
-username = cinder
-password = ${CINDER_PASS}
-EOF
+	crudini --set /etc/cinder/cinder.conf oslo_messaging_rabbit \
+	    rabbit_host $CONTROLLER
+	crudini --set /etc/cinder/cinder.conf oslo_messaging_rabbit \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/cinder/cinder.conf oslo_messaging_rabbit \
+	    rabbit_password "${RABBIT_PASS}"
+
+	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	    auth_uri http://${CONTROLLER}:5000
+	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	    auth_url http://${CONTROLLER}:35357
+	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	    auth_plugin password
+	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	    project_domain_id default
+	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	    user_domain_id default
+	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	    project_name service
+	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	    username cinder
+	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	    password "${CINDER_PASS}"
     fi
 
-    sed -i -e "s/^\\(.*auth_host.*=.*\\)$/#\1/" /etc/cinder/cinder.conf
-    sed -i -e "s/^\\(.*auth_port.*=.*\\)$/#\1/" /etc/cinder/cinder.conf
-    sed -i -e "s/^\\(.*auth_protocol.*=.*\\)$/#\1/" /etc/cinder/cinder.conf
+    crudini --set /etc/cinder/cinder.conf DEFAULT glance_host ${CONTROLLER}
+
+    if [ $OSVERSION -eq $OSKILO ]; then
+	crudini --set /etc/cinder/cinder.conf oslo_concurrency \
+	    lock_path /var/lock/cinder
+    elif [ $OSVERSION -ge $OSLIBERTY ]; then
+	crudini --set /etc/cinder/cinder.conf oslo_concurrency \
+	    lock_path /var/lib/cinder/tmp
+    fi
+
+    if [ $OSVERSION -ge $OSLIBERTY ]; then
+	crudini --set /etc/nova/nova.conf cinder os_region_name $REGION
+    fi
+
+    sed -i -e "s/^\\(.*volume_group.*=.*\\)$/#\1/" /etc/cinder/cinder.conf
 
     su -s /bin/sh -c "/usr/bin/cinder-manage db sync" cinder
 
@@ -793,17 +1416,40 @@ if [ -z "${SWIFT_PASS}" ]; then
     SWIFT_HASH_PATH_PREFIX=`$PSWDGEN`
     SWIFT_HASH_PATH_SUFFIX=`$PSWDGEN`
 
-    keystone user-create --name swift --pass $SWIFT_PASS
-    keystone user-role-add --user swift --tenant service --role admin
-    keystone service-create --name swift --type object-store \
-	--description "OpenStack Object Storage Service"
+    if [ $OSVERSION -eq $OSJUNO ]; then
+	keystone user-create --name swift --pass $SWIFT_PASS
+	keystone user-role-add --user swift --tenant service --role admin
+	keystone service-create --name swift --type object-store \
+	    --description "OpenStack Object Storage Service"
 
-    keystone endpoint-create \
-	--service-id `keystone service-list | awk '/ object-store / {print $2}'` \
-	--publicurl http://${CONTROLLER}:8080/v1/AUTH_%\(tenant_id\)s \
-	--internalurl http://${CONTROLLER}:8080/v1/AUTH_%\(tenant_id\)s \
-	--adminurl http://${CONTROLLER}:8080 \
-	--region regionOne
+	keystone endpoint-create \
+	    --service-id `keystone service-list | awk '/ object-store / {print $2}'` \
+	    --publicurl http://${CONTROLLER}:8080/v1/AUTH_%\(tenant_id\)s \
+	    --internalurl http://${CONTROLLER}:8080/v1/AUTH_%\(tenant_id\)s \
+	    --adminurl http://${CONTROLLER}:8080 \
+	    --region $REGION
+    else
+	__openstack user create $DOMARG --password $SWIFT_PASS swift
+	__openstack role add --user swift --project service admin
+	__openstack service create --name swift \
+	    --description "OpenStack Object Storage Service" object-store
+
+	if [ $KEYSTONEAPIVERSION -lt 3 ]; then
+	    __openstack endpoint create \
+		--publicurl http://${CONTROLLER}:8080/v1/AUTH_%\(tenant_id\)s \
+		--internalurl http://${CONTROLLER}:8080/v1/AUTH_%\(tenant_id\)s \
+		--adminurl http://${CONTROLLER}:8080 \
+		--region $REGION \
+		object-store
+	else
+	    __openstack endpoint create --region $REGION \
+		object-store public http://${CONTROLLER}:8080/v1/AUTH_%\(tenant_id\)s
+	    __openstack endpoint create --region $REGION \
+		object-store internal http://${CONTROLLER}:8080/v1/AUTH_%\(tenant_id\)s
+	    __openstack endpoint create --region $REGION \
+		object-store admin http://${CONTROLLER}:8080/v1
+	fi
+    fi
 
     maybe_install_packages swift swift-proxy python-swiftclient \
 	python-keystoneclient python-keystonemiddleware memcached
@@ -812,6 +1458,11 @@ if [ -z "${SWIFT_PASS}" ]; then
 
     wget -O /etc/swift/proxy-server.conf \
 	"https://git.openstack.org/cgit/openstack/swift/plain/etc/proxy-server.conf-sample?h=stable/${OSCODENAME}"
+    if [ ! $? -eq 0 ]; then
+	# Try the EOL version...
+	wget -O /etc/swift/proxy-server.conf \
+	    "https://git.openstack.org/cgit/openstack/swift/plain/etc/proxy-server.conf-sample?h=${OSCODENAME}-eol"
+    fi
 
     # Just slap these in.
     crudini --set /etc/swift/proxy-server.conf DEFAULT bind_port 8080
@@ -822,9 +1473,12 @@ if [ -z "${SWIFT_PASS}" ]; then
     if [ "$OSCODENAME" = "juno" ]; then
 	crudini --set /etc/swift/proxy-server.conf pipeline:main pipeline \
 	    'cache authtoken healthcheck keystoneauth proxy-logging proxy-server'
-    else
+    elif [ $OSVERSION -eq $OSKILO ]; then
 	crudini --set /etc/swift/proxy-server.conf pipeline:main pipeline \
 	    'catch_errors gatekeeper healthcheck proxy-logging cache container_sync bulk ratelimit authtoken keystoneauth container-quotas account-quotas slo dlo proxy-logging proxy-server'
+    else
+	crudini --set /etc/swift/proxy-server.conf pipeline:main pipeline \
+	    'catch_errors gatekeeper healthcheck proxy-logging cache container_sync bulk ratelimit authtoken keystoneauth container-quotas account-quotas slo dlo versioned_writes proxy-logging proxy-server'
     fi
 
     crudini --set /etc/swift/proxy-server.conf \
@@ -846,7 +1500,7 @@ if [ -z "${SWIFT_PASS}" ]; then
 	filter:authtoken paste.filter_factory keystonemiddleware.auth_token:filter_factory
     if [ "$OSCODENAME" = "juno" ]; then
 	crudini --set /etc/swift/proxy-server.conf \
-	    auth_uri "http://${CONTROLLER}:5000/v2.0"
+	    auth_uri "http://${CONTROLLER}:5000/${KAPISTR}"
 	crudini --set /etc/swift/proxy-server.conf \
 	    filter:authtoken identity_url "http://${CONTROLLER}:35357"
 	crudini --set /etc/swift/proxy-server.conf \
@@ -877,11 +1531,13 @@ if [ -z "${SWIFT_PASS}" ]; then
 	filter:authtoken delay_auth_decision true
 
     crudini --set /etc/swift/proxy-server.conf \
+	filter:cache use 'egg:swift#memcache'
+    crudini --set /etc/swift/proxy-server.conf \
 	filter:cache memcache_servers 127.0.0.1:11211
 
-    sed -i -e "s/^\\(.*auth_host.*=.*\\)$/#\1/" /etc/swift/proxy-server.conf
-    sed -i -e "s/^\\(.*auth_port.*=.*\\)$/#\1/" /etc/swift/proxy-server.conf
-    sed -i -e "s/^\\(.*auth_protocol.*=.*\\)$/#\1/" /etc/swift/proxy-server.conf
+    crudini --del /etc/swift/proxy-server.conf keystone_authtoken auth_host
+    crudini --del /etc/swift/proxy-server.conf keystone_authtoken auth_port
+    crudini --del /etc/swift/proxy-server.conf keystone_authtoken auth_protocol
 
     mkdir -p /var/log/swift
     chown -R syslog.adm /var/log/swift
@@ -894,6 +1550,11 @@ if [ -z "${SWIFT_PASS}" ]; then
 
     wget -O /etc/swift/swift.conf \
 	"https://git.openstack.org/cgit/openstack/swift/plain/etc/swift.conf-sample?h=stable/${OSCODENAME}"
+    if [ ! $? -eq 0 ]; then
+	# Try the EOL version...
+	wget -O /etc/swift/swift.conf \
+	    "https://git.openstack.org/cgit/openstack/swift/plain/etc/swift.conf-sample?h=${OSCODENAME}-eol"
+    fi
 
     crudini --set /etc/swift/swift.conf \
 	swift-hash swift_hash_path_suffix "${SWIFT_HASH_PATH_PREFIX}"
@@ -911,7 +1572,7 @@ if [ -z "${SWIFT_PASS}" ]; then
     if [ ${HAVE_SYSTEMD} -eq 0 ]; then
 	swift-init proxy-server restart
     else
-	systemctl restart swift-proxy.service
+	service_restart swift-proxy
     fi
     service_enable swift-proxy
 
@@ -972,66 +1633,181 @@ fi
 if [ -z "${HEAT_DBPASS}" ]; then
     HEAT_DBPASS=`$PSWDGEN`
     HEAT_PASS=`$PSWDGEN`
+    HEAT_DOMAIN_PASS=`$PSWDGEN`
 
     echo "create database heat" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on heat.* to 'heat'@'localhost' identified by '$HEAT_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on heat.* to 'heat'@'%' identified by '$HEAT_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
 
-    keystone user-create --name heat --pass $HEAT_PASS
-    keystone user-role-add --user heat --tenant service --role admin
-    keystone role-create --name heat_stack_owner
-    #keystone user-role-add --user demo --tenant demo --role heat_stack_owner
-    keystone role-create --name heat_stack_user
+    if [ $OSVERSION -eq $OSJUNO ]; then
+	keystone user-create --name heat --pass $HEAT_PASS
+	keystone user-role-add --user heat --tenant service --role admin
+	keystone role-create --name heat_stack_owner
+	#keystone user-role-add --user demo --tenant demo --role heat_stack_owner
+	keystone role-create --name heat_stack_user
 
-    keystone service-create --name heat --type orchestration \
-	--description "OpenStack Orchestration Service"
-    keystone service-create --name heat-cfn --type cloudformation \
-	--description "OpenStack Orchestration Service"
+	keystone service-create --name heat --type orchestration \
+		 --description "OpenStack Orchestration Service"
+	keystone service-create --name heat-cfn --type cloudformation \
+		 --description "OpenStack Orchestration Service"
 
-    keystone endpoint-create \
-	--service-id $(keystone service-list | awk '/ orchestration / {print $2}') \
-	--publicurl http://${CONTROLLER}:8004/v1/%\(tenant_id\)s \
-	--internalurl http://${CONTROLLER}:8004/v1/%\(tenant_id\)s \
-	--adminurl http://${CONTROLLER}:8004/v1/%\(tenant_id\)s \
-	--region regionOne
-    keystone endpoint-create \
-	--service-id $(keystone service-list | awk '/ cloudformation / {print $2}') \
-	--publicurl http://${CONTROLLER}:8000/v1 \
-	--internalurl http://${CONTROLLER}:8000/v1 \
-	--adminurl http://${CONTROLLER}:8000/v1 \
-	--region regionOne
+	keystone endpoint-create \
+            --service-id $(keystone service-list | awk '/ orchestration / {print $2}') \
+	    --publicurl http://${CONTROLLER}:8004/v1/%\(tenant_id\)s \
+	    --internalurl http://${CONTROLLER}:8004/v1/%\(tenant_id\)s \
+	    --adminurl http://${CONTROLLER}:8004/v1/%\(tenant_id\)s \
+	    --region $REGION
+	keystone endpoint-create \
+	    --service-id $(keystone service-list | awk '/ cloudformation / {print $2}') \
+	    --publicurl http://${CONTROLLER}:8000/v1 \
+	    --internalurl http://${CONTROLLER}:8000/v1 \
+	    --adminurl http://${CONTROLLER}:8000/v1 \
+	    --region $REGION
+    else
+	__openstack user create $DOMARG --password $HEAT_PASS heat
+	__openstack role add --user heat --project service admin
+	__openstack role create heat_stack_owner
+	__openstack role create heat_stack_user
+	__openstack service create --name heat \
+	    --description "OpenStack Orchestration Service" orchestration
+	__openstack service create --name heat-cfn \
+	    --description "OpenStack Orchestration Service" cloudformation
+
+	if [ $KEYSTONEAPIVERSION -lt 3 ]; then
+	    __openstack endpoint create \
+		--publicurl http://$CONTROLLER:8004/v1/%\(tenant_id\)s \
+		--internalurl http://$CONTROLLER:8004/v1/%\(tenant_id\)s \
+		--adminurl http://$CONTROLLER:8004/v1/%\(tenant_id\)s \
+		--region $REGION orchestration
+	    __openstack endpoint create \
+		--publicurl http://$CONTROLLER:8000/v1 \
+		--internalurl http://$CONTROLLER:8000/v1 \
+		--adminurl http://$CONTROLLER:8000/v1 \
+		--region RegionOne \
+		cloudformation
+	else
+	    __openstack endpoint create --region $REGION \
+		orchestration public http://${CONTROLLER}:8004/v1/%\(tenant_id\)s
+	    __openstack endpoint create --region $REGION \
+		orchestration internal http://${CONTROLLER}:8004/v1/%\(tenant_id\)s
+	    __openstack endpoint create --region $REGION \
+		orchestration admin http://${CONTROLLER}:8004/v1/%\(tenant_id\)s
+	    __openstack endpoint create --region $REGION \
+		cloudformation public http://${CONTROLLER}:8000/v1
+	    __openstack endpoint create --region $REGION \
+		cloudformation internal http://${CONTROLLER}:8000/v1
+	    __openstack endpoint create --region $REGION \
+		cloudformation admin http://${CONTROLLER}:8000/v1
+
+	    __openstack domain create --description "Stack projects and users" heat
+	    __openstack user create --domain heat \
+		--password $HEAT_DOMAIN_PASS heat_domain_admin
+	    __openstack role add --domain heat --user heat_domain_admin admin
+	    # Do this for admin, not demo, for now
+	    __openstack role add --project admin --user admin heat_stack_owner
+	fi
+    fi
 
     maybe_install_packages heat-api heat-api-cfn heat-engine python-heatclient
 
-    sed -i -e "s/^.*connection.*=.*$/connection = mysql:\\/\\/heat:${HEAT_DBPASS}@$CONTROLLER\\/heat/" /etc/heat/heat.conf
-    # Just slap these in.
-    cat <<EOF >> /etc/heat/heat.conf
-[DEFAULT]
-rpc_backend = rabbit
-rabbit_host = ${CONTROLLER}
-rabbit_userid = ${RABBIT_USER}
-rabbit_password = ${RABBIT_PASS}
-heat_metadata_server_url = http://${CONTROLLER}:8000
-heat_waitcondition_server_url = http://${CONTROLLER}:8000/v1/waitcondition
-verbose = ${VERBOSE_LOGGING}
-debug = ${DEBUG_LOGGING}
-auth_strategy = keystone
+    crudini --set /etc/heat/heat.conf database \
+	connection "mysql://heat:${HEAT_DBPASS}@$CONTROLLER/heat"
+    crudini --set /etc/heat/heat.conf DEFAULT rpc_backend rabbit
+    crudini --set /etc/heat/heat.conf DEFAULT auth_strategy keystone
+    crudini --set /etc/heat/heat.conf DEFAULT my_ip ${MGMTIP}
+    crudini --set /etc/heat/heat.conf glance host $CONTROLLER
+    crudini --set /etc/heat/heat.conf DEFAULT verbose ${VERBOSE_LOGGING}
+    crudini --set /etc/heat/heat.conf DEFAULT debug ${DEBUG_LOGGING}
 
-[keystone_authtoken]
-auth_uri = http://$CONTROLLER:5000/v2.0
-identity_uri = http://$CONTROLLER:35357
-admin_tenant_name = service
-admin_user = heat
-admin_password = ${HEAT_PASS}
+    if [ $OSVERSION -lt $OSKILO ]; then
+	crudini --set /etc/heat/heat.conf DEFAULT rabbit_host $CONTROLLER
+	crudini --set /etc/heat/heat.conf DEFAULT rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/heat/heat.conf DEFAULT rabbit_password "${RABBIT_PASS}"
 
-[ec2authtoken]
-auth_uri = http://${CONTROLLER}:5000/v2.0
-EOF
+	crudini --set /etc/heat/heat.conf keystone_authtoken \
+	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
+	crudini --set /etc/heat/heat.conf keystone_authtoken \
+	    identity_uri http://${CONTROLLER}:35357
+	crudini --set /etc/heat/heat.conf keystone_authtoken \
+	    admin_tenant_name service
+	crudini --set /etc/heat/heat.conf keystone_authtoken \
+	    admin_user heat
+	crudini --set /etc/heat/heat.conf keystone_authtoken \
+	    admin_password "${HEAT_PASS}"
+    else
+	crudini --set /etc/heat/heat.conf oslo_messaging_rabbit \
+	    rabbit_host $CONTROLLER
+	crudini --set /etc/heat/heat.conf oslo_messaging_rabbit \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/heat/heat.conf oslo_messaging_rabbit \
+	    rabbit_password "${RABBIT_PASS}"
 
-    sed -i -e "s/^\\(.*auth_host.*=.*\\)$/#\1/" /etc/heat/heat.conf
-    sed -i -e "s/^\\(.*auth_port.*=.*\\)$/#\1/" /etc/heat/heat.conf
-    sed -i -e "s/^\\(.*auth_protocol.*=.*\\)$/#\1/" /etc/heat/heat.conf
+	crudini --set /etc/heat/heat.conf keystone_authtoken \
+	    auth_uri http://${CONTROLLER}:5000
+	crudini --set /etc/heat/heat.conf keystone_authtoken \
+	    auth_url http://${CONTROLLER}:35357
+	crudini --set /etc/heat/heat.conf keystone_authtoken \
+	    auth_plugin password
+	crudini --set /etc/heat/heat.conf keystone_authtoken \
+	    project_domain_id default
+	crudini --set /etc/heat/heat.conf keystone_authtoken \
+	    user_domain_id default
+	crudini --set /etc/heat/heat.conf keystone_authtoken \
+	    project_name service
+	crudini --set /etc/heat/heat.conf keystone_authtoken \
+	    username heat
+	crudini --set /etc/heat/heat.conf keystone_authtoken \
+	    password "${HEAT_PASS}"
+    fi
 
+    if [ $OSVERSION -ge $OSLIBERTY ]; then
+	crudini --set /etc/heat/heat.conf trustee \
+	    auth_plugin password
+	crudini --set /etc/heat/heat.conf trustee \
+	    auth_url http://${CONTROLLER}:35357
+	crudini --set /etc/heat/heat.conf trustee \
+	    username heat
+	crudini --set /etc/heat/heat.conf trustee \
+	    password ${HEAT_PASS}
+	crudini --set /etc/heat/heat.conf trustee \
+	    user_domain_id default
+
+	crudini --set /etc/heat/heat.conf clients_keystone \
+	    auth_uri http://${CONTROLLER}:5000
+    fi
+
+    crudini --set /etc/heat/heat.conf DEFAULT \
+	heat_metadata_server_url http://$CONTROLLER:8000
+    crudini --set /etc/heat/heat.conf DEFAULT \
+	heat_waitcondition_server_url http://$CONTROLLER:8000/v1/waitcondition
+
+    if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
+	crudini --set /etc/heat/heat.conf ec2authtoken \
+		auth_uri http://${CONTROLLER}:5000
+    else
+	crudini --set /etc/heat/heat.conf ec2authtoken \
+	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
+    fi
+
+    if [ $OSVERSION -ge $OSKILO ]; then
+	crudini --set /etc/heat/heat.conf DEFAULT \
+	    stack_domain_admin heat_domain_admin
+	crudini --set /etc/heat/heat.conf DEFAULT \
+	    stack_domain_admin_password $HEAT_DOMAIN_PASS
+	crudini --set /etc/heat/heat.conf DEFAULT \
+	    stack_user_domain_name heat_user_domain
+    fi
+
+    crudini --del /etc/heat/heat.conf DEFAULT auth_host
+    crudini --del /etc/heat/heat.conf DEFAULT auth_port
+    crudini --del /etc/heat/heat.conf DEFAULT auth_protocol
+
+    if [ $OSVERSION -eq $OSKILO ]; then
+	heat-keystone-setup-domain \
+	    --stack-user-domain-name heat_user_domain \
+	    --stack-domain-admin heat_domain_admin \
+	    --stack-domain-admin-password ${HEAT_DOMAIN_PASS}
+    fi
 
     su -s /bin/sh -c "/usr/bin/heat-manage db_sync" heat
 
@@ -1046,6 +1822,7 @@ EOF
 
     echo "HEAT_DBPASS=\"${HEAT_DBPASS}\"" >> $SETTINGS
     echo "HEAT_PASS=\"${HEAT_PASS}\"" >> $SETTINGS
+    echo "HEAT_DOMAIN_PASS=\"${HEAT_DOMAIN_PASS}\"" >> $SETTINGS
 fi
 
 #
@@ -1058,6 +1835,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 
     if [ "${CEILOMETER_USE_MONGODB}" = "1" ]; then
 	maybe_install_packages mongodb-server python-pymongo
+	maybe_install_packages mongodb-clients
 
 	sed -i -e "s/^.*bind_ip.*=.*$/bind_ip = ${MGMTIP}/" /etc/mongodb.conf
 
@@ -1081,17 +1859,39 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	echo "grant all privileges on ceilometer.* to 'ceilometer'@'%' identified by '$CEILOMETER_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
     fi
 
-    keystone user-create --name ceilometer --pass $CEILOMETER_PASS
-    keystone user-role-add --user ceilometer --tenant service --role admin
-    keystone service-create --name ceilometer --type metering \
-	--description "OpenStack Telemetry Service"
+    if [ $OSVERSION -eq $OSJUNO ]; then
+	keystone user-create --name ceilometer --pass $CEILOMETER_PASS
+	keystone user-role-add --user ceilometer --tenant service --role admin
+	keystone service-create --name ceilometer --type metering \
+	    --description "OpenStack Telemetry Service"
 
-    keystone endpoint-create \
-	--service-id $(keystone service-list | awk '/ metering / {print $2}') \
-	--publicurl http://${CONTROLLER}:8777 \
-	--internalurl http://${CONTROLLER}:8777 \
-	--adminurl http://${CONTROLLER}:8777 \
-	--region regionOne
+	keystone endpoint-create \
+	    --service-id $(keystone service-list | awk '/ metering / {print $2}') \
+	    --publicurl http://${CONTROLLER}:8777 \
+	    --internalurl http://${CONTROLLER}:8777 \
+	    --adminurl http://${CONTROLLER}:8777 \
+	    --region $REGION
+    else
+	__openstack user create $DOMARG --password $CEILOMETER_PASS ceilometer
+	__openstack role add --user ceilometer --project service admin
+	__openstack service create --name ceilometer \
+	    --description "OpenStack Telemetry Service" metering
+
+	if [ $KEYSTONEAPIVERSION -lt 3 ]; then
+	    __openstack endpoint create \
+		--publicurl http://$CONTROLLER:8777 \
+		--internalurl http://$CONTROLLER:8777 \
+		--adminurl http://$CONTROLLER:8777 \
+		--region $REGION metering
+	else
+	    __openstack endpoint create --region $REGION \
+		metering public http://${CONTROLLER}:8777
+	    __openstack endpoint create --region $REGION \
+		metering internal http://${CONTROLLER}:8777
+	    __openstack endpoint create --region $REGION \
+		metering admin http://${CONTROLLER}:8777
+	fi
+    fi
 
     maybe_install_packages ceilometer-api ceilometer-collector \
 	ceilometer-agent-central ceilometer-agent-notification \
@@ -1099,62 +1899,93 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	python-ceilometerclient python-bson
 
     if [ "${CEILOMETER_USE_MONGODB}" = "1" ]; then
-	sed -i -e "s/^.*connection.*=.*$/connection = mongodb:\\/\\/ceilometer:${CEILOMETER_DBPASS}@$CONTROLLER:27017\\/ceilometer/" /etc/ceilometer/ceilometer.conf
+	crudini --set /etc/ceilometer/ceilometer.conf database \
+	    connection "mongodb://ceilometer:${CEILOMETER_DBPASS}@$CONTROLLER:27017/ceilometer" 
     else
-	sed -i -e "s/^.*connection.*=.*$/connection = mysql:\\/\\/ceilometer:${CEILOMETER_DBPASS}@$CONTROLLER\\/ceilometer\\?charset=utf8/" /etc/ceilometer/ceilometer.conf
+	crudini --set /etc/ceilometer/ceilometer.conf database \
+	    connection "mysql://ceilometer:${CEILOMETER_DBPASS}@$CONTROLLER/ceilometer?charset=utf8"
     fi
 
-    # Just slap these in.
-    cat <<EOF >> /etc/ceilometer/ceilometer.conf
-[DEFAULT]
-rpc_backend = rabbit
-rabbit_host = ${CONTROLLER}
-rabbit_userid = ${RABBIT_USER}
-rabbit_password = ${RABBIT_PASS}
-auth_strategy = keystone
-verbose = ${VERBOSE_LOGGING}
-debug = ${DEBUG_LOGGING}
-log_dir = /var/log/ceilometer
+    crudini --set /etc/ceilometer/ceilometer.conf DEFAULT rpc_backend rabbit
+    crudini --set /etc/ceilometer/ceilometer.conf DEFAULT auth_strategy keystone
+    crudini --set /etc/ceilometer/ceilometer.conf glance host $CONTROLLER
+    crudini --set /etc/ceilometer/ceilometer.conf DEFAULT verbose ${VERBOSE_LOGGING}
+    crudini --set /etc/ceilometer/ceilometer.conf DEFAULT debug ${DEBUG_LOGGING}
+    crudini --set /etc/ceilometer/ceilometer.conf DEFAULT \
+	log_dir /var/log/ceilometer
 
-[keystone_authtoken]
-auth_uri = http://$CONTROLLER:5000/v2.0
-identity_uri = http://$CONTROLLER:35357
-admin_tenant_name = service
-admin_user = ceilometer
-admin_password = ${CEILOMETER_PASS}
+    if [ $OSVERSION -lt $OSKILO ]; then
+	crudini --set /etc/ceilometer/ceilometer.conf DEFAULT rabbit_host $CONTROLLER
+	crudini --set /etc/ceilometer/ceilometer.conf DEFAULT rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/ceilometer/ceilometer.conf DEFAULT rabbit_password "${RABBIT_PASS}"
 
-[service_credentials]
-os_auth_url = http://${CONTROLLER}:5000/v2.0
-os_username = ceilometer
-os_tenant_name = service
-os_password = ${CEILOMETER_PASS}
-
-[notification]
-store_events = true
-disable_non_metric_meters = false
-EOF
-
-    if [ "${OSCODENAME}" = "juno" ]; then
-	cat <<EOF >> /etc/ceilometer/ceilometer.conf
-
-[publisher]
-metering_secret = ${CEILOMETER_SECRET}
-EOF
+	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
+	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	    identity_uri http://${CONTROLLER}:35357
+	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	    admin_tenant_name service
+	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	    admin_user ceilometer
+	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	    admin_password "${CEILOMETER_PASS}"
     else
-	cat <<EOF >> /etc/ceilometer/ceilometer.conf
+	crudini --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit \
+	    rabbit_host $CONTROLLER
+	crudini --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit \
+	    rabbit_password "${RABBIT_PASS}"
 
-[service_credentials]
-os_endpoint_type = internalURL
-os_region_name = regionOne
-
-[publisher]
-telemetry_secret = ${CEILOMETER_SECRET}
-EOF
+	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	    auth_uri http://${CONTROLLER}:5000
+	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	    auth_url http://${CONTROLLER}:35357
+	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	    auth_plugin password
+	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	    project_domain_id default
+	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	    user_domain_id default
+	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	    project_name service
+	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	    username ceilometer
+	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	    password "${CEILOMETER_PASS}"
     fi
 
-    sed -i -e "s/^\\(.*auth_host.*=.*\\)$/#\1/" /etc/ceilometer/ceilometer.conf
-    sed -i -e "s/^\\(.*auth_port.*=.*\\)$/#\1/" /etc/ceilometer/ceilometer.conf
-    sed -i -e "s/^\\(.*auth_protocol.*=.*\\)$/#\1/" /etc/ceilometer/ceilometer.conf
+    crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	os_auth_url http://${CONTROLLER}:5000/v2.0
+    crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	os_username ceilometer
+    crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	os_tenant_name service
+    crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	os_password ${CEILOMETER_PASS}
+    if [ $OSVERSION -ge $OSKILO ]; then
+	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	    os_endpoint_type internalURL
+	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+		os_region_name $REGION
+    fi
+
+    crudini --set /etc/ceilometer/ceilometer.conf notification \
+	store_events true
+    crudini --set /etc/ceilometer/ceilometer.conf notification \
+	disable_non_metric_meters false
+
+    if [ $OSVERSION -le $OSJUNO ]; then
+	crudini --set /etc/ceilometer/ceilometer.conf publisher \
+	    metering_secret ${CEILOMETER_SECRET}
+    else
+	crudini --set /etc/ceilometer/ceilometer.conf publisher \
+	    telemetry_secret ${CEILOMETER_SECRET}
+    fi
+
+    crudini --del /etc/ceilometer/ceilometer.conf DEFAULT auth_host
+    crudini --del /etc/ceilometer/ceilometer.conf DEFAULT auth_port
+    crudini --del /etc/ceilometer/ceilometer.conf DEFAULT auth_protocol
 
     if [ ! -e /etc/ceilometer/event_pipeline.yaml ]; then
 	cat <<EOF > /etc/ceilometer/event_pipeline.yaml
@@ -1179,8 +2010,43 @@ EOF
     service_enable ceilometer-agent-central
     service_restart ceilometer-agent-notification
     service_enable ceilometer-agent-notification
-    service_restart ceilometer-api
-    service_enable ceilometer-api
+
+    if [ $CEILOMETER_USE_WSGI -eq 1 ]; then
+	cat <<EOF > /etc/apache2/sites-available/wsgi-ceilometer.conf
+Listen 8777
+
+<VirtualHost *:8777>
+    WSGIDaemonProcess ceilometer-api processes=2 threads=10 user=ceilometer display-name=%{GROUP}
+    WSGIProcessGroup ceilometer-api
+    WSGIScriptAlias / /usr/bin/ceilometer-wsgi-app
+    WSGIApplicationGroup %{GLOBAL}
+#    WSGIPassAuthorization On
+    <IfVersion >= 2.4>
+       ErrorLogFormat "%{cu}t %M"
+    </IfVersion>
+    ErrorLog /var/log/apache2/ceilometer_error.log
+    CustomLog /var/log/apache2/ceilometer_access.log combined
+    <Directory /usr/bin>
+        <IfVersion >= 2.4>
+            Require all granted
+        </IfVersion>
+        <IfVersion < 2.4>
+            Order allow,deny
+            Allow from all
+        </IfVersion>
+    </Directory>
+</VirtualHost>
+EOF
+
+	a2ensite wsgi-ceilometer
+	wget -O /usr/bin/ceilometer-wsgi-app https://raw.githubusercontent.com/openstack/ceilometer/stable/${OSCODENAME}/ceilometer/api/app.wsgi
+	
+	service apache2 reload
+    else
+	service_restart ceilometer-api
+	service_enable ceilometer-api
+    fi
+
     service_restart ceilometer-collector
     service_enable ceilometer-collector
     service_restart ceilometer-alarm-evaluator
@@ -1224,23 +2090,33 @@ fi
 if [ -z "${TELEMETRY_GLANCE_DONE}" ]; then
     TELEMETRY_GLANCE_DONE=1
 
-    cat <<EOF >> /etc/glance/glance-api.conf
-[DEFAULT]
-notification_driver = messagingv2
-rpc_backend = rabbit
-rabbit_host = ${CONTROLLER}
-rabbit_userid = ${RABBIT_USER}
-rabbit_password = ${RABBIT_PASS}
-EOF
+    if [ $OSVERSION -ge $OSLIBERTY ]; then
+	RIS=oslo_messaging_rabbit
+    else
+	RIS=DEFAULT
+    fi
 
-    cat <<EOF >> /etc/glance/glance-registry.conf
-[DEFAULT]
-notification_driver = messagingv2
-rpc_backend = rabbit
-rabbit_host = ${CONTROLLER}
-rabbit_userid = ${RABBIT_USER}
-rabbit_password = ${RABBIT_PASS}
-EOF
+    crudini --set /etc/glance/glance-api.conf DEFAULT \
+	notification_driver messagingv2
+    crudini --set /etc/glance/glance-api.conf DEFAULT \
+	rpc_backend rabbit
+    crudini --set /etc/glance/glance-api.conf $RIS \
+	rabbit_host ${CONTROLLER}
+    crudini --set /etc/glance/glance-api.conf $RIS \
+	rabbit_userid ${RABBIT_USER}
+    crudini --set /etc/glance/glance-api.conf $RIS \
+	rabbit_password ${RABBIT_PASS}
+
+    crudini --set /etc/glance/glance-registry.conf DEFAULT \
+	notification_driver messagingv2
+    crudini --set /etc/glance/glance-registry.conf DEFAULT \
+	rpc_backend rabbit
+    crudini --set /etc/glance/glance-registry.conf $RIS \
+	rabbit_host ${CONTROLLER}
+    crudini --set /etc/glance/glance-registry.conf $RIS \
+	rabbit_userid ${RABBIT_USER}
+    crudini --set /etc/glance/glance-registry.conf $RIS \
+	rabbit_password ${RABBIT_PASS}
 
     service_restart glance-registry
     service_restart glance-api
@@ -1254,11 +2130,8 @@ fi
 if [ -z "${TELEMETRY_CINDER_DONE}" ]; then
     TELEMETRY_CINDER_DONE=1
 
-    cat <<EOF >> /etc/cinder/cinder.conf
-[DEFAULT]
-control_exchange = cinder
-notification_driver = messagingv2
-EOF
+    crudini --set /etc/cinder/cinder.conf DEFAULT control_exchange cinder
+    crudini --set /etc/cinder/cinder.conf DEFAULT notification_driver messagingv2
 
     service_restart cinder-api
     service_restart cinder-scheduler
@@ -1285,27 +2158,38 @@ if [ -z "${TELEMETRY_SWIFT_DONE}" ]; then
 
     chmod g+w /var/log/ceilometer
 
-    maybe_install_packages python-ceilometerclient
+    maybe_install_packages python-ceilometerclient python-ceilometermiddleware
 
-    keystone role-create --name ResellerAdmin
-    keystone user-role-add --tenant service --user ceilometer \
-	--role $(keystone role-list | awk '/ ResellerAdmin / {print $2}')
+    if [ $OSVERSION -le $OSJUNO ]; then
+	keystone role-create --name ResellerAdmin
+	keystone user-role-add --tenant service --user ceilometer \
+		 --role $(keystone role-list | awk '/ ResellerAdmin / {print $2}')
+    else
+	__openstack role create ResellerAdmin
+	__openstack role add --project service --user ceilometer ResellerAdmin
+    fi
 
-    cat <<EOF >> /etc/swift/proxy-server.conf
-[filter:ceilometer]
-use = egg:ceilometer#swift
-EOF
+    if [ $OSVERSION -le $OSKILO ]; then
+	crudini --set /etc/swift/proxy-server.conf filter:ceilometer \
+		use 'egg:ceilometer#swift'
+    fi
 
-    if [ "${OSCODENAME}" = "kilo" ]; then
-	cat <<EOF >> /etc/swift/proxy-server.conf
-[filter:ceilometer]
-paste.filter_factory = ceilometermiddleware.swift:filter_factory
-control_exchange = swift
-url = rabbit://${RABBIT_USER}:${RABBIT_PASS}@${CONTROLLER}:5672/
-driver = messagingv2
-topic = notifications
-log_level = WARN
-EOF
+    if [ $OSVERSION -ge $OSKILO ]; then
+	crudini --set /etc/swift/proxy-server.conf filter:keystoneauth \
+	    operator_roles 'admin, user, ResellerAdmin'
+
+	crudini --set /etc/swift/proxy-server.conf filter:ceilometer \
+	    paste.filter_factory ceilometermiddleware.swift:filter_factory
+	crudini --set /etc/swift/proxy-server.conf filter:ceilometer \
+	    control_exchange swift
+	crudini --set /etc/swift/proxy-server.conf filter:ceilometer \
+	    url rabbit://${RABBIT_USER}:${RABBIT_PASS}@${CONTROLLER}:5672/
+	crudini --set /etc/swift/proxy-server.conf filter:ceilometer \
+	    driver messagingv2
+	crudini --set /etc/swift/proxy-server.conf filter:ceilometer \
+	    topic notifications
+	crudini --set /etc/swift/proxy-server.conf filter:ceilometer \
+	    log_level WARN
     fi
 
     usermod -a -G ceilometer swift
@@ -1342,18 +2226,41 @@ if [ -z "${TROVE_DBPASS}" ]; then
     echo "grant all privileges on trove.* to 'trove'@'localhost' identified by '$TROVE_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on trove.* to 'trove'@'%' identified by '$TROVE_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
 
-    keystone user-create --name trove --pass $TROVE_PASS
-    keystone user-role-add --user trove --tenant service --role admin
+    if [ $OSVERSION -eq $OSJUNO ]; then
+	keystone user-create --name trove --pass $TROVE_PASS
+	keystone user-role-add --user trove --tenant service --role admin
 
-    keystone service-create --name trove --type database \
-	--description "OpenStack Database Service"
+	keystone service-create --name trove --type database \
+	    --description "OpenStack Database Service"
 
-    keystone endpoint-create \
-	--service-id $(keystone service-list | awk '/ trove / {print $2}') \
-	--publicurl http://${CONTROLLER}:8779/v1.0/%\(tenant_id\)s \
-	--internalurl http://${CONTROLLER}:8779/v1.0/%\(tenant_id\)s \
-	--adminurl http://${CONTROLLER}:8779/v1.0/%\(tenant_id\)s \
-	--region regionOne
+	keystone endpoint-create \
+	    --service-id $(keystone service-list | awk '/ trove / {print $2}') \
+	    --publicurl http://${CONTROLLER}:8779/v1.0/%\(tenant_id\)s \
+	    --internalurl http://${CONTROLLER}:8779/v1.0/%\(tenant_id\)s \
+	    --adminurl http://${CONTROLLER}:8779/v1.0/%\(tenant_id\)s \
+	    --region $REGION
+    else
+	__openstack user create $DOMARG --password $TROVE_PASS trove
+	__openstack role add --user trove --project service admin
+	__openstack service create --name trove \
+	    --description "OpenStack Database Service" database
+
+	if [ $KEYSTONEAPIVERSION -lt 3 ]; then
+	    __openstack endpoint create \
+		--publicurl http://${CONTROLLER}:8779/v1.0/%\(tenant_id\)s \
+		--internalurl http://${CONTROLLER}:8779/v1.0/%\(tenant_id\)s \
+		--adminurl http://${CONTROLLER}:8779/v1.0/%\(tenant_id\)s \
+		--region $REGION \
+		database
+	else
+	    __openstack endpoint create --region $REGION \
+		database public http://${CONTROLLER}:8779/v1.0/%\(tenant_id\)s
+	    __openstack endpoint create --region $REGION \
+		database internal http://${CONTROLLER}:8779/v1.0/%\(tenant_id\)s
+	    __openstack endpoint create --region $REGION \
+		database admin http://${CONTROLLER}:8779/v1.0/%\(tenant_id\)s
+	fi
+    fi
 
     # Just slap these in.
     cat <<EOF >> /etc/trove/trove.conf
@@ -1365,7 +2272,7 @@ rabbit_password = ${RABBIT_PASS}
 verbose = ${VERBOSE_LOGGING}
 debug = ${DEBUG_LOGGING}
 log_dir = /var/log/trove
-trove_auth_url = http://${CONTROLLER}:5000/v2.0
+trove_auth_url = http://${CONTROLLER}:5000/${KAPISTR}
 nova_compute_url = http://${CONTROLLER}:8774/v2
 cinder_url = http://${CONTROLLER}:8776/v1
 swift_url = http://${CONTROLLER}:8080/v1/AUTH_
@@ -1387,7 +2294,7 @@ rabbit_password = ${RABBIT_PASS}
 verbose = ${VERBOSE_LOGGING}
 debug = ${DEBUG_LOGGING}
 log_dir = /var/log/trove
-trove_auth_url = http://${CONTROLLER}:5000/v2.0
+trove_auth_url = http://${CONTROLLER}:5000/${KAPISTR}
 nova_compute_url = http://${CONTROLLER}:8774/v2
 cinder_url = http://${CONTROLLER}:8776/v1
 swift_url = http://${CONTROLLER}:8080/v1/AUTH_
@@ -1411,7 +2318,7 @@ rabbit_password = ${RABBIT_PASS}
 verbose = ${VERBOSE_LOGGING}
 debug = ${DEBUG_LOGGING}
 log_dir = /var/log/trove
-trove_auth_url = http://${CONTROLLER}:5000/v2.0
+trove_auth_url = http://${CONTROLLER}:5000/${KAPISTR}
 nova_compute_url = http://${CONTROLLER}:8774/v2
 cinder_url = http://${CONTROLLER}:8776/v1
 swift_url = http://${CONTROLLER}:8080/v1/AUTH_
@@ -1420,7 +2327,7 @@ notifier_queue_hostname = ${CONTROLLER}
 EOF
     cat <<EOF >> /etc/trove/api-paste.ini
 [filter:authtoken]
-auth_uri = http://${CONTROLLER}:5000/v2.0
+auth_uri = http://${CONTROLLER}:5000/${KAPISTR}
 identity_uri = http://${CONTROLLER}:35357
 admin_user = trove
 admin_password = ${TROVE_PASS}
@@ -1481,17 +2388,40 @@ if [ -z "${SAHARA_DBPASS}" ]; then
     echo "grant all privileges on sahara.* to 'sahara'@'localhost' identified by '$SAHARA_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on sahara.* to 'sahara'@'%' identified by '$SAHARA_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
 
-    keystone user-create --name sahara --pass $SAHARA_PASS
-    keystone user-role-add --user sahara --tenant service --role admin
+    if [ $OSVERSION -eq $OSJUNO ]; then
+	keystone user-create --name sahara --pass $SAHARA_PASS
+	keystone user-role-add --user sahara --tenant service --role admin
 
-    keystone service-create --name sahara --type data_processing \
-	--description "OpenStack Data Processing Service"
-    keystone endpoint-create \
-	--service-id $(keystone service-list | awk '/ sahara / {print $2}') \
-	--publicurl http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s \
-	--internalurl http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s \
-	--adminurl http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s \
-	--region regionOne
+	keystone service-create --name sahara --type data_processing \
+	    --description "OpenStack Data Processing Service"
+	keystone endpoint-create \
+	    --service-id $(keystone service-list | awk '/ sahara / {print $2}') \
+	    --publicurl http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s \
+	    --internalurl http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s \
+	    --adminurl http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s \
+	    --region $REGION
+    else
+	__openstack user create $DOMARG --password $SAHARA_PASS sahara
+	__openstack role add --user sahara --project service admin
+	__openstack service create --name sahara \
+	    --description "OpenStack Data Processing Service" data_processing
+
+	if [ $KEYSTONEAPIVERSION -lt 3 ]; then
+	    __openstack endpoint create \
+		--publicurl http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s \
+		--internalurl http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s \
+		--adminurl http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s \
+		--region $REGION \
+		data_processing
+	else
+	    __openstack endpoint create --region $REGION \
+		data_processing public http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s
+	    __openstack endpoint create --region $REGION \
+		data_processing internal http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s
+	    __openstack endpoint create --region $REGION \
+		data_processing admin http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s
+	fi
+    fi
 
     aserr=0
     apt-cache search ^sahara\$ | grep -q sahara
@@ -1529,14 +2459,14 @@ auth_strategy = keystone
 use_neutron=true
 
 [keystone_authtoken]
-auth_uri = http://$CONTROLLER:5000/v2.0
+auth_uri = http://$CONTROLLER:5000/${KAPISTR}
 identity_uri = http://$CONTROLLER:35357
 admin_tenant_name = service
 admin_user = sahara
 admin_password = ${SAHARA_PASS}
 
 [ec2authtoken]
-auth_uri = http://${CONTROLLER}:5000/v2.0
+auth_uri = http://${CONTROLLER}:5000/${KAPISTR}
 EOF
 
     sed -i -e "s/^\\(.*auth_host.*=.*\\)$/#\1/" /etc/sahara/sahara.conf
@@ -1593,7 +2523,7 @@ if [ 0 = 1 -a "$OSCODENAME" = "kilo" -a -n "$BAREMETALNODES" -a -z "${IRONIC_DBP
 	--publicurl http://${CONTROLLER}:6385 \
 	--internalurl http://${CONTROLLER}:6385 \
 	--adminurl http://${CONTROLLER}:6385 \
-	--region regionOne
+	--region $REGION
 
     maybe_install_packages ironic-api ironic-conductor python-ironicclient python-ironic
 

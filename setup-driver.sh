@@ -62,6 +62,7 @@ done
 # (These were created one-time in setup-lib.sh)
 #
 cat $OURDIR/mgmt-hosts > /etc/hosts
+echo "127.0.0.1 localhost" >> /etc/hosts
 for node in $NODES 
 do
     [ "$node" = "$NETWORKMANAGER" ] && continue
@@ -73,6 +74,7 @@ do
 	$OURDIR/data-hosts $OURDIR/data-netmask \
 	$fqdn:$OURDIR
     $SSH $fqdn cp $OURDIR/mgmt-hosts /etc/hosts
+    $SSH $fqdn 'echo 127.0.0.1 localhost | tee -a /etc/hosts'
 done
 
 echo "*** Setting up the Management Network"

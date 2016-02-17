@@ -40,6 +40,7 @@ $SCP $SETTINGS $OURDIR/admin-openrc.* \
     $OURDIR/manifests*.xml $OURDIR/topomap* $OURDIR/fqdn.map \
     $fqdn:$OURDIR
 $SSH $fqdn cp $OURDIR/mgmt-hosts /etc/hosts
+$SSH $fqdn 'echo 127.0.0.1 localhost | tee -a /etc/hosts'
 
 #
 # Update the management network if necessary
@@ -76,6 +77,7 @@ do
     fqdn=`getfqdn $node`
     scp -p -o StrictHostKeyChecking=no $OURDIR/mgmt-hosts $fqdn:$OURDIR
     $SSH $fqdn cp -p $OURDIR/mgmt-hosts /etc/hosts
+    $SSH $fqdn 'echo 127.0.0.1 localhost | tee -a /etc/hosts'
 done
 
 ##
@@ -85,6 +87,7 @@ done
 #fqdn=`getfqdn $NEWNODE`
 #scp -p -o StrictHostKeyChecking=no $OURDIR/mgmt-hosts $fqdn:$OURDIR
 #$SSH $fqdn cp -p $OURDIR/mgmt-hosts /etc/hosts
+#$SSH $fqdn 'echo 127.0.0.1 localhost | tee -a /etc/hosts'
 
 # Remove our lockfile
 rm -f $OURDIR/updating-nodes

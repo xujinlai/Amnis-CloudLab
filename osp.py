@@ -8,7 +8,7 @@ import crypt
 import random
 
 # Don't want this as a param yet
-TBURL = "http://www.emulab.net/downloads/openstack-setup-v16.tar.gz"
+TBURL = "http://www.emulab.net/downloads/openstack-setup-v18.tar.gz"
 TBCMD = "sudo mkdir -p /root/setup && sudo -H /tmp/setup/setup-driver.sh 2>&1 | sudo tee /root/setup/setup-driver.log"
 
 #
@@ -26,13 +26,20 @@ pc = portal.Context()
 # Define *many* parameters; see the help docs in geni-lib to learn how to modify.
 #
 pc.defineParameter("release","OpenStack Release",
-                   portal.ParameterType.STRING,"kilo",[("kilo","Kilo"),("juno","Juno")],
-                   longDescription="We provide either OpenStack Kilo on Ubuntu 15, or OpenStack Juno on Ubuntu 14.10.  OpenStack is installed from packages available on these distributions.")
+                   portal.ParameterType.STRING,"liberty",[("liberty","Liberty"),("kilo","Kilo"),("juno","Juno")],
+                   longDescription="We provide either OpenStack Liberty (Ubuntu 15.10); Kilo (Ubuntu 15.04); or Juno (Ubuntu 14.10).  OpenStack is installed from packages available on these distributions.")
 pc.defineParameter("computeNodeCount", "Number of compute nodes (at Site 1)",
                    portal.ParameterType.INTEGER, 1)
 pc.defineParameter("publicIPCount", "Number of public IP addresses",
                    portal.ParameterType.INTEGER, 4,
                    longDescription="Make sure to include both the number of floating IP addresses you plan to need for instances; and also for OpenVSwitch interface IP addresses.  Each OpenStack network this profile creates for you is bridged to the external, public network, so you also need a public IP address for each of those switch interfaces.  So, if you ask for one GRE tunnel network, and one flat data network (the default configuration), you would need two public IPs for switch interfaces, and then you request two additional public IPs that can be bound to instances as floating IPs.  If you ask for more networks, make sure to increase this number appropriately.")
+pc.defineParameter("osNodeType", "Hardware type of all nodes",
+                   portal.ParameterType.STRING, "",
+                   longDescription="A specific hardware type to use for each node.  Cloudlab clusters all have machines of specific types.  When you set this field to a value that is a specific hardware type, you will only be able to instantiate this profile on clusters with machines of that type.  If unset, when you instantiate the profile, the resulting experiment may have machines of any available type allocated.")
+pc.defineParameter("osLinkSpeed", "Experiment Link Speed of all nodes",
+                   portal.ParameterType.INTEGER, 0,
+                   [(0,"Any"),(1000000,"1Gb/s"),(10000000,"10Gb/s")],
+                   longDescription="A specific link speed to use for each node.  All experiment network interfaces will request this speed.")
 
 
 pc.defineParameter("doAptUpgrade","Upgrade OpenStack packages and dependencies to the latest versions",
@@ -79,6 +86,20 @@ pc.defineParameter("ipAllocationStrategy","IP Addressing",
                    longDescription="Either let CloudLab auto-generate IP addresses for the nodes in your OpenStack networks, or let this script generate them.  If you include nodes at multiple sites, you must choose this script!  The default is this script, because the subnets CloudLab generates for flat networks are sized according to the number of physical nodes in your topology.  However, when the profile sets up your flat OpenStack networks, it tries to enable your VMs and physical nodes to talk to each other---so they all must be on the same subnet.  Thus, you may not have many IPs left for VMs.  However, if the script IP address generation is buggy or otherwise insufficient, you can fall back to CloudLab and see if that improves things.",
                    advanced=True)
 
+pc.defineParameter("tokenTimeout","Keystone Token Expiration in Seconds",
+                   portal.ParameterType.INTEGER,14400,advanced=True,
+                   longDescription="Keystone token expiration in seconds.")
+
+pc.defineParameter("sessionTimeout","Horizon Session Timeout in Seconds",
+                   portal.ParameterType.INTEGER,14400,advanced=True,
+                   longDescription="Horizon session timeout in seconds.")
+
+# advanced=True,
+pc.defineParameter("keystoneVersion","Keystone API Version",
+                   portal.ParameterType.INTEGER,
+                   0, [ (0,"(default)"),(2,"v2.0"),(3,"v3") ],
+                   longDescription="Keystone API Version.  Defaults to v2.0 on Juno and Kilo; defaults to v3 on Liberty and onwards.  You can try to force v2.0 on Liberty and onwards, but we cannot guarantee support for this configuration.")
+
 pc.defineParameter("disableSecurityGroups","Disable Security Group Enforcement",
                    portal.ParameterType.BOOLEAN,False,advanced=True,
                    longDescription="Sometimes it can be easier to play with OpenStack if you do not have to mess around with security groups at all.  This option selects a null security group driver, if set.  This means security groups are enabled, but are not enforced (we set the firewall_driver neutron option to neutron.agent.firewall.NoopFirewallDriver to accomplish this).")
@@ -111,9 +132,6 @@ pc.defineParameter("networkManagerHost", "Name of network manager node",
 pc.defineParameter("computeHostBaseName", "Base name of compute node(s)",
                    portal.ParameterType.STRING, "cp", advanced=True,
                    longDescription="The base string of the short name of the compute nodes (node names will look like cp-1, cp-2, ... or cp-s2-1, cp-s2-2, ... (for nodes at Site 2, if you request those)).  You shold leave this alone unless you really want the hostname to change.")
-pc.defineParameter("osNodeType", "Hardware type of all nodes",
-                   portal.ParameterType.STRING, "", advanced=True,
-                   longDescription="A specific hardware type to use for each node.  Cloudlab clusters all have machines of specific types.  When you set this field to a value that is a specific hardware type, you will only be able to instantiate this profile on clusters with machines of that type.  If unset, when you instantiate the profile, the resulting experiment may have machines of any available type allocated.")
 #pc.defineParameter("blockStorageHost", "Name of block storage server node",
 #                   portal.ParameterType.STRING, "ctl")
 #pc.defineParameter("objectStorageHost", "Name of object storage server node",
@@ -273,7 +291,7 @@ for param in pc._parameterOrder:
     pass
 
 tourDescription = \
-  "This profile provides a highly-configurable OpenStack instance with a controller, network manager, and one or more compute nodes (potentially at multiple Cloudlab sites). This profile runs x86 or ARM64 nodes. It sets up OpenStack Kilo or Juno on Ubuntu 15.04 or 14.10, and configures all OpenStack services, pulls in some VM disk images, and creates basic networks accessible via floating IPs.  You'll be able to create instances and access them over the Internet in just a few minutes. When you click the Instantiate button, you'll be presented with a list of parameters that you can change to control what your OpenStack instance will look like; **carefully** read the parameter documentation on that page (or in the Instructions) to understand the various features available to you."
+  "This profile provides a highly-configurable OpenStack instance with a controller, network manager, and one or more compute nodes (potentially at multiple Cloudlab sites). This profile runs x86 or ARM64 nodes. It sets up OpenStack Liberty, Kilo, or Juno (on Ubuntu 15.10, 15.04, or 14.10) according to your choice, and configures all OpenStack services, pulls in some VM disk images, and creates basic networks accessible via floating IPs.  You'll be able to create instances and access them over the Internet in just a few minutes. When you click the Instantiate button, you'll be presented with a list of parameters that you can change to control what your OpenStack instance will look like; **carefully** read the parameter documentation on that page (or in the Instructions) to understand the various features available to you."
 
 ###if not params.adminPass or len(params.adminPass) == 0:
 passwdHelp = "Your OpenStack admin and instance VM password is randomly-generated by Cloudlab, and it is: `{password-adminPass}` ."
@@ -321,7 +339,7 @@ flatlanstrs = {}
 vlanstrs = {}
 ipdb = {}
 if params.managementLanType == 'flat':
-    ipdb['mgmt-lan'] = { 'base':'192.168','netmask':'255.255.0.0','values':[-1,-10,0,0] }
+    ipdb['mgmt-lan'] = { 'base':'192.168','netmask':'255.255.0.0','values':[-1,-1,0,0] }
     pass
 dataOffset = 10
 ipSubnetsUsed = 0
@@ -385,7 +403,9 @@ alllans = []
 
 for i in range(1,params.flatDataLanCount + 1):
     datalan = RSpec.LAN(flatlanstrs[i])
-    #datalan.bandwidth = 20000
+    if params.osLinkSpeed > 0:
+        datalan.bandwidth = int(params.osLinkSpeed)
+        pass
     if params.multiplexFlatLans:
         datalan.link_multiplexing = True
         datalan.best_effort = True
@@ -397,7 +417,9 @@ for i in range(1,params.flatDataLanCount + 1):
     pass
 for i in range(1,params.vlanDataLanCount + 1):
     datalan = RSpec.LAN("vlan-lan-%d" % (i,))
-    #datalan.bandwidth = 20000
+    if params.osLinkSpeed > 0:
+        datalan.bandwidth = int(params.osLinkSpeed)
+        pass
     datalan.link_multiplexing = True
     datalan.best_effort = True
     # Need this cause LAN() sets the link type to lan, not sure why.
@@ -428,8 +450,10 @@ else:
 #
 if params.release == "juno":
     image_os = 'UBUNTU14-10-64'
-else:
+elif params.release == "kilo":
     image_os = 'UBUNTU15-04-64'
+else:
+    image_os = 'UBUNTU15-10-64'
     pass
 if params.fromScratch:
     image_tag_cn = 'STD'
@@ -661,6 +685,16 @@ class Parameters(RSpec.Resource):
         param.text = "VERBOSE_LOGGING=\"%s\"" % (str(bool(params.enableVerboseLogging)))
         param = ET.SubElement(el,paramXML)
         param.text = "DEBUG_LOGGING=\"%s\"" % (str(bool(params.enableDebugLogging)))
+        
+        param = ET.SubElement(el,paramXML)
+        param.text = "TOKENTIMEOUT=%d" % (int(params.tokenTimeout))
+        param = ET.SubElement(el,paramXML)
+        param.text = "SESSIONTIMEOUT=%d" % (int(params.sessionTimeout))
+        
+        if params.keystoneVersion > 0:
+            param = ET.SubElement(el,paramXML)
+            param.text = "KEYSTONEAPIVERSION=%d" % (int(params.keystoneVersion))
+            pass
 
         return el
     pass

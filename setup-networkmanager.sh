@@ -41,64 +41,96 @@ sysctl -p
 maybe_install_packages neutron-plugin-ml2 neutron-plugin-openvswitch-agent \
     neutron-l3-agent neutron-dhcp-agent conntrack neutron-metering-agent
 
-sed -i -e "s/^\\(.*connection.*=.*\\)$/#\1/" /etc/neutron/neutron.conf
-sed -i -e "s/^\\(.*auth_host.*=.*\\)$/#\1/" /etc/neutron/neutron.conf
-sed -i -e "s/^\\(.*auth_port.*=.*\\)$/#\1/" /etc/neutron/neutron.conf
-sed -i -e "s/^\\(.*auth_protocol.*=.*\\)$/#\1/" /etc/neutron/neutron.conf
+# If not a shared controller, don't want neutron connecting to nonexistent db
+if [ ! "$CONTROLLER" = "$NETWORKMANAGER" ]; then
+    crudini --del /etc/neutron/neutron.conf database connection
+    crudini --del /etc/neutron/neutron.conf keystone_authtoken auth_host
+    crudini --del /etc/neutron/neutron.conf keystone_authtoken auth_port
+    crudini --del /etc/neutron/neutron.conf keystone_authtoken auth_protocol
+fi
 
-# Just slap these in.
-cat <<EOF >> /etc/neutron/neutron.conf
-[DEFAULT]
-rpc_backend = rabbit
-rabbit_host = $CONTROLLER
-rabbit_userid = ${RABBIT_USER}
-rabbit_password = ${RABBIT_PASS}
-auth_strategy = keystone
-core_plugin = ml2
-service_plugins = router,metering
-allow_overlapping_ips = True
-verbose = ${VERBOSE_LOGGING}
-debug = ${DEBUG_LOGGING}
-notification_driver = messagingv2
+crudini --set /etc/neutron/neutron.conf DEFAULT rpc_backend rabbit
+crudini --set /etc/neutron/neutron.conf DEFAULT auth_strategy keystone
+crudini --set /etc/neutron/neutron.conf DEFAULT core_plugin ml2
+crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins 'router,metering'
+crudini --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips True
+crudini --set /etc/neutron/neutron.conf DEFAULT verbose ${VERBOSE_LOGGING}
+crudini --set /etc/neutron/neutron.conf DEFAULT debug ${DEBUG_LOGGING}
+crudini --set /etc/neutron/neutron.conf DEFAULT notification_driver messagingv2
 
-[keystone_authtoken]
-auth_uri = http://$CONTROLLER:5000/v2.0
-identity_uri = http://$CONTROLLER:35357
-admin_tenant_name = service
-admin_user = neutron
-admin_password = ${NEUTRON_PASS}
-EOF
+if [ $OSVERSION -lt $OSKILO ]; then
+    crudini --set /etc/neutron/neutron.conf DEFAULT rabbit_host $CONTROLLER
+    crudini --set /etc/neutron/neutron.conf DEFAULT rabbit_userid ${RABBIT_USER}
+    crudini --set /etc/neutron/neutron.conf DEFAULT rabbit_password "${RABBIT_PASS}"
+
+    crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	auth_uri http://${CONTROLLER}:5000/v2.0
+    crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	identity_uri http://${CONTROLLER}:35357
+    crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	admin_tenant_name service
+    crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	admin_user neutron
+    crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	admin_password "${NEUTRON_PASS}"
+else
+    crudini --set /etc/neutron/neutron.conf oslo_messaging_rabbit \
+	rabbit_host $CONTROLLER
+    crudini --set /etc/neutron/neutron.conf oslo_messaging_rabbit \
+	rabbit_userid ${RABBIT_USER}
+    crudini --set /etc/neutron/neutron.conf oslo_messaging_rabbit \
+	rabbit_password "${RABBIT_PASS}"
+
+    crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	auth_uri http://${CONTROLLER}:5000
+    crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	auth_url http://${CONTROLLER}:35357
+    crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	auth_plugin password
+    crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	project_domain_id default
+    crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	user_domain_id default
+    crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	project_name service
+    crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	username neutron
+    crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	password "${NEUTRON_PASS}"
+fi
 
 fwdriver="neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver"
 if [ ${DISABLE_SECURITY_GROUPS} -eq 1 ]; then
     fwdriver="neutron.agent.firewall.NoopFirewallDriver"
 fi
 
-# Just slap these in.
-cat <<EOF >> /etc/neutron/plugins/ml2/ml2_conf.ini
-[ml2]
-type_drivers = ${network_types}
-tenant_network_types = ${network_types}
-mechanism_drivers = openvswitch
-
-[ml2_type_flat]
-flat_networks = ${flat_networks}
-
-[ml2_type_gre]
-tunnel_id_ranges = 1:1000
-
+crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
+    type_drivers ${network_types}
+crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
+    tenant_network_types ${network_types}
+crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
+    mechanism_drivers openvswitch
+crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat \
+    flat_networks ${flat_networks}
+crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_gre \
+    tunnel_id_ranges 1:1000
+cat <<EOF >>/etc/neutron/plugins/ml2/ml2_conf.ini
 [ml2_type_vlan]
 ${network_vlan_ranges}
+EOF
+crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vxlan \
+    vni_ranges 3000:4000
+#crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vxlan \
+#    vxlan_group 224.0.0.1
+crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup \
+    enable_security_group True
+crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup \
+    enable_ipset True
+crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup \
+    firewall_driver $fwdriver
 
-[ml2_type_vxlan]
-vni_ranges = 3000:4000
-#vxlan_group = 224.0.0.1
-
-[securitygroup]
-enable_security_group = True
-enable_ipset = True
-firewall_driver = $fwdriver
-
+# Just slap these in.
+cat <<EOF >> /etc/neutron/plugins/ml2/ml2_conf.ini
 [ovs]
 ${gre_local_ip}
 ${enable_tunneling}
@@ -108,32 +140,29 @@ ${bridge_mappings}
 ${tunnel_types}
 EOF
 
-# Just slap these in.
-cat <<EOF >> /etc/neutron/l3_agent.ini
-[DEFAULT]
-interface_driver = neutron.agent.linux.interface.OVSInterfaceDriver
-use_namespaces = True
-external_network_bridge = br-ex
-verbose = ${VERBOSE_LOGGING}
-debug = ${DEBUG_LOGGING}
-EOF
+# Configure the L3 agent.
+crudini --set /etc/neutron/l3_agent.ini DEFAULT \
+    interface_driver neutron.agent.linux.interface.OVSInterfaceDriver
+crudini --set /etc/neutron/l3_agent.ini DEFAULT use_namespaces True
+crudini --set /etc/neutron/l3_agent.ini DEFAULT external_network_bridge br-ex
+#crudini --set /etc/neutron/l3_agent.ini DEFAULT router_delete_namespaces True
+crudini --set /etc/neutron/l3_agent.ini DEFAULT verbose ${VERBOSE_LOGGING}
+crudini --set /etc/neutron/l3_agent.ini DEFAULT debug ${DEBUG_LOGGING}
 
-# Just slap these in.
-cat <<EOF >> /etc/neutron/dhcp_agent.ini
-[DEFAULT]
-interface_driver = neutron.agent.linux.interface.OVSInterfaceDriver
-dhcp_driver = neutron.agent.linux.dhcp.Dnsmasq
-use_namespaces = True
-verbose = ${VERBOSE_LOGGING}
-debug = ${DEBUG_LOGGING}
-EOF
+# Configure the DHCP agent.
+crudini --set /etc/neutron/dhcp_agent.ini DEFAULT \
+    interface_driver neutron.agent.linux.interface.OVSInterfaceDriver
+crudini --set /etc/neutron/dhcp_agent.ini DEFAULT \
+    dhcp_driver neutron.agent.linux.dhcp.Dnsmasq
+crudini --set /etc/neutron/dhcp_agent.ini DEFAULT use_namespaces True
+#crudini --set /etc/neutron/dhcp_agent.ini DEFAULT dhcp_delete_namespaces True
+crudini --set /etc/neutron/dhcp_agent.ini DEFAULT verbose ${VERBOSE_LOGGING}
+crudini --set /etc/neutron/dhcp_agent.ini DEFAULT debug ${DEBUG_LOGGING}
 
 # Uncomment if dhcp has trouble due to MTU
-cat <<EOF >> /etc/neutron/dhcp_agent.ini
-[DEFAULT]
-dnsmasq_config_file = /etc/neutron/dnsmasq-neutron.conf
-EOF
-cat <<EOF >> /etc/neutron/dnsmasq-neutron.conf
+crudini --set /etc/neutron/dhcp_agent.ini DEFAULT \
+    dnsmasq_config_file /etc/neutron/dnsmasq-neutron.conf
+cat <<EOF >>/etc/neutron/dnsmasq-neutron.conf
 dhcp-option-force=26,1454
 log-queries
 log-dhcp
@@ -142,29 +171,57 @@ server=8.8.8.8
 EOF
 pkill dnsmasq
 
-sed -i -e "s/^.*auth_url.*=.*$/auth_url = http:\\/\\/$CONTROLLER:5000\\/v2.0/" /etc/neutron/metadata_agent.ini
-sed -i -e "s/^.*auth_region.*=.*$/auth_region = regionOne/" /etc/neutron/metadata_agent.ini
-sed -i -e "s/^.*admin_tenant_name.*=.*$/admin_tenant_name = service/" /etc/neutron/metadata_agent.ini
-sed -i -e "s/^.*admin_user.*=.*$/admin_user = neutron/" /etc/neutron/metadata_agent.ini
-sed -i -e "s/^.*admin_password.*=.*$/admin_password = ${NEUTRON_PASS}/" /etc/neutron/metadata_agent.ini
+# Setup the Metadata agent.
+if [ $OSVERSION -lt $OSKILO ]; then
+    crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+	auth_url http://$CONTROLLER:5000/v2.0/
+    crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+	auth_region $REGION
+    crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+	admin_tenant_name service
+    crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+	admin_user neutron
+    crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+	admin_password ${NEUTRON_PASS}
+else
+    crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+	auth_uri http://${CONTROLLER}:5000
+    crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+	auth_url http://${CONTROLLER}:35357
+    crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+	auth_region $REGION
+    crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+	auth_plugin password
+    crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+	project_domain_id default
+    crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+	user_domain_id default
+    crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+	project_name service
+    crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+	username neutron
+    crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+	password "${NEUTRON_PASS}"
+fi
+crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+    nova_metadata_ip ${CONTROLLER}
+crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+    metadata_proxy_shared_secret ${NEUTRON_METADATA_SECRET}
+crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+    verbose ${VERBOSE_LOGGING}
+crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+    debug ${DEBUG_LOGGING}
 
-sed -i -e "s/^.*nova_metadata_ip.*=.*$/nova_metadata_ip = $CONTROLLER/" /etc/neutron/metadata_agent.ini
-sed -i -e "s/^.*metadata_proxy_shared_secret.*=.*$/metadata_proxy_shared_secret = $NEUTRON_METADATA_SECRET/" /etc/neutron/metadata_agent.ini
-cat <<EOF >> /etc/neutron/metadata_agent.ini
-[DEFAULT]
-verbose = ${VERBOSE_LOGGING}
-debug = ${DEBUG_LOGGING}
-EOF
-
-cat <<EOF >> /etc/neutron/metering_agent.ini
-[DEFAULT]
-debug = True
-driver = neutron.services.metering.drivers.iptables.iptables_driver.IptablesMeteringDriver
-measure_interval = 30
-report_interval = 300
-interface_driver = neutron.agent.linux.interface.OVSInterfaceDriver
-use_namespaces = True
-EOF
+# Setup the metering agent.
+crudini --set /etc/neutron/metering_agent.ini DEFAULT debug True
+crudini --set /etc/neutron/metering_agent.ini DEFAULT \
+    driver neutron.services.metering.drivers.iptables.iptables_driver.IptablesMeteringDriver
+crudini --set /etc/neutron/metering_agent.ini DEFAULT measure_interval 30
+crudini --set /etc/neutron/metering_agent.ini DEFAULT report_interval 300
+crudini --set /etc/neutron/metering_agent.ini DEFAULT \
+    interface_driver neutron.agent.linux.interface.OVSInterfaceDriver
+crudini --set /etc/neutron/metering_agent.ini DEFAULT \
+    use_namespaces True
 
 #
 # Ok, also put our FQDN into the hosts file so that local applications can
@@ -188,6 +245,19 @@ echo "$MYIP    $NFQDN $PFQDN" >> /etc/hosts
 # the public emulab/cloudlab control net, sigh.
 #
 patch -d / -p0 < $DIRNAME/etc/neutron-${OSCODENAME}-openvswitch-remove-all-flows-except-system-flows.patch
+
+#
+# https://git.openstack.org/cgit/openstack/neutron/commit/?id=51f6b2e1c9c2f5f5106b9ae8316e57750f09d7c9
+#
+if [ $OSVERSION -ge $OSLIBERTY ]; then
+    patch -d / -p0 < $DIRNAME/etc/neutron-liberty-ovs-agent-segmentation-id-None.patch
+fi
+
+#
+# Neutron depends on bridge module, but it doesn't autoload it.
+#
+modprobe bridge
+echo bridge >> /etc/modules
 
 service_restart openvswitch-switch
 service_enable openvswitch-switch

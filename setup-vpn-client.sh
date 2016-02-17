@@ -40,8 +40,6 @@ comp-lzo
 verb 3
 EOF
 
-cp -p $OURDIR/mgmt-hosts /etc/hosts
-
 #
 # Get the server up
 #

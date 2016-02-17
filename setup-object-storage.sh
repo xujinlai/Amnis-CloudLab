@@ -107,7 +107,9 @@ cat <<EOF >> /etc/default/rsync
 RSYNC_ENABLE=true
 EOF
 
-service rsync start
+service_enable rsync
+service_restart rsync
+service_start rsync
 
 mkdir -p /var/log/swift
 chown -R syslog.adm /var/log/swift
@@ -116,34 +118,60 @@ maybe_install_packages swift swift-account swift-container swift-object
 
 wget -O /etc/swift/account-server.conf \
     "https://git.openstack.org/cgit/openstack/swift/plain/etc/account-server.conf-sample?h=stable/${OSCODENAME}"
+if [ ! $? -eq 0 ]; then
+    # Try the EOL version...
+    wget -O /etc/swift/account-server.conf \
+	"https://git.openstack.org/cgit/openstack/swift/plain/etc/account-server.conf-sample?h=${OSCODENAME}-eol"
+fi
 
 wget -O /etc/swift/container-server.conf \
     "https://git.openstack.org/cgit/openstack/swift/plain/etc/container-server.conf-sample?h=stable/${OSCODENAME}"
+if [ ! $? -eq 0 ]; then
+    # Try the EOL version...
+    wget -O /etc/swift/container-server.conf \
+	"https://git.openstack.org/cgit/openstack/swift/plain/etc/container-server.conf-sample?h=${OSCODENAME}-eol"
+fi
 
 wget -O /etc/swift/object-server.conf \
     "https://git.openstack.org/cgit/openstack/swift/plain/etc/object-server.conf-sample?h=stable/${OSCODENAME}"
-
-if [ "$OSCODENAME" = "kilo" ]; then
-    wget -O /etc/swift/container-reconciler.conf \
-	"https://git.openstack.org/cgit/openstack/swift/plain/etc/container-reconciler.conf-sample?h=stable/${OSCODENAME}"
-    wget -O /etc/swift/object-expirer.conf \
-	"https://git.openstack.org/cgit/openstack/swift/plain/etc/object-expirer.conf-sample?h=stable/${OSCODENAME}"
+if [ ! $? -eq 0 ]; then
+    # Try the EOL version...
+    wget -O /etc/swift/object-server.conf \
+	"https://git.openstack.org/cgit/openstack/swift/plain/etc/object-server.conf-sample?h=${OSCODENAME}-eol"
 fi
 
-cat <<EOF >> /etc/swift/account-server.conf
-[DEFAULT]
-bind_ip = $MGMTIP
-bind_port = 6002
-user = swift
-swift_dir = /etc/swift
-devices = /storage/mnt/swift
+if [ $OSVERSION -ge $OSKILO ]; then
+    wget -O /etc/swift/container-reconciler.conf \
+	"https://git.openstack.org/cgit/openstack/swift/plain/etc/container-reconciler.conf-sample?h=stable/${OSCODENAME}"
+    if [ ! $? -eq 0 ]; then
+        # Try the EOL version...
+	wget -O /etc/swift/container-reconciler.conf \
+	    "https://git.openstack.org/cgit/openstack/swift/plain/etc/container-reconciler.conf-sample?h=${OSCODENAME}-eol"
+    fi
+    wget -O /etc/swift/object-expirer.conf \
+	"https://git.openstack.org/cgit/openstack/swift/plain/etc/object-expirer.conf-sample?h=stable/${OSCODENAME}"
+    if [ ! $? -eq 0 ]; then
+        # Try the EOL version...
+	wget -O /etc/swift/object-expirer.conf \
+	    "https://git.openstack.org/cgit/openstack/swift/plain/etc/object-expirer.conf-sample?h=${OSCODENAME}-eol"
+    fi
+fi
 
-[pipeline:main]
-pipeline = healthcheck recon account-server
+crudini --set /etc/swift/account-server.conf DEFAULT bind_ip $MGMTIP
+crudini --set /etc/swift/account-server.conf DEFAULT bind_port 6002
+crudini --set /etc/swift/account-server.conf DEFAULT user swift
+crudini --set /etc/swift/account-server.conf DEFAULT swift_dir /etc/swift
+crudini --set /etc/swift/account-server.conf DEFAULT devices /storage/mnt/swift
+if [ $OSVERSION -ge $OSLIBERTY ]; then
+    crudini --set /etc/swift/account-server.conf DEFAULT mount_check true
+fi
 
-[filter:recon]
-recon_cache_path = /var/cache/swift
-EOF
+crudini --set /etc/swift/account-server.conf pipeline:main \
+    pipeline 'healthcheck recon account-server'
+crudini --set /etc/swift/account-server.conf filter:recon \
+    use 'egg:swift#recon'
+crudini --set /etc/swift/account-server.conf filter:recon \
+    recon_cache_path /var/cache/swift
 
 crudini --set /etc/swift/account-server.conf DEFAULT log_facility LOG_LOCAL1
 crudini --set /etc/swift/account-server.conf DEFAULT log_level INFO
@@ -163,20 +191,21 @@ crudini --set /etc/swift/account-server.conf account-reaper log_name swift-accou
 
 echo 'if $programname == "swift-account" then { action(type="omfile" file="/var/log/swift/swift-account.log") }' >> /etc/rsyslog.d/99-swift.conf
 
-cat <<EOF >> /etc/swift/container-server.conf
-[DEFAULT]
-bind_ip = $MGMTIP
-bind_port = 6001
-user = swift
-swift_dir = /etc/swift
-devices = /storage/mnt/swift
+crudini --set /etc/swift/container-server.conf DEFAULT bind_ip $MGMTIP
+crudini --set /etc/swift/container-server.conf DEFAULT bind_port 6001
+crudini --set /etc/swift/container-server.conf DEFAULT user swift
+crudini --set /etc/swift/container-server.conf DEFAULT swift_dir /etc/swift
+crudini --set /etc/swift/container-server.conf DEFAULT devices /storage/mnt/swift
+if [ $OSVERSION -ge $OSLIBERTY ]; then
+    crudini --set /etc/swift/container-server.conf DEFAULT mount_check true
+fi
 
-[pipeline:main]
-pipeline = healthcheck recon container-server
-
-[filter:recon]
-recon_cache_path = /var/cache/swift
-EOF
+crudini --set /etc/swift/container-server.conf pipeline:main \
+    pipeline 'healthcheck recon container-server'
+crudini --set /etc/swift/container-server.conf filter:recon \
+    use 'egg:swift#recon'
+crudini --set /etc/swift/container-server.conf filter:recon \
+    recon_cache_path /var/cache/swift
 
 crudini --set /etc/swift/container-server.conf DEFAULT log_facility LOG_LOCAL1
 crudini --set /etc/swift/container-server.conf DEFAULT log_level INFO
@@ -199,25 +228,24 @@ crudini --set /etc/swift/container-server.conf container-sync log_name swift-con
 
 echo 'if $programname == "swift-container" then { action(type="omfile" file="/var/log/swift/swift-container.log") }' >> /etc/rsyslog.d/99-swift.conf
 
-cat <<EOF >> /etc/swift/object-server.conf
-[DEFAULT]
-bind_ip = $MGMTIP
-bind_port = 6000
-user = swift
-swift_dir = /etc/swift
-devices = /storage/mnt/swift
+crudini --set /etc/swift/object-server.conf DEFAULT bind_ip $MGMTIP
+crudini --set /etc/swift/object-server.conf DEFAULT bind_port 6000
+crudini --set /etc/swift/object-server.conf DEFAULT user swift
+crudini --set /etc/swift/object-server.conf DEFAULT swift_dir /etc/swift
+crudini --set /etc/swift/object-server.conf DEFAULT devices /storage/mnt/swift
+if [ $OSVERSION -ge $OSLIBERTY ]; then
+    crudini --set /etc/swift/object-server.conf DEFAULT mount_check true
+fi
 
-[pipeline:main]
-pipeline = healthcheck recon object-server
-
-[filter:recon]
-recon_cache_path = /var/cache/swift
-EOF
-if [ "$OSCODENAME" = "kilo" ]; then
-    cat <<EOF >> /etc/swift/object-server.conf
-[filter:recon]
-recon_lock_path = /var/lock
-EOF
+crudini --set /etc/swift/object-server.conf pipeline:main \
+    pipeline 'healthcheck recon object-server'
+crudini --set /etc/swift/object-server.conf filter:recon \
+    use 'egg:swift#recon'
+crudini --set /etc/swift/object-server.conf filter:recon \
+    recon_cache_path /var/cache/swift
+if [ $OSVERSION -ge $OSKILO ]; then
+    crudini --set /etc/swift/object-server.conf filter:recon \
+	recon_lock_path /var/lock
 fi
 
 crudini --set /etc/swift/object-server.conf DEFAULT log_facility LOG_LOCAL1
@@ -252,6 +280,8 @@ if [ ${HAVE_SYSTEMD} -eq 0 ]; then
 else
     service_restart rsyslog
     service_restart swift-account
+    service_enable swift-proxy
+    service_restart swift-proxy
     service_enable swift-account
     service_restart swift-account-auditor
     service_enable swift-account-auditor

@@ -27,11 +27,10 @@ if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
 
-cat <<EOF >> /etc/cinder/cinder.conf
-[DEFAULT]
-control_exchange = cinder
-notification_driver = cinder.openstack.common.notifier.rpc_notifier
-EOF
+
+crudini --set /etc/cinder/cinder.conf DEFAULT control_exchange cinder
+crudini --set /etc/cinder/cinder.conf DEFAULT notification_driver messagingv2
+#notification_driver = cinder.openstack.common.notifier.rpc_notifier
 
 service_restart cinder-volume
 service_enable cinder-volume

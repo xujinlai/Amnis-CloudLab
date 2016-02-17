@@ -32,76 +32,107 @@ fi
 maybe_install_packages nova-compute sysfsutils
 maybe_install_packages libguestfs-tools libguestfs0 python-guestfs
 
-cat <<EOF >> /etc/nova/nova.conf
-[DEFAULT]
-rpc_backend = rabbit
-rabbit_host = $CONTROLLER
-rabbit_userid = ${RABBIT_USER}
-rabbit_password = ${RABBIT_PASS}
-auth_strategy = keystone
-my_ip = $MGMTIP
-verbose = ${VERBOSE_LOGGING}
-debug = ${DEBUG_LOGGING}
+crudini --set /etc/nova/nova.conf DEFAULT rpc_backend rabbit
+crudini --set /etc/nova/nova.conf DEFAULT auth_strategy keystone
+crudini --set /etc/nova/nova.conf DEFAULT my_ip ${MGMTIP}
+crudini --set /etc/nova/nova.conf glance host $CONTROLLER
+crudini --set /etc/nova/nova.conf DEFAULT verbose ${VERBOSE_LOGGING}
+crudini --set /etc/nova/nova.conf DEFAULT debug ${DEBUG_LOGGING}
 
-[keystone_authtoken]
-auth_uri = http://$CONTROLLER:5000/v2.0
-identity_uri = http://$CONTROLLER:35357
-admin_tenant_name = service
-admin_user = nova
-admin_password = ${NOVA_PASS}
+if [ $OSVERSION -lt $OSKILO ]; then
+    crudini --set /etc/nova/nova.conf DEFAULT rabbit_host $CONTROLLER
+    crudini --set /etc/nova/nova.conf DEFAULT rabbit_userid ${RABBIT_USER}
+    crudini --set /etc/nova/nova.conf DEFAULT rabbit_password "${RABBIT_PASS}"
 
-[glance]
-host = $CONTROLLER
-EOF
+    crudini --set /etc/nova/nova.conf keystone_authtoken \
+	auth_uri http://${CONTROLLER}:5000/v2.0
+    crudini --set /etc/nova/nova.conf keystone_authtoken \
+	identity_uri http://${CONTROLLER}:35357
+    crudini --set /etc/nova/nova.conf keystone_authtoken \
+	admin_tenant_name service
+    crudini --set /etc/nova/nova.conf keystone_authtoken \
+	admin_user nova
+    crudini --set /etc/nova/nova.conf keystone_authtoken \
+	admin_password "${NOVA_PASS}"
+else
+    crudini --set /etc/nova/nova.conf oslo_messaging_rabbit \
+	rabbit_host $CONTROLLER
+    crudini --set /etc/nova/nova.conf oslo_messaging_rabbit \
+	rabbit_userid ${RABBIT_USER}
+    crudini --set /etc/nova/nova.conf oslo_messaging_rabbit \
+	rabbit_password "${RABBIT_PASS}"
 
+    crudini --set /etc/nova/nova.conf keystone_authtoken \
+	auth_uri http://${CONTROLLER}:5000
+    crudini --set /etc/nova/nova.conf keystone_authtoken \
+	auth_url http://${CONTROLLER}:35357
+    crudini --set /etc/nova/nova.conf keystone_authtoken \
+	auth_plugin password
+    crudini --set /etc/nova/nova.conf keystone_authtoken \
+	project_domain_id default
+    crudini --set /etc/nova/nova.conf keystone_authtoken \
+	user_domain_id default
+    crudini --set /etc/nova/nova.conf keystone_authtoken \
+	project_name service
+    crudini --set /etc/nova/nova.conf keystone_authtoken \
+	username nova
+    crudini --set /etc/nova/nova.conf keystone_authtoken \
+	password "${NOVA_PASS}"
+fi
+
+if [ $OSVERSION -ge $OSKILO ]; then
+    crudini --set /etc/nova/nova.conf oslo_concurrency \
+	lock_path /var/lib/nova/tmp
+fi
+
+if [ $OSVERSION -ge $OSLIBERTY ]; then
+    crudini --set /etc/nova/nova.conf enabled_apis 'osapi_compute,metadata'
+
+    crudini --set /etc/nova/nova.conf DEFAULT \
+	network_api_class nova.network.neutronv2.api.API
+    crudini --set /etc/nova/nova.conf DEFAULT \
+	security_group_api neutron
+    crudini --set /etc/nova/nova.conf DEFAULT \
+	linuxnet_interface_driver nova.network.linux_net.NeutronLinuxBridgeInterfaceDriver
+    crudini --set /etc/nova/nova.conf DEFAULT \
+	firewall_driver nova.virt.firewall.NoopFirewallDriver
+fi
+
+VNCSECTION="DEFAULT"
+if [ $OSVERSION -ge $OSLIBERTY ]; then
+    VNCSECTION="vnc"
+fi
+
+cname=`getfqdn $CONTROLLER`
+crudini --set /etc/nova/nova.conf $VNCSECTION vncserver_listen ${MGMTIP}
+crudini --set /etc/nova/nova.conf $VNCSECTION vncserver_proxyclient_address ${MGMTIP}
+crudini --set /etc/nova/nova.conf $VNCSECTION \
+    novncproxy_base_url "http://${cname}:6080/vnc_auto.html"
 #
 # Change vnc_enabled = True for x86 -- but for aarch64, there is
 # no video device, for KVM mode, anyway, it seems.
 #
 ARCH=`uname -m`
-cname=`getfqdn $CONTROLLER`
 if [ "$ARCH" = "aarch64" ] ; then
-    cat <<EOF >> /etc/nova/nova.conf
-[DEFAULT]
-vnc_enabled = False
-vncserver_listen = ${MGMTIP}
-vncserver_proxyclient_address = $MGMTIP
-novncproxy_base_url = http://${cname}:6080/vnc_auto.html
-EOF
+    crudini --set /etc/nova/nova.conf $VNCSECTION vnc_enabled False
 else
-    cat <<EOF >> /etc/nova/nova.conf
-[DEFAULT]
-vnc_enabled = True
-vncserver_listen = ${MGMTIP}
-vncserver_proxyclient_address = $MGMTIP
-novncproxy_base_url = http://${cname}:6080/vnc_auto.html
-EOF
+    crudini --set /etc/nova/nova.conf $VNCSECTION vnc_enabled True
 fi
 
 if [ ${ENABLE_NEW_SERIAL_SUPPORT} = 1 ]; then
-    cat <<EOF >> /etc/nova/nova.conf
-[serial_console]
-enabled = true
-listen = $MGMTIP
-proxyclient_address = $MGMTIP
-base_url=ws://${cname}:6083/
-EOF
+    crudini --set /etc/nova/nova.conf serial_console enabled true
+    crudini --set /etc/nova/nova.conf serial_console listen $MGMTIP
+    crudini --set /etc/nova/nova.conf serial_console proxyclient_address $MGMTIP
+    crudini --set /etc/nova/nova.conf serial_console base_url ws://${cname}:6083/
 fi
 
-cat <<EOF >> /etc/nova/nova-compute.conf
-
-[DEFAULT]
-compute_driver=libvirt.LibvirtDriver
-
-[libvirt]
-virt_type=kvm
-EOF
+crudini --set /etc/nova/nova-compute.conf DEFAULT \
+    compute_driver libvirt.LibvirtDriver
+crudini --set /etc/nova/nova-compute.conf libvirt virt_type kvm
 
 if [ "$ARCH" = "aarch64" ] ; then
-    cat <<EOF >> /etc/nova/nova-compute.conf
-cpu_mode=custom
-cpu_model=host
-EOF
+    crudini --set /etc/nova/nova-compute.conf libvirt cpu_mode custom
+    crudini --set /etc/nova/nova-compute.conf libvirt cpu_model host
 fi
 
 if [ ${OSCODENAME} = "juno" ]; then
@@ -113,6 +144,8 @@ fi
 
 service_restart nova-compute
 service_enable nova-compute
+service_restart libvirt-bin
+service_enable libvirt-bin
 
 # XXXX ???
 # rm -f /var/lib/nova/nova.sqlite

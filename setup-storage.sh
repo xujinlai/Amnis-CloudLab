@@ -92,37 +92,83 @@ fi
 
 maybe_install_packages cinder-volume python-mysqldb
 
-if [ "${STORAGEHOST}" != "${CONTROLLER}" ]; then
-    # Just slap these in.
-    cat <<EOF >> /etc/cinder/cinder.conf
-[database]
-connection = mysql://cinder:${CINDER_DBPASS}@$CONTROLLER/cinder
+crudini --set /etc/cinder/cinder.conf \
+    database connection "mysql://cinder:$CINDER_DBPASS@$CONTROLLER/cinder"
 
-[DEFAULT]
-rpc_backend = rabbit
-rabbit_host = ${CONTROLLER}
-rabbit_userid = ${RABBIT_USER}
-rabbit_password = ${RABBIT_PASS}
-auth_strategy = keystone
-my_ip = $MGMTIP
-verbose = ${VERBOSE_LOGGING}
-debug = ${DEBUG_LOGGING}
-glance_host = ${CONTROLLER}
+crudini --del /etc/cinder/cinder.conf keystone_authtoken auth_host
+crudini --del /etc/cinder/cinder.conf keystone_authtoken auth_port
+crudini --del /etc/cinder/cinder.conf keystone_authtoken auth_protocol
 
-[keystone_authtoken]
-auth_uri = http://$CONTROLLER:5000/v2.0
-identity_uri = http://$CONTROLLER:35357
-admin_tenant_name = service
-admin_user = cinder
-admin_password = ${CINDER_PASS}
-EOF
+crudini --set /etc/cinder/cinder.conf DEFAULT rpc_backend rabbit
+crudini --set /etc/cinder/cinder.conf DEFAULT auth_strategy keystone
+crudini --set /etc/cinder/cinder.conf DEFAULT verbose ${VERBOSE_LOGGING}
+crudini --set /etc/cinder/cinder.conf DEFAULT debug ${DEBUG_LOGGING}
+crudini --set /etc/cinder/cinder.conf DEFAULT my_ip ${MGMTIP}
 
-    sed -i -e "s/^\\(.*auth_host.*=.*\\)$/#\1/" /etc/cinder/cinder.conf
-    sed -i -e "s/^\\(.*auth_port.*=.*\\)$/#\1/" /etc/cinder/cinder.conf
-    sed -i -e "s/^\\(.*auth_protocol.*=.*\\)$/#\1/" /etc/cinder/cinder.conf
+if [ $OSVERSION -lt $OSKILO ]; then
+    crudini --set /etc/cinder/cinder.conf DEFAULT rabbit_host $CONTROLLER
+    crudini --set /etc/cinder/cinder.conf DEFAULT rabbit_userid ${RABBIT_USER}
+    crudini --set /etc/cinder/cinder.conf DEFAULT rabbit_password "${RABBIT_PASS}"
+
+    crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	auth_uri http://${CONTROLLER}:5000/${KAPISTR}
+    crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	identity_uri http://${CONTROLLER}:35357
+    crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	admin_tenant_name service
+    crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	admin_user cinder
+    crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	admin_password "${CINDER_PASS}"
+else
+    crudini --set /etc/cinder/cinder.conf oslo_messaging_rabbit \
+	rabbit_host $CONTROLLER
+    crudini --set /etc/cinder/cinder.conf oslo_messaging_rabbit \
+	rabbit_userid ${RABBIT_USER}
+    crudini --set /etc/cinder/cinder.conf oslo_messaging_rabbit \
+	rabbit_password "${RABBIT_PASS}"
+
+    crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	auth_uri http://${CONTROLLER}:5000
+    crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	auth_url http://${CONTROLLER}:35357
+    crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	auth_plugin password
+    crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	project_domain_id default
+    crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	user_domain_id default
+    crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	project_name service
+    crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	username cinder
+    crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	password "${CINDER_PASS}"
 fi
 
-service tgt restart
+crudini --set /etc/cinder/cinder.conf DEFAULT glance_host ${CONTROLLER}
+
+if [ $OSVERSION -eq $OSKILO ]; then
+    crudini --set /etc/cinder/cinder.conf oslo_concurrency \
+	lock_path /var/lock/cinder
+elif [ $OSVERSION -ge $OSLIBERTY ]; then
+    crudini --set /etc/cinder/cinder.conf oslo_concurrency \
+	lock_path /var/lib/cinder/tmp
+fi
+
+if [ $OSVERSION -eq $OSJUNO ]; then
+    crudini --set /etc/cinder/cinder.conf DEFAULT volume_group openstack-volumes
+else
+    crudini --set /etc/cinder/cinder.conf lvm \
+	volume_driver cinder.volume.drivers.lvm.LVMVolumeDriver
+    crudini --set /etc/cinder/cinder.conf lvm volume_group openstack-volumes
+    crudini --set /etc/cinder/cinder.conf lvm iscsi_protocol iscsi
+    crudini --set /etc/cinder/cinder.conf lvm iscsi_helper tgtadm
+    crudini --set /etc/cinder/cinder.conf DEFAULT enabled_backends lvm
+fi
+
+service_restart tgt
+service_enable tgt
 service_restart cinder-volume
 service_enable cinder-volume
 rm -f /var/lib/cinder/cinder.sqlite

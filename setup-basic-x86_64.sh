@@ -78,7 +78,11 @@ umount /mnt
 
 echo "*** Importing new image ..."
 
-glance image-create --name trusty-server --is-public True  --disk-format qcow2 --container-format bare --progress --file trusty-server-cloudimg-amd64-disk1.img
+GLANCEOPTS=""
+if [ "$OSCODENAME" = "juno" -o "$OSCODENAME" = "kilo" ]; then
+    GLANCEOPTS="--is-public True"
+fi
+glance image-create --name trusty-server ${GLANCEOPTS}  --disk-format qcow2 --container-format bare --progress --file trusty-server-cloudimg-amd64-disk1.img
 
 mount /dev/nbd0p1 /mnt/
 
@@ -139,7 +143,7 @@ umount /mnt
 
 echo "*** Importing new multi-nic image ..."
 
-glance image-create --name trusty-server-multi-nic --is-public True  --disk-format qcow2 --container-format bare --progress --file trusty-server-cloudimg-amd64-disk1.img
+glance image-create --name trusty-server-multi-nic ${GLANCEOPTS} --disk-format qcow2 --container-format bare --progress --file trusty-server-cloudimg-amd64-disk1.img
 
 qemu-nbd -d /dev/nbd0
 

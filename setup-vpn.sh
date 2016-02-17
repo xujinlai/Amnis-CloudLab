@@ -180,7 +180,6 @@ unset KEY_EXPIRE
 # Get the hosts files setup to point to the new management network
 # and setup the VPN on the clients.
 #
-cat $OURDIR/mgmt-hosts > /etc/hosts
 for node in $NEWVPNNODES
 do
     [ "$node" = "$NETWORKMANAGER" ] && continue

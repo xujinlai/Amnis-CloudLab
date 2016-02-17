@@ -67,6 +67,8 @@ auth = v2.Password(auth_url=url,username=ADMIN_API,password=ADMIN_API_PASS,tenan
 sess = session.Session(auth=auth)
 nova = Client(2,session=sess)
 
+keysdone = dict({})
+
 for userdict in response['value']:
     urn = userdict['urn']
     login = userdict['login']
@@ -86,18 +88,27 @@ for userdict in response['value']:
                 rname += 'X'
             pass
         
-        try:
-            nova.keypairs.create(rname,key)
-        except:
-            traceback.print_exc()
+        if not keysdone.has_key(rname):
+            try:
+                nova.keypairs.create(rname,key)
+                keysdone[rname] = key
+            except:
+                traceback.print_exc()
+            pass
         pass
     pass
 
 #
 # Ok, do the sick hack...
 #
-os_cred_stuff = "--os-username %s --os-password %s --os-tenant-name %s --os-auth-url %s" % (OS_USERNAME,OS_PASSWORD,OS_TENANT_NAME,OS_AUTH_URL,)
-cmd = 'export AAUID="`keystone %s user-list | awk \'/ adminapi / {print $2}\'`" ; export AUID="`keystone %s user-list | awk \'/ admin / {print $2}\'`" ; mysqldump -u nova --password=%s nova -t key_pairs --skip-comments --quote-names --no-create-info --no-create-db --complete-insert --compact | sed -e \'s/,[0-9]*,/,NULL,/gi\' | sed -e "s/,\'${AAUID}\',/,\'${AUID}\',/gi" | mysql -u nova --password=%s nova ; echo "update key_pairs set deleted=0 where user_id=\'${AUID}\'" | mysql -u nova --password=%s nova' % (os_cred_stuff,os_cred_stuff,NOVA_DBPASS,NOVA_DBPASS,NOVA_DBPASS,)
+if OS_IDENTITY_API_VERSION == 3:
+    os_cred_stuff = "openstack --os-username %s --os-password %s --os-tenant-name %s --os-auth-url %s --os-user-domain-id %s --os-project-domain-id %s --os-project-name %s --os-identity-api-version %s user list" % (OS_USERNAME,OS_PASSWORD,OS_TENANT_NAME,OS_AUTH_URL,OS_USER_DOMAIN_ID,OS_PROJECT_DOMAIN_ID,OS_PROJECT_NAME,str(OS_IDENTITY_API_VERSION))
+else:
+    os_cred_stuff = "keystone --os-username %s --os-password %s --os-tenant-name %s --os-auth-url %s user-list " % (OS_USERNAME,OS_PASSWORD,OS_TENANT_NAME,OS_AUTH_URL,)
+    pass
+
+#  where user_id=\'${AUID}\'
+cmd = 'export AAUID="`%s | awk \'/ adminapi / {print $2}\'`" ; export AUID="`%s | awk \'/ admin / {print $2}\'`" ; mysqldump -u nova --password=%s nova -t key_pairs --skip-comments --quote-names --no-create-info --no-create-db --complete-insert --compact | sed -e \'s/,[0-9]*,/,NULL,/gi\' | sed -e "s/,\'${AAUID}\',/,\'${AUID}\',/gi" | mysql -u nova --password=%s nova ; echo "update key_pairs set deleted=0" | mysql -u nova --password=%s nova' % (os_cred_stuff,os_cred_stuff,NOVA_DBPASS,NOVA_DBPASS,NOVA_DBPASS,)
 #cmd = 'export OS_PASSWORD="%s" ; export OS_AUTH_URL="%s" ; export OS_USERNAME="%s" ; export OS_TENANT_NAME="%s" ; export AAUID="`keystone user-list | awk \'/ adminapi / {print $2}\'`" ; export AUID="`keystone user-list | awk \'/ admin / {print $2}\'`" ; mysqldump -u nova --password=%s nova -t key_pairs --skip-comments --quote-names --no-create-info --no-create-db --complete-insert --compact | sed -e \'s/,[0-9]*,/,NULL,/gi\' | sed -e "s/,\'${AAUID}\',/,\'${AUID}\',/gi" | mysql -u nova --password=%s nova ; echo "update key_pairs set deleted=0 where user_id=\'${AUID}\'" | mysql -u nova --password=%s nova' % (OS_PASSWORD,OS_AUTH_URL,OS_USERNAME,OS_PASSWORD,NOVA_DBPASS,NOVA_DBPASS,NOVA_DBPASS,)
 print "Running adminapi -> admin key import: %s..." % (cmd,)
 os.system(cmd)

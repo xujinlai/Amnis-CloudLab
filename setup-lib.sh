@@ -54,6 +54,10 @@ DISABLE_SECURITY_GROUPS=0
 DEFAULT_SECGROUP_ENABLE_SSH_ICMP=1
 VERBOSE_LOGGING="False"
 DEBUG_LOGGING="False"
+KEYSTONEAPIVERSION=""
+TOKENTIMEOUT=14400
+SESSIONTIMEOUT=14400
+CEILOMETER_USE_WSGI=0
 #
 # We have an 'adminapi' user that gets a random password.  Then, we have
 # the dashboard and instance password, that comes in from geni-lib/rspec as a
@@ -224,12 +228,46 @@ ARCH=`uname -m`
 dpkg-query -S /sbin/init | grep -q systemd
 HAVE_SYSTEMD=`expr $? = 0`
 
+#
+# Figure out which OS/OpenStack this is.
+#
+OSJUNO=10
+OSKILO=11
+OSLIBERTY=12
+
 . /etc/lsb-release
-if [ ${DISTRIB_CODENAME} = "vivid" ]; then
+if [ ${DISTRIB_CODENAME} = "wily" ]; then
+    OSCODENAME="liberty"
+    OSVERSION=$OSLIBERTY
+    REGION="RegionOne"
+elif [ ${DISTRIB_CODENAME} = "vivid" ]; then
     OSCODENAME="kilo"
+    OSVERSION=$OSKILO
+    REGION="RegionOne"
 else
     OSCODENAME="juno"
+    OSVERSION=$OSJUNO
+    REGION="regionOne"
 fi
+
+#
+# Figure out if we got told to use keystone v2 or v3, or what our
+# default should be if not.
+#
+if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
+    # Let them force v3.
+    KAPISTR='v3'
+elif [ "$KEYSTONEAPIVERSION" != "2" -a $OSVERSION -ge $OSLIBERTY ]; then
+    # If they didn't force v2 or v3, if we're on Liberty or higher, make
+    # v3 the default
+    KAPISTR='v3'
+    KEYSTONEAPIVERSION=3
+else
+    # Otherwise, use version 2 by default (or choice)
+    KEYSTONEAPIVERSION=2
+    KAPISTR='v2.0'
+fi
+
 
 if [ $GENIUSER -eq 1 ]; then
     SWAPPER_EMAIL=`geni-get slice_email`
