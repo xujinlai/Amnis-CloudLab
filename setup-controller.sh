@@ -189,19 +189,27 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
     elif [ $OSVERSION -le $OSKILO ]; then
 	crudini --set /etc/keystone/keystone.conf token provider \
 	    'keystone.token.providers.uuid.Provider'
-	crudini --set /etc/keystone/keystone.conf token driver \
-	    'keystone.token.persistence.backends.memcache.Token'
 	crudini --set /etc/keystone/keystone.conf revoke driver \
 	    'keystone.contrib.revoke.backends.sql.Revoke'
-	crudini --set /etc/keystone/keystone.conf memcache servers \
-	    'localhost:11211'
+	if [ $KEYSTONEUSEMEMCACHE -eq 1 ]; then
+	    crudini --set /etc/keystone/keystone.conf token driver \
+		'keystone.token.persistence.backends.memcache.Token'
+	    crudini --set /etc/keystone/keystone.conf memcache servers \
+		'localhost:11211'
+	else
+	    crudini --set /etc/keystone/keystone.conf token driver \
+		'keystone.token.persistence.backends.sql.Token'
+	fi
     else
 	crudini --set /etc/keystone/keystone.conf token provider 'uuid'
-	#crudini --set /etc/keystone/keystone.conf token driver 'memcache'
-	crudini --set /etc/keystone/keystone.conf token driver 'sql'
 	crudini --set /etc/keystone/keystone.conf revoke driver 'sql'
-	#crudini --set /etc/keystone/keystone.conf memcache servers \
-	#    'localhost:11211'
+	if [ $KEYSTONEUSEMEMCACHE -eq 1 ]; then
+	    crudini --set /etc/keystone/keystone.conf token driver 'memcache'
+	    crudini --set /etc/keystone/keystone.conf memcache servers \
+		'localhost:11211'
+	else
+	    crudini --set /etc/keystone/keystone.conf token driver 'sql'
+	fi
     fi
 
     crudini --set /etc/keystone/keystone.conf DEFAULT verbose ${VERBOSE_LOGGING}
