@@ -286,19 +286,24 @@ EOF
     cp -p $out $out.3
 fi
 
+GLANCEOPTS=""
+if [ "$OSCODENAME" = "juno" -o "$OSCODENAME" = "kilo" ]; then
+    GLANCEOPTS="--is-public True"
+fi
+
 echo "*** Importing kernel/ramdisk ..."
 
-glance image-create --name vmlinuz-3.13.0-40-arm64-generic --is-public True --progress --file vmlinuz-3.13.0-40-arm64-generic --disk-format aki --container-format aki
+glance image-create --name vmlinuz-3.13.0-40-arm64-generic ${GLANCEOPTS} --progress --file vmlinuz-3.13.0-40-arm64-generic --disk-format aki --container-format aki
 
 KERNEL_ID=`glance image-show vmlinuz-3.13.0-40-arm64-generic | grep id | sed -n -e 's/^.*id.*| \([0-9a-zA-Z-]*\).*$/\1/p'`
 
-glance image-create --name initrd-3.13.0-40-arm64-generic --is-public True --progress --file initrd.img-3.13.0-40-arm64-generic --disk-format ari --container-format ari
+glance image-create --name initrd-3.13.0-40-arm64-generic ${GLANCEOPTS} --progress --file initrd.img-3.13.0-40-arm64-generic --disk-format ari --container-format ari
 
 RAMDISK_ID=`glance image-show initrd-3.13.0-40-arm64-generic | grep id | sed -n -e 's/^.*id.*| \([0-9a-zA-Z-]*\).*$/\1/p'`
 
 echo "*** Importing image with cloud-guest-utils  ..."
 
-glance image-create --name trusty-server --is-public True --progress --file $out --disk-format ami --container-format ami
+glance image-create --name trusty-server ${GLANCEOPTS} --progress --file $out --disk-format ami --container-format ami
 glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" trusty-server
 glance image-update --property kernel_id=${KERNEL_ID} trusty-server
 glance image-update --property ramdisk_id=${RAMDISK_ID} trusty-server
@@ -370,7 +375,7 @@ umount mnt
 
 echo "*** Importing image with cloud-guest-utils AND multi-nic support ..."
 
-glance image-create --name trusty-server-multi-nic --is-public True --progress --file $out --disk-format ami --container-format ami
+glance image-create --name trusty-server-multi-nic ${GLANCEOPTS} --progress --file $out --disk-format ami --container-format ami
 glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" trusty-server-multi-nic
 glance image-update --property kernel_id=${KERNEL_ID} trusty-server-multi-nic
 glance image-update --property ramdisk_id=${RAMDISK_ID} trusty-server-multi-nic
@@ -379,7 +384,7 @@ glance image-update --property root_device_name=/dev/vda1 trusty-server-multi-ni
 if [ ${BUILD_AARCH64_FROM_CORE} = 1 ] ; then
     echo "*** Importing non-ssh image ..."
 
-    glance image-create --name ubuntu-core-14.04.1-core-arm64 --is-public True --progress --file $out.1 --disk-format ami --container-format ami
+    glance image-create --name ubuntu-core-14.04.1-core-arm64 ${GLANCEOPTS} --progress --file $out.1 --disk-format ami --container-format ami
 
     glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" ubuntu-core-14.04.1-core-arm64
     glance image-update --property kernel_id=${KERNEL_ID} ubuntu-core-14.04.1-core-arm64
@@ -388,7 +393,7 @@ if [ ${BUILD_AARCH64_FROM_CORE} = 1 ] ; then
 
     echo "*** Importing image with sshd ..."
 
-    glance image-create --name ubuntu-core-14.04.1-core-arm64-sshd --is-public True --progress --file $out.2 --disk-format ami --container-format ami
+    glance image-create --name ubuntu-core-14.04.1-core-arm64-sshd ${GLANCEOPTS} --progress --file $out.2 --disk-format ami --container-format ami
 
     glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" ubuntu-core-14.04.1-core-arm64-sshd
     glance image-update --property kernel_id=${KERNEL_ID} ubuntu-core-14.04.1-core-arm64-sshd
