@@ -322,6 +322,8 @@ Please wait to login to the OpenStack dashboard until the setup scripts have com
 
 If you need to run the OpenStack CLI tools, or your own scripts that use the OpenStack APIs, you'll find authentication credentials in /root/setup/admin-openrc.sh .  Be aware that the username in this file is `adminapi`, not `admin`; this is an artifact of the days when the profile used to allow you to customize the admin password (it was necessary because the nodes did not have the plaintext password, but only the hash).
 
+*Do not* add any VMs on the `ext-net` network; instead, give them floating IP addresses from the pool this profile requests on your behalf (and increase the size of that pool when you instantiate by changing the `Number of public IP addresses` parameter).  If you try to use any public IP addresses on the `ext-net` network that are not part of your experiment (i.e., any that are not either the control network public IPs for the physical machines, or the public IPs used as floating IPs), those packets will be blocked, and you will be confused.
+
 The profile's setup scripts are automatically installed on each node in `/tmp/setup` .  They execute as `root`, and keep state and downloaded files in `/root/setup/`.  More importantly, they write copious logfiles in that directory; so if you think there's a problem with the configuration, you could take a quick look through these logs --- especially `setup-controller.log` on the `ctl` node.
 
 
