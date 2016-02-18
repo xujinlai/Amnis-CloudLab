@@ -60,7 +60,8 @@ __openstack() {
 # Setup mail to users
 #
 maybe_install_packages dma
-echo `hostname` > /etc/mailname
+echo "$PFQDN" > /etc/mailname
+sleep 2
 echo "Your OpenStack instance is setting up on `hostname` ." \
     |  mail -s "OpenStack Instance Setting Up" ${SWAPPER_EMAIL} &
 
@@ -69,6 +70,15 @@ echo "Your OpenStack instance is setting up on `hostname` ." \
 #
 if [ $OSVERSION -ge $OSKILO ]; then
     maybe_install_packages python-openstackclient
+fi
+
+#
+# This is a nasty bug in oslo_service; see 
+# https://review.openstack.org/#/c/256267/
+#
+if [ $OSVERSION -ge $OSKILO ]; then
+    maybe_install_packages python-oslo.service
+    patch -d / -p0 < $DIRNAME/etc/oslo_service-liberty-sig-MAINLOOP.patch
 fi
 
 #
