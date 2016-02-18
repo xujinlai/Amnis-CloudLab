@@ -295,11 +295,19 @@ echo "*** Importing kernel/ramdisk ..."
 
 glance image-create --name vmlinuz-3.13.0-40-arm64-generic ${GLANCEOPTS} --progress --file vmlinuz-3.13.0-40-arm64-generic --disk-format aki --container-format aki
 
-KERNEL_ID=`glance image-show vmlinuz-3.13.0-40-arm64-generic | grep id | sed -n -e 's/^.*id.*| \([0-9a-zA-Z-]*\).*$/\1/p'`
+if [ $OSVERSION -ge $OSLIBERTY ]; then
+    KERNEL_ID=`glance image-list | awk ' / vmlinuz-3.13.0-40-arm64-generic / { print $2 }'`
+else
+    KERNEL_ID=`glance image-show vmlinuz-3.13.0-40-arm64-generic | grep id | sed -n -e 's/^.*id.*| \([0-9a-zA-Z-]*\).*$/\1/p'`
+fi
 
 glance image-create --name initrd-3.13.0-40-arm64-generic ${GLANCEOPTS} --progress --file initrd.img-3.13.0-40-arm64-generic --disk-format ari --container-format ari
 
-RAMDISK_ID=`glance image-show initrd-3.13.0-40-arm64-generic | grep id | sed -n -e 's/^.*id.*| \([0-9a-zA-Z-]*\).*$/\1/p'`
+if [ $OSVERSION -ge $OSLIBERTY ]; then
+    RAMDISK_ID=`glance image-list | awk ' / initrd-3.13.0-40-arm64-generic / { print $2 }'`
+else
+    RAMDISK_ID=`glance image-show initrd-3.13.0-40-arm64-generic | grep id | sed -n -e 's/^.*id.*| \([0-9a-zA-Z-]*\).*$/\1/p'`
+fi
 
 echo "*** Importing image with cloud-guest-utils  ..."
 
