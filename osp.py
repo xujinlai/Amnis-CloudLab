@@ -99,6 +99,14 @@ pc.defineParameter("keystoneVersion","Keystone API Version",
                    portal.ParameterType.INTEGER,
                    0, [ (0,"(default)"),(2,"v2.0"),(3,"v3") ],
                    longDescription="Keystone API Version.  Defaults to v2.0 on Juno and Kilo; defaults to v3 on Liberty and onwards.  You can try to force v2.0 on Liberty and onwards, but we cannot guarantee support for this configuration.")
+# advanced=True,
+pc.defineParameter("keystoneUseMemcache","Keystone Uses Memcache",
+                   portal.ParameterType.BOOLEAN,False,
+                   longDescription="Specify whether or not Keystone should use Memcache as its token backend.  In our testing, this has seemed to exacerbate intermittent Keystone internal errors, so it is off by default, and by default, the SQL token backend is used instead.")
+# advanced=True,
+pc.defineParameter("quotasOff","Unlimit Default Quotas",
+                   portal.ParameterType.BOOLEAN,True,
+                   longDescription="Set the default Nova and Cinder quotas to unlimited, at least those that can be set via CLI utils (some cannot be set, but the significant ones can be set).")
 
 pc.defineParameter("disableSecurityGroups","Disable Security Group Enforcement",
                    portal.ParameterType.BOOLEAN,False,advanced=True,
@@ -695,6 +703,12 @@ class Parameters(RSpec.Resource):
             param = ET.SubElement(el,paramXML)
             param.text = "KEYSTONEAPIVERSION=%d" % (int(params.keystoneVersion))
             pass
+        
+        param = ET.SubElement(el,paramXML)
+        param.text = "KEYSTONEUSEMEMCACHE=%d" % (int(bool(params.keystoneUseMemcache)))
+        
+        param = ET.SubElement(el,paramXML)
+        param.text = "QUOTASOFF=%d" % (int(bool(params.quotasOff)))
 
         return el
     pass
