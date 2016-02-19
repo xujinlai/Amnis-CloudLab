@@ -123,7 +123,12 @@ crudini --set /etc/nova/nova.conf $VNCSECTION \
 #
 ARCH=`uname -m`
 if [ "$ARCH" = "aarch64" ] ; then
-    crudini --set /etc/nova/nova.conf $VNCSECTION vnc_enabled False
+    if [ $OSVERSION -le $OSKILO ]; then
+	crudini --set /etc/nova/nova.conf $VNCSECTION vnc_enabled False
+    else
+	# QEMU/Nova on Liberty gives aarch64 a vga adapter/bus.
+	crudini --set /etc/nova/nova.conf $VNCSECTION vnc_enabled True
+    fi
 else
     crudini --set /etc/nova/nova.conf $VNCSECTION vnc_enabled True
 fi
@@ -142,6 +147,11 @@ crudini --set /etc/nova/nova-compute.conf libvirt virt_type kvm
 if [ "$ARCH" = "aarch64" ] ; then
     crudini --set /etc/nova/nova-compute.conf libvirt cpu_mode custom
     crudini --set /etc/nova/nova-compute.conf libvirt cpu_model host
+
+    if [ $OSVERSION -ge $OSLIBERTY ]; then
+	crudini --set /etc/nova/nova-compute.conf libvirt video_type vga
+	crudini --set /etc/nova/nova-compute.conf libvirt use_usb_tablet False
+    fi
 fi
 
 if [ ${OSCODENAME} = "juno" ]; then

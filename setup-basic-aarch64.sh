@@ -321,6 +321,9 @@ glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" $TRUS
 glance image-update --property kernel_id=${KERNEL_ID} $TRUSTY_SERVER_ARG
 glance image-update --property ramdisk_id=${RAMDISK_ID} $TRUSTY_SERVER_ARG
 glance image-update --property root_device_name=/dev/vda1 $TRUSTY_SERVER_ARG
+if [ $OSVERSION -ge $OSLIBERTY ]; then
+    glance image-update --property hw_video_model=vga $TRUSTY_SERVER_ARG
+fi
 
 echo "*** Creating image with cloud-guest-utils AND multi-nic support ..."
 
@@ -398,6 +401,9 @@ glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" $TRUS
 glance image-update --property kernel_id=${KERNEL_ID} $TRUSTY_SERVER_MN_ARG
 glance image-update --property ramdisk_id=${RAMDISK_ID} $TRUSTY_SERVER_MN_ARG
 glance image-update --property root_device_name=/dev/vda1 $TRUSTY_SERVER_MN_ARG
+if [ $OSVERSION -ge $OSLIBERTY ]; then
+    glance image-update --property hw_video_model=vga $TRUSTY_SERVER_MN_ARG
+fi
 
 if [ ${BUILD_AARCH64_FROM_CORE} = 1 ] ; then
     echo "*** Importing non-ssh image ..."
@@ -414,6 +420,9 @@ if [ ${BUILD_AARCH64_FROM_CORE} = 1 ] ; then
     glance image-update --property kernel_id=${KERNEL_ID} $IMAGEARG
     glance image-update --property ramdisk_id=${RAMDISK_ID} $IMAGEARG
     glance image-update --property root_device_name=/dev/vda1 $IMAGEARG
+    if [ $OSVERSION -ge $OSLIBERTY ]; then
+	glance image-update --property hw_video_model=vga $IMAGEARG
+    fi
 
     echo "*** Importing image with sshd ..."
 
@@ -429,6 +438,9 @@ if [ ${BUILD_AARCH64_FROM_CORE} = 1 ] ; then
     glance image-update --property kernel_id=${KERNEL_ID} $IMAGEARG
     glance image-update --property ramdisk_id=${RAMDISK_ID} $IMAGEARG
     glance image-update --property root_device_name=/dev/vda1 $IMAGEARG
+    if [ $OSVERSION -ge $OSLIBERTY ]; then
+	glance image-update --property hw_video_model=vga $IMAGEARG
+    fi
 fi
 
 umount mnt
