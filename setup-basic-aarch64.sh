@@ -312,10 +312,15 @@ fi
 echo "*** Importing image with cloud-guest-utils  ..."
 
 glance image-create --name trusty-server ${GLANCEOPTS} --progress --file $out --disk-format ami --container-format ami
-glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" trusty-server
-glance image-update --property kernel_id=${KERNEL_ID} trusty-server
-glance image-update --property ramdisk_id=${RAMDISK_ID} trusty-server
-glance image-update --property root_device_name=/dev/vda1 trusty-server
+if [ $OSVERSION -ge $OSLIBERTY ]; then
+    TRUSTY_SERVER_ARG=`glance image-list | awk ' / trusty-server / { print $2 }'`
+else
+    TRUSTY_SERVER_ARG='trusty-server'
+fi
+glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" $TRUSTY_SERVER_ARG
+glance image-update --property kernel_id=${KERNEL_ID} $TRUSTY_SERVER_ARG
+glance image-update --property ramdisk_id=${RAMDISK_ID} $TRUSTY_SERVER_ARG
+glance image-update --property root_device_name=/dev/vda1 $TRUSTY_SERVER_ARG
 
 echo "*** Creating image with cloud-guest-utils AND multi-nic support ..."
 
@@ -384,29 +389,46 @@ umount mnt
 echo "*** Importing image with cloud-guest-utils AND multi-nic support ..."
 
 glance image-create --name trusty-server-multi-nic ${GLANCEOPTS} --progress --file $out --disk-format ami --container-format ami
-glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" trusty-server-multi-nic
-glance image-update --property kernel_id=${KERNEL_ID} trusty-server-multi-nic
-glance image-update --property ramdisk_id=${RAMDISK_ID} trusty-server-multi-nic
-glance image-update --property root_device_name=/dev/vda1 trusty-server-multi-nic
+if [ $OSVERSION -ge $OSLIBERTY ]; then
+    TRUSTY_SERVER_MN_ARG=`glance image-list | awk ' / trusty-server-multi-nic / { print $2 }'`
+else
+    TRUSTY_SERVER_MN_ARG='trusty-server-multi-nic'
+fi
+glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" $TRUSTY_SERVER_MN_ARG
+glance image-update --property kernel_id=${KERNEL_ID} $TRUSTY_SERVER_MN_ARG
+glance image-update --property ramdisk_id=${RAMDISK_ID} $TRUSTY_SERVER_MN_ARG
+glance image-update --property root_device_name=/dev/vda1 $TRUSTY_SERVER_MN_ARG
 
 if [ ${BUILD_AARCH64_FROM_CORE} = 1 ] ; then
     echo "*** Importing non-ssh image ..."
 
     glance image-create --name ubuntu-core-14.04.1-core-arm64 ${GLANCEOPTS} --progress --file $out.1 --disk-format ami --container-format ami
 
+    if [ $OSVERSION -ge $OSLIBERTY ]; then
+	IMAGEARG=`glance image-list | awk ' / ubuntu-core-14.04.1-core-arm64 / { print $2 }'`
+    else
+	IMAGEARG='ubuntu-core-14.04.1-core-arm64'
+    fi
+
     glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" ubuntu-core-14.04.1-core-arm64
-    glance image-update --property kernel_id=${KERNEL_ID} ubuntu-core-14.04.1-core-arm64
-    glance image-update --property ramdisk_id=${RAMDISK_ID} ubuntu-core-14.04.1-core-arm64
-    glance image-update --property root_device_name=/dev/vda1 ubuntu-core-14.04.1-core-arm64
+    glance image-update --property kernel_id=${KERNEL_ID} $IMAGEARG
+    glance image-update --property ramdisk_id=${RAMDISK_ID} $IMAGEARG
+    glance image-update --property root_device_name=/dev/vda1 $IMAGEARG
 
     echo "*** Importing image with sshd ..."
 
     glance image-create --name ubuntu-core-14.04.1-core-arm64-sshd ${GLANCEOPTS} --progress --file $out.2 --disk-format ami --container-format ami
 
+    if [ $OSVERSION -ge $OSLIBERTY ]; then
+	IMAGEARG=`glance image-list | awk ' / ubuntu-core-14.04.1-core-arm64-sshd / { print $2 }'`
+    else
+	IMAGEARG='ubuntu-core-14.04.1-core-arm64-sshd'
+    fi
+
     glance image-update --property kernel_args="console=ttyAMA0 root=/dev/sda" ubuntu-core-14.04.1-core-arm64-sshd
-    glance image-update --property kernel_id=${KERNEL_ID} ubuntu-core-14.04.1-core-arm64-sshd
-    glance image-update --property ramdisk_id=${RAMDISK_ID} ubuntu-core-14.04.1-core-arm64-sshd
-    glance image-update --property root_device_name=/dev/vda1 ubuntu-core-14.04.1-core-arm64-sshd
+    glance image-update --property kernel_id=${KERNEL_ID} $IMAGEARG
+    glance image-update --property ramdisk_id=${RAMDISK_ID} $IMAGEARG
+    glance image-update --property root_device_name=/dev/vda1 $IMAGEARG
 fi
 
 umount mnt
