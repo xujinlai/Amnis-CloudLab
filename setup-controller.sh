@@ -227,7 +227,7 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
 
     su -s /bin/sh -c "/usr/bin/keystone-manage db_sync" keystone
 
-    if [ $OSVERSION -eq $OSKILO ]; then
+    if [ $OSVERSION -eq $OSKILO -a $KEYSTONEUSEWSGI -eq 1 ]; then
 	cat <<EOF >/etc/apache2/sites-available/wsgi-keystone.conf
 Listen 5000
 Listen 35357
@@ -269,7 +269,7 @@ EOF
 	cp -p /var/www/cgi-bin/keystone/admin /var/www/cgi-bin/keystone/main 
 	chown -R keystone:keystone /var/www/cgi-bin/keystone
 	chmod 755 /var/www/cgi-bin/keystone/*
-    elif [ $OSVERSION -ge $OSLIBERTY ]; then
+    elif [ $OSVERSION -ge $OSLIBERTY -a $KEYSTONEUSEWSGI -eq 1 ]; then
 	cat <<EOF >/etc/apache2/sites-available/wsgi-keystone.conf
 Listen 5000
 Listen 35357
@@ -325,7 +325,7 @@ EOF
 	    /etc/apache2/sites-enabled
     fi
 
-    if [ $OSVERSION -le $OSJUNO ]; then
+    if [ $OSVERSION -le $OSJUNO -o $KEYSTONEUSEWSGI -eq 0 ]; then
 	service_restart keystone
 	service_enable keystone
     else

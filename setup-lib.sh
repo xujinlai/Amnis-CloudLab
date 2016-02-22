@@ -61,6 +61,8 @@ CEILOMETER_USE_WSGI=0
 QUOTASOFF=1
 # Off by default; seems to cause intermittent keystone unavailability.
 KEYSTONEUSEMEMCACHE=0
+# Off by default for Juno; on for Kilo and on by default.
+KEYSTONEUSEWSGI=""
 #
 # We have an 'adminapi' user that gets a random password.  Then, we have
 # the dashboard and instance password, that comes in from geni-lib/rspec as a
@@ -271,6 +273,18 @@ else
     KAPISTR='v2.0'
 fi
 
+#
+# Figure out if we got told to use keystone wsgi or not, or what our
+# default should be if not.
+#
+if [ "x$KEYSTONEUSEWSGI" = "x" -a $OSVERSION -ge $OSKILO ]; then
+    KEYSTONEUSEWSGI=1
+elif [ "x$KEYSTONEUSEWSGI" = "x1" ]; then
+    # Let them force WSGI
+    KEYSTONEUSEWSGI=1
+else
+    KEYSTONEUSEWSGI=0
+fi
 
 if [ $GENIUSER -eq 1 ]; then
     SWAPPER_EMAIL=`geni-get slice_email`
