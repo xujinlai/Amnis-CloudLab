@@ -1036,8 +1036,6 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	    nova_admin_tenant_id ${service_tenant_id}
 	crudini --set /etc/neutron/neutron.conf DEFAULT \
 	    nova_admin_password ${NOVA_PASS}
-	crudini --set /etc/neutron/neutron.conf DEFAULT \
-	    notification_driver = messagingv2
     else
 	crudini --set /etc/neutron/neutron.conf nova \
 	    auth_url http://$CONTROLLER:35357
@@ -1050,6 +1048,9 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	crudini --set /etc/neutron/neutron.conf nova password ${NOVA_PASS}
     fi
 
+    crudini --set /etc/neutron/neutron.conf DEFAULT \
+	notification_driver messagingv2
+	
     fwdriver="neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver"
     if [ ${DISABLE_SECURITY_GROUPS} -eq 1 ]; then
 	fwdriver="neutron.agent.firewall.NoopFirewallDriver"
