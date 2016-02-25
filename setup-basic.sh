@@ -181,6 +181,19 @@ if [ $QUOTASOFF -eq 1 ]; then
     nova quota-class-update --server-groups -1 default
     nova quota-class-update --server-group-members -1 default
 
+    neutron quota-update --network -1
+    neutron quota-update --subnet -1
+    neutron quota-update --port -1
+    neutron quota-update --router -1
+    neutron quota-update --floatingip -1
+    neutron quota-update --security-group -1
+    neutron quota-update --security-group-rule -1
+    neutron quota-update --rbac-policy -1
+    neutron quota-update --vip -1
+    neutron quota-update --pool -1
+    neutron quota-update --member -1
+    neutron quota-update --health-monitor -1
+
     cinder quota-class-update --volumes -1 default
     cinder quota-class-update --snapshots -1 default
     cinder quota-class-update --gigabytes -1 default
@@ -188,6 +201,22 @@ if [ $QUOTASOFF -eq 1 ]; then
     #cinder quota-class-update --backup-_gigabytes -1 default
     #cinder quota-class-update --backups -1 default
     #cinder quota-class-update --per-volume-gigabytes -1 default
+
+    openstack quota set --class --ram -1 admin
+    openstack quota set --class --secgroup-rules -1 admin
+    openstack quota set --class --instances -1 admin
+    openstack quota set --class --key-pairs -1 admin
+    openstack quota set --class --fixed-ips -1 admin
+    openstack quota set --class --secgroups -1 admin
+    openstack quota set --class --injected-file-size -1 admin
+    openstack quota set --class --floating-ips -1 admin
+    openstack quota set --class --injected-files -1 admin
+    openstack quota set --class --cores -1 admin
+    openstack quota set --class --injected-path-size -1 admin
+    openstack quota set --class --gigabytes -1 admin
+    openstack quota set --class --volumes -1 admin
+    openstack quota set --class --snapshots -1 admin
+    openstack quota set --class --volume-type -1 admin
 fi
 
 exit 0
