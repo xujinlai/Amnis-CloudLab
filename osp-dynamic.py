@@ -1,5 +1,21 @@
 #!/usr/bin/env python
 
+##
+## This file is a dynamic version of the Cloudlab OpenStack profile.  Its core
+## class, OSDynSliceManagerHelper, implements the DynSliceManagerHelper interface,
+## which the DynSliceManager uses to create and control a dynamic slice where
+## nodes are added and deleted on demand.
+##
+## This script is intended to be both a standalone script, and one that is
+## imported by a manager.  In the latter case, the manager looks for several
+## key variables to learn about a Helper class or object.  The variables it
+## looks for are DYNSLICE_CLASS and DYNSLICE_HELPER.  The former is a class
+## it will instantiate; the latter is a an object it will just invoke operations
+## on.  Finally, near the very end, it will also handle the case where it runs
+## in the Cloudlab Portal to generate an rspec.
+##
+
+import protogeniclientlib
 import geni.portal as portal
 import geni.rspec.pg as RSpec
 import geni.rspec.igext as IG
@@ -7,17 +23,81 @@ from lxml import etree as ET
 import crypt
 import random
 import os
+import argparse
+from argparse import Namespace
 
-generator = None
+helper = None
 
 # Don't want this as a param yet
 TBURL = "http://www.emulab.net/downloads/openstack-setup-v17-johnsond.tar.gz"
 TBCMD = "sudo mkdir -p /root/setup && sudo -H /tmp/setup/setup-driver.sh 2>&1 | sudo tee /root/setup/setup-driver.log"
-TBCMD_DYNNODE = "sudo mkdir -p /root/setup && sudo -H /tmp/setup/setup-driver-add-dyn-node.sh 2>&1 | sudo tee /root/setup/setup-driver.log"
+TBCMD_ADDNODE = "sudo mkdir -p /root/setup && sudo -H /tmp/setup/setup-driver-add-dyn-node.sh 2>&1 | sudo tee /root/setup/setup-driver.log"
+TBCMD_DELNODE = "sudo -H /tmp/setup/setup-controller-delete-nodes.sh %s 2>&1 | sudo tee -a /root/setup/setup-delete-nodes.log"
 TBPATH = "/tmp"
 
-class OSPGenerator(object):
-    def __init__(self):
+#
+# This is a simple class that allows the geni-lib Portal context object to
+# receive params from a dict.  By default, it doesn't know how to do that...
+#
+class OSContext(portal.Context):
+    def __init__(self,):
+        super(OSContext,self).__init__()
+        pass
+    
+    def bindParametersDict(self,paramValues):
+        namespace = Namespace()
+        for name in self._parameterOrder:
+            opts = self._parameters[name]
+            val = paramValues.get(name, opts['defaultValue'])
+            try:
+                if type(opts['defaultValue']) == bool:
+                    if val == "False" or val == "false":
+                        val = False
+                    elif val == "True" or val == "true":
+                        val = True
+                    else:
+                        val = portal.ParameterType.argparsemap[opts['type']](val)
+                        pass
+                    pass
+                else:
+                    val = portal.ParameterType.argparsemap[opts['type']](val)
+                    pass
+                pass
+            except:
+                print "ERROR: Could not coerce '%s' to '%s'" \
+                    % (val, opts['type'])
+                continue
+            if opts['legalValues'] and \
+                val not in portal.Context._legalList(opts['legalValues']):
+                print "ERROR: Illegal value '%s'" % (val,),[name]
+            else:
+                setattr(namespace, name, val)
+                pass
+            pass
+        # This might not return. 
+        self.verifyParameters()
+        self._bindingDone = True
+        return namespace
+    
+    def getParameterNames(self):
+        return self._parameters.keys()
+    
+    def getParameterUpperCaseNameMap(self):
+        retval = {}
+        for pname in self._parameters.keys():
+            retval[pname.upper()] = pname
+            pass
+        return retval
+    
+    pass
+
+class OSDynSliceManagerHelper(protogeniclientlib.DynSliceManagerHelper,
+                              protogeniclientlib.DynSliceClientEndpoint):
+    def __init__(self,manager=None,server=None,debug=None):
+        protogeniclientlib.DynSliceManagerHelper.__init__(self,server=server,
+                                                          manager=manager)
+        protogeniclientlib.DynSliceClientEndpoint.__init__(self,debug=debug)
+
         #
         # Create our in-memory model of the RSpec -- the resources we're
         # going to request in our experiment, and their configuration.
@@ -36,15 +116,17 @@ class OSPGenerator(object):
         self.flatlans = {}
         self.vlans = {}
         self.alllans = []
+        self.alllannames = []
         self.computeNodeList = ""
         self.computeNodeIndex = 0
         self.mgmtlan = None
+        self.mgmtlanname = None
         self.generateIPs = False
 
         #
         # This geni-lib script is designed to run in the CloudLab Portal.
         #
-        self.pc = portal.Context()
+        self.pc = OSContext()
 
         #
         # Define *many* parameters; see the help docs in geni-lib to
@@ -150,7 +232,7 @@ class OSPGenerator(object):
         pass
 
     # Assume a /16 for every network
-    def get_next_ipaddr(self,lan):
+    def _getNextIPAddr(self,lan):
         ipaddr = self.ipdb[lan]['base']
         backpart = ''
 
@@ -176,15 +258,10 @@ class OSPGenerator(object):
 
         return ipaddr + backpart
 
-    def get_netmask(self,lan):
+    def _getNetmask(self,lan):
         return self.ipdb[lan]['netmask']
-
-    def generate(self):
-        #
-        # Get any input parameter values that will override our defaults.
-        #
-        self.params = self.pc.bindParameters()
-
+    
+    def _verifyParameters(self):
         #
         # Verify our parameters and throw errors.
         #
@@ -311,6 +388,70 @@ class OSPGenerator(object):
         # Give the library a chance to return nice JSON-formatted
         # exception(s) and/or warnings; this might sys.exit().
         self.pc.verifyParameters()
+        pass
+    
+    def _initStateFromParameters(self):
+        #
+        # Ok, get down to business -- we are going to create CloudLab
+        # LANs to be used as (openstack networks), based on user's
+        # parameters.  We might also generate IP addresses for the
+        # nodes, so set up some quick, brutally stupid IP address
+        # generation for each LAN.
+        #
+        if self.params.managementLanType == 'flat':
+            self.ipdb['mgmt-lan'] = { 'base':'192.168','netmask':'255.255.0.0','values':[-1,-1,0,0] }
+            pass
+        for i in range(1,self.params.flatDataLanCount + 1):
+            dlanstr = "%s-%d" % ('flat-lan',i)
+            self.ipdb[dlanstr] = { 'base' : '10.%d' % (i + self.dataOffset + self.ipSubnetsUsed,),'netmask' : '255.255.0.0',
+                              'values' : [-1,-1,10,0] }
+            self.flatlanstrs[i] = dlanstr
+            self.ipSubnetsUsed += 1
+            self.alllannames.append(dlanstr)
+            pass
+        for i in range(1,self.params.vlanDataLanCount + 1):
+            dlanstr = "%s-%d" % ('vlan-lan-',i)
+            self.ipdb[dlanstr] = { 'base' : '10.%d' % (i + self.dataOffset + self.ipSubnetsUsed,),'netmask' : '255.255.0.0',
+                              'values' : [-1,-1,10,0] }
+            self.vlanstrs[i] = dlanstr
+            self.ipSubnetsUsed += 1
+            self.alllannames.append(dlanstr)
+            pass
+        for i in range(1,self.params.vxlanDataLanCount + 1):
+            dlanstr = "%s-%d" % ('vxlan-lan',i)
+            self.ipdb[dlanstr] = { 'base' : '10.%d' % (i + self.dataOffset + self.ipSubnetsUsed,),'netmask' : '255.255.0.0',
+                              'values' : [-1,-1,10,0] }
+            self.ipSubnetsUsed += 1
+            pass
+        
+        if self.params.release == "juno":
+            self.image_os = 'UBUNTU14-10-64'
+        else:
+            self.image_os = 'UBUNTU15-04-64'
+            pass
+        if self.params.fromScratch:
+            self.image_tag_cn = 'STD'
+            self.image_tag_nm = 'STD'
+            self.image_tag_cp = 'STD'
+        else:
+            self.image_tag_cn = 'OSCN'
+            self.image_tag_nm = 'OSNM'
+            self.image_tag_cp = 'OSCP'
+            pass
+        
+        self.computeNodeDiskImage = "urn:publicid:IDN+utah.cloudlab.us+image+emulab-ops//%s-%s" % (self.image_os,self.image_tag_cp)
+        
+        pass
+
+    def generateRspec(self):
+        # Get any input parameter values that will override our defaults.
+        self.params = self.pc.bindParameters()
+        
+        # Verify our parameters.
+        self._verifyParameters()
+        
+        # Setup local state needed to build the rspec or add nodes later.
+        self._initStateFromParameters()
 
         detailedParamAutoDocs = ''
         for param in self.pc._parameterOrder:
@@ -365,37 +506,6 @@ The profile's setup scripts are automatically installed on each node in `/tmp/se
         self.rspec.addTour(tour)
 
         #
-        # Ok, get down to business -- we are going to create CloudLab
-        # LANs to be used as (openstack networks), based on user's
-        # parameters.  We might also generate IP addresses for the
-        # nodes, so set up some quick, brutally stupid IP address
-        # generation for each LAN.
-        #
-        if self.params.managementLanType == 'flat':
-            self.ipdb['mgmt-lan'] = { 'base':'192.168','netmask':'255.255.0.0','values':[-1,-10,0,0] }
-            pass
-        for i in range(1,self.params.flatDataLanCount + 1):
-            dlanstr = "%s-%d" % ('flat-lan',i)
-            self.ipdb[dlanstr] = { 'base' : '10.%d' % (i + self.dataOffset + self.ipSubnetsUsed,),'netmask' : '255.255.0.0',
-                              'values' : [-1,-1,10,0] }
-            self.flatlanstrs[i] = dlanstr
-            self.ipSubnetsUsed += 1
-            pass
-        for i in range(1,self.params.vlanDataLanCount + 1):
-            dlanstr = "%s-%d" % ('vlan-lan-',i)
-            self.ipdb[dlanstr] = { 'base' : '10.%d' % (i + self.dataOffset + self.ipSubnetsUsed,),'netmask' : '255.255.0.0',
-                              'values' : [-1,-1,10,0] }
-            self.vlanstrs[i] = dlanstr
-            self.ipSubnetsUsed += 1
-            pass
-        for i in range(1,self.params.vxlanDataLanCount + 1):
-            dlanstr = "%s-%d" % ('vxlan-lan',i)
-            self.ipdb[dlanstr] = { 'base' : '10.%d' % (i + self.dataOffset + self.ipSubnetsUsed,),'netmask' : '255.255.0.0',
-                              'values' : [-1,-1,10,0] }
-            self.ipSubnetsUsed += 1
-            pass
-
-        #
         # Ok, actually build the data LANs now...
         #
 
@@ -410,6 +520,9 @@ The profile's setup scripts are automatically installed on each node in `/tmp/se
                 pass
             self.flatlans[i] = datalan
             self.alllans.append(datalan)
+            if not datalan.client_id in self.alllannames:
+                self.alllannames.append(datalan.client_id)
+                pass
             pass
         for i in range(1,self.params.vlanDataLanCount + 1):
             datalan = RSpec.LAN("vlan-lan-%d" % (i,))
@@ -420,6 +533,9 @@ The profile's setup scripts are automatically installed on each node in `/tmp/se
             datalan.type = "vlan"
             self.vlans[i] = datalan
             self.alllans.append(datalan)
+            if not datalan.client_id in self.alllannames:
+                self.alllannames.append(datalan.client_id)
+                pass
             pass
 
         #
@@ -428,6 +544,7 @@ The profile's setup scripts are automatically installed on each node in `/tmp/se
         # Cloudlab public control network.
         #
         if self.params.managementLanType == 'flat':
+            self.mgmtlanname = 'mgmt-lan'
             self.mgmtlan = RSpec.LAN('mgmt-lan')
             if self.params.multiplexFlatLans:
                 self.mgmtlan.link_multiplexing = True
@@ -438,28 +555,17 @@ The profile's setup scripts are automatically installed on each node in `/tmp/se
             pass
         else:
             self.mgmtlan = None
+            self.mgmtlanname = None
             pass
 
         #
         # Construct the disk image URNs we're going to set the various
         # nodes to load.
         #
-        if self.params.release == "juno":
-            image_os = 'UBUNTU14-10-64'
-        else:
-            image_os = 'UBUNTU15-04-64'
-            pass
-        if self.params.fromScratch:
-            image_tag_cn = 'STD'
-            image_tag_nm = 'STD'
-            image_tag_cp = 'STD'
-        else:
-            image_tag_cn = 'OSCN'
-            image_tag_nm = 'OSNM'
-            image_tag_cp = 'OSCP'
-            pass
         
-        self.ctl_disk_image = "urn:publicid:IDN+utah.cloudlab.us+image+emulab-ops//%s-%s" % (image_os,image_tag_cn)
+        self.ctl_disk_image = \
+            "urn:publicid:IDN+utah.cloudlab.us+image+emulab-ops//%s-%s" \
+                % (self.image_os,self.image_tag_cn)
 
         #
         # Add the controller node.
@@ -472,8 +578,8 @@ The profile's setup scripts are automatically installed on each node in `/tmp/se
             iface = controller.addInterface("if%d" % (i,))
             datalan.addInterface(iface)
             if self.generateIPs:
-                addr = RSpec.IPv4Address(self.get_next_ipaddr(datalan.client_id),
-                                         self.get_netmask(datalan.client_id))
+                addr = RSpec.IPv4Address(self._getNextIPAddr(datalan.client_id),
+                                         self._getNetmask(datalan.client_id))
                 iface.addAddress(addr)
                 pass
             i += 1
@@ -482,8 +588,8 @@ The profile's setup scripts are automatically installed on each node in `/tmp/se
             iface = controller.addInterface("ifM")
             self.mgmtlan.addInterface(iface)
             if self.generateIPs:
-                addr = RSpec.IPv4Address(self.get_next_ipaddr(self.mgmtlan.client_id),
-                                         self.get_netmask(self.mgmtlan.client_id))
+                addr = RSpec.IPv4Address(self._getNextIPAddr(self.mgmtlan.client_id),
+                                         self._getNetmask(self.mgmtlan.client_id))
                 iface.addAddress()
                 pass
             pass
@@ -496,14 +602,14 @@ The profile's setup scripts are automatically installed on each node in `/tmp/se
         #
         networkManager = RSpec.RawPC(self.params.networkManagerHost)
         networkManager.Site("1")
-        networkManager.disk_image = "urn:publicid:IDN+utah.cloudlab.us+image+emulab-ops//%s-%s" % (image_os,image_tag_nm)
+        networkManager.disk_image = "urn:publicid:IDN+utah.cloudlab.us+image+emulab-ops//%s-%s" % (self.image_os,self.image_tag_nm)
         i = 0
         for datalan in self.alllans:
             iface = networkManager.addInterface("if%d" % (i,))
             datalan.addInterface(iface)
             if self.generateIPs:
-                addr = RSpec.IPv4Address(self.get_next_ipaddr(datalan.client_id),
-                                         self.get_netmask(datalan.client_id))
+                addr = RSpec.IPv4Address(self._getNextIPAddr(datalan.client_id),
+                                         self._getNetmask(datalan.client_id))
                 iface.addAddress(addr)
                 pass
             i += 1
@@ -512,8 +618,8 @@ The profile's setup scripts are automatically installed on each node in `/tmp/se
             iface = networkManager.addInterface("ifM")
             self.mgmtlan.addInterface(iface)
             if self.generateIPs:
-                addr = RSpec.IPv4Address(self.get_next_ipaddr(self.mgmtlan.client_id),
-                                         self.get_netmask(self.mgmtlan.client_id))
+                addr = RSpec.IPv4Address(self._getNextIPAddr(self.mgmtlan.client_id),
+                                         self._getNetmask(self.mgmtlan.client_id))
                 iface.addAddress(addr)
                 pass
             pass
@@ -542,8 +648,6 @@ The profile's setup scripts are automatically installed on each node in `/tmp/se
                 pass
             computeNodeNamesBySite[2].append(cpname)
             pass
-
-        self.computeNodeDiskImage = "urn:publicid:IDN+utah.cloudlab.us+image+emulab-ops//%s-%s" % (image_os,image_tag_cp)
         
         for (siteNumber,cpnameList) in computeNodeNamesBySite.iteritems():
             for cpname in cpnameList:
@@ -555,8 +659,8 @@ The profile's setup scripts are automatically installed on each node in `/tmp/se
                     iface = cpnode.addInterface("if%d" % (i,))
                     datalan.addInterface(iface)
                     if self.generateIPs:
-                        addr = RSpec.IPv4Address(self.get_next_ipaddr(datalan.client_id),
-                                                 self.get_netmask(datalan.client_id))
+                        addr = RSpec.IPv4Address(self._getNextIPAddr(datalan.client_id),
+                                                 self._getNetmask(datalan.client_id))
                         iface.addAddress(addr)
                         pass
                     i += 1
@@ -565,8 +669,8 @@ The profile's setup scripts are automatically installed on each node in `/tmp/se
                     iface = cpnode.addInterface("ifM")
                     self.mgmtlan.addInterface(iface)
                     if self.generateIPs:
-                        iface.addAddress(RSpec.IPv4Address(get_next_ipaddr(self.mgmtlan.client_id),
-                                                           get_netmask(self.mgmtlan.client_id)))
+                        iface.addAddress(RSpec.IPv4Address(_getNextIPAddr(self.mgmtlan.client_id),
+                                                           _getNetmask(self.mgmtlan.client_id)))
                         pass
                     pass
                 cpnode.addService(RSpec.Install(url=TBURL, path=TBPATH))
@@ -588,38 +692,117 @@ The profile's setup scripts are automatically installed on each node in `/tmp/se
         apool = IG.AddressPool("nm",self.params.publicIPCount)
         self.rspec.addResource(apool)
         
-        parameters = OSPParameters(self)
+        parameters = OSParameters(self)
         self.rspec.addResource(parameters)
 
         ###if not self.params.adminPass or len(self.params.adminPass) == 0:
         if True:
-            stuffToEncrypt = OSPEmulabEncrypt(self)
+            stuffToEncrypt = OSEmulabEncrypt(self)
             self.rspec.addResource(stuffToEncrypt)
             pass
 
         return self.rspec.toXMLString(True)
-    
-    def setComputeNodeIndex(self,idx):
-        self.computeNodeIndex = idx
+
+    def _setStateFromManifest(self,wrappedPGManifest):
+        if not wrappedPGManifest:
+            return None
+        
+        # Grab parameters from the manifest
+        paramValues = {}
+        ns = { 'ns0':"http://www.protogeni.net/resources/rspec/ext/johnsond/1" }
+        xl = wrappedPGManifest.root.xpath('ns0:profile_parameters/ns0:parameter',
+                                          namespaces=ns)
+        upperParamNames = self.pc.getParameterUpperCaseNameMap()
+        paramNames = self.pc.getParameterNames()
+        for elem in xl:
+            [k,v] = elem.text.split('=')
+            # Maybe strip string delimiters
+            if (v[0] == '"' and v[-1] == '"') or (v[0] == "'" and v[-1] == "'"):
+                v = v[1:-1]
+                pass
+            if upperParamNames.has_key(k):
+                paramValues[upperParamNames[k]] = v
+                pass
+            pass
+        
+        # Get any input parameter values that will override our defaults.
+        self.params = self.pc.bindParametersDict(paramValues)
+        
+        # Verify our parameters.
+        self._verifyParameters()
+        
+        # Setup local state needed to build the rspec or add nodes later.
+        self._initStateFromParameters()
+        
+        # Grab the netmasks and ip addresses we have already assigned.
+        # We just start assigning at the current highest one.
+        for lan in self.alllannames:
+            ipinfo = wrappedPGManifest.getLinkAddressInfo(lan)
+            if ipinfo.has_key('netmasks'):
+                self.ipdb[lan]['netmask'] = ipinfo['netmasks'][0]
+            if ipinfo.has_key('max_ip'):
+                [o0,o1,o2,o3] = ipinfo['max_ip'].split('.')
+                self.ipdb[lan]['values'][2] = int(o2)
+                self.ipdb[lan]['values'][3] = int(o3)
+                pass
+            pass
+        if self.mgmtlanname:
+            lan = self.mgmtlanname
+            ipinfo = wrappedPGManifest.getLinkAddressInfo(lan)
+            if ipinfo.has_key('netmasks'):
+                self.ipdb[lan]['netmask'] = ipinfo['netmasks'][0]
+            if ipinfo.has_key('max_ip'):
+                [o0,o1,o2,o3] = ipinfo['max_ip'].split('.')
+                self.ipdb[lan]['values'][2] = int(o2)
+                self.ipdb[lan]['values'][3] = int(o3)
+                pass
+            pass
+        
+        # Find our max compute node ID.
+        for node in wrappedPGManifest.nodes:
+            cid = node.name
+            if cid.startswith(self.params.computeHostBaseName):
+                cid_num = int(cid[(len(self.params.computeHostBaseName)+1):])
+                if cid_num > self.computeNodeIndex:
+                    self.computeNodeIndex = cid_num
+                    pass
+                pass
+            pass
+        
         pass
     
-    def addNewNodes(self,count=1):
+    def generateAddNodesArgs(self,count=1):
         from xml.sax.saxutils import escape
         
+        # If we don't have params yet, try to get them from our manifest
+        if not self.params:
+            wrappedPGManifest = self.server.get_wrapped_manifest()
+            self._setStateFromManifest(wrappedPGManifest)
+            pass
+        
+        # Build the arguments for AddNodes().
         retval = {}
         for i in range(self.computeNodeIndex + 1,self.computeNodeIndex + count + 1):
             nn = "%s-%d" % (self.params.computeHostBaseName,i)
             lans = []
-            for datalan in self.alllans:
-                lan = { 'name' : datalan.client_id }
+            for datalan in self.alllannames:
+                lan = { 'name' : datalan }
                 if self.generateIPs:
-                    lan['address'] = self.get_next_ipaddr(datalan.client_id)
-                    lan['netmask'] = self.get_netmask(datalan.client_id)
+                    lan['address'] = self._getNextIPAddr(datalan)
+                    lan['netmask'] = self._getNetmask(datalan)
+                    pass
+                lans.append(lan)
+                pass
+            if self.mgmtlan:
+                lan = { 'name' : self.mgmtlanname }
+                if self.generateIPs:
+                    lan['address'] = self._getNextIPAddr(self.mgmtlanname)
+                    lan['netmask'] = self._getNetmask(self.mgmtlanname)
                     pass
                 lans.append(lan)
                 pass
             nd = { "diskimage" : self.computeNodeDiskImage,
-                   "startup" : escape(TBCMD_DYNNODE),
+                   "startup" : escape(TBCMD_ADDNODE),
                    "tarballs" : [ [ escape(TBURL), TBPATH ], ],
                    "lans" : lans,
                  }
@@ -627,12 +810,35 @@ The profile's setup scripts are automatically installed on each node in `/tmp/se
             pass
         self.computeNodeIndex += count
         return retval
+    
+    def getDeleteCommands(self,nodelist):
+        client_id_list = []
+        for nv in nodelist:
+            client_id_list.append(nv['client_id'])
+            pass
+        
+        if len(client_id_list) == 0:
+            return None
+        
+        uid = self.server.get_user_uid()
+        (hostname,port) = self.server.get_hostname_and_port('ctl')
+        if port:
+            port_arg = "-p " + str(port)
+        else:
+            port_arg = ""
+        delcmd = TBCMD_DELNODE % (" ".join(client_id_list),)
+        #uid = 'johnso0'
+        cmd = "ssh -o StrictHostKeyChecking=no %s@%s %s '%s'" \
+            % (uid,hostname,port_arg,delcmd)
+        
+        return [cmd,]
+
     pass
 
-class OSPEmulabEncrypt(RSpec.Resource):
-    def __init__(self,ospgenerator):
-        super(OSPEmulabEncrypt,self).__init__()
-        self.generator = ospgenerator
+class OSEmulabEncrypt(RSpec.Resource):
+    def __init__(self,osphelper):
+        super(OSEmulabEncrypt,self).__init__()
+        self.helper = osphelper
         pass
     
     def _write(self, root):
@@ -649,10 +855,10 @@ class OSPEmulabEncrypt(RSpec.Resource):
 # The nodes download the manifest(s), and the setup scripts read the parameter
 # values when they run.
 #
-class OSPParameters(RSpec.Resource):
-    def __init__(self,ospgenerator):
-        super(OSPParameters,self).__init__()
-        self.generator = ospgenerator
+class OSParameters(RSpec.Resource):
+    def __init__(self,osphelper):
+        super(OSParameters,self).__init__()
+        self.helper = osphelper
         pass
 
     def _write(self, root):
@@ -661,42 +867,68 @@ class OSPParameters(RSpec.Resource):
         
         el = ET.SubElement(root,"%sprofile_parameters" % (ns,))
 
+        #
+        # We basically have a bunch of special, historic variable names,
+        # so keep those, but also add in every single other parameter as
+        # a string.
+        #
+        for pname in self.helper.pc.getParameterNames():
+            param = ET.SubElement(el,paramXML)
+            attrval = getattr(self.helper.params,pname)
+            #
+            # Have to convert bools to ints so that type coercion later
+            # on if we load our state from the manifest works
+            # ok... otherwise it will coerce a string of "False" into a
+            # True bool.  Standard for languages, but not what we want,
+            # of course.
+            #
+            if type(attrval) == bool:
+                strval = str(int(attrval))
+            else:
+                strval = str(getattr(self.helper.params,pname))
+                pass
+            param.text = '%s="%s"' % (pname.upper(),strval)
+            pass
+        
+        #
+        # Now add in the special, historic parameters
+        #
         param = ET.SubElement(el,paramXML)
-        param.text = 'CONTROLLER="%s"' % (self.generator.params.controllerHost,)
+        param.text = 'CONTROLLER="%s"' % (self.helper.params.controllerHost,)
         param = ET.SubElement(el,paramXML)
-        param.text = 'NETWORKMANAGER="%s"' % (self.generator.params.networkManagerHost,)
+        param.text = 'NETWORKMANAGER="%s"' % (self.helper.params.networkManagerHost,)
         param = ET.SubElement(el,paramXML)
-        param.text = 'COMPUTENODES="%s"' % (self.generator.computeNodeList,)
+        param.text = 'COMPUTENODES="%s"' % (self.helper.computeNodeList,)
 #        param = ET.SubElement(el,paramXML)
-#        param.text = 'STORAGEHOST="%s"' % (self.generator.params.blockStorageHost,)
+#        param.text = 'STORAGEHOST="%s"' % (self.helper.params.blockStorageHost,)
 #        param = ET.SubElement(el,paramXML)
-#        param.text = 'OBJECTHOST="%s"' % (self.generator.params.objectStorageHost,)
+#        param.text = 'OBJECTHOST="%s"' % (self.helper.params.objectStorageHost,)
         param = ET.SubElement(el,paramXML)
-        param.text = 'DATALANS="%s"' % (' '.join(map(lambda(lan): lan.client_id,self.generator.alllans)))
+        param.text = 'DATALANS="%s"' % (' '.join(map(lambda(lan): lan.client_id,self.helper.alllans)))
         param = ET.SubElement(el,paramXML)
-        param.text = 'DATAFLATLANS="%s"' % (' '.join(map(lambda(i): self.generator.flatlans[i].client_id,range(1,self.generator.params.flatDataLanCount + 1))))
+        param.text = 'DATAFLATLANS="%s"' % (' '.join(map(lambda(i): self.helper.flatlans[i].client_id,range(1,self.helper.params.flatDataLanCount + 1))))
         param = ET.SubElement(el,paramXML)
-        param.text = 'DATAVLANS="%s"' % (' '.join(map(lambda(i): self.generator.vlans[i].client_id,range(1,self.generator.params.vlanDataLanCount + 1))))
+        param.text = 'DATAVLANS="%s"' % (' '.join(map(lambda(i): self.helper.vlans[i].client_id,range(1,self.helper.params.vlanDataLanCount + 1))))
         param = ET.SubElement(el,paramXML)
-        param.text = 'DATAVXLANS="%d"' % (self.generator.params.vxlanDataLanCount,)
+        param.text = 'DATAVXLANS="%d"' % (self.helper.params.vxlanDataLanCount,)
         param = ET.SubElement(el,paramXML)
-        param.text = 'DATATUNNELS=%d' % (self.generator.params.greDataLanCount,)
+        param.text = 'DATATUNNELS=%d' % (self.helper.params.greDataLanCount,)
         param = ET.SubElement(el,paramXML)
-        if self.generator.mgmtlan:
-            param.text = 'MGMTLAN="%s"' % (self.generator.mgmtlan.client_id,)
+        if self.helper.mgmtlan:
+            param.text = 'MGMTLAN="%s"' % (self.helper.mgmtlan.client_id,)
         else:
             param.text = 'MGMTLAN=""'
             pass
 #        param = ET.SubElement(el,paramXML)
-#        param.text = 'STORAGEHOST="%s"' % (self.generator.params.blockStorageHost,)
+#        param.text = 'STORAGEHOST="%s"' % (self.helper.params.blockStorageHost,)
         param = ET.SubElement(el,paramXML)
-        param.text = 'DO_APT_INSTALL=%d' % (int(self.generator.params.doAptInstall),)
+        param.text = 'DO_APT_INSTALL=%d' % (int(self.helper.params.doAptInstall),)
         param = ET.SubElement(el,paramXML)
-        param.text = 'DO_APT_UPGRADE=%d' % (int(self.generator.params.doAptUpgrade),)
+        param.text = 'DO_APT_UPGRADE=%d' % (int(self.helper.params.doAptUpgrade),)
         param = ET.SubElement(el,paramXML)
-        param.text = 'DO_APT_UPDATE=%d' % (int(self.generator.params.doAptUpdate),)
+        param.text = 'DO_APT_UPDATE=%d' % (int(self.helper.params.doAptUpdate),)
 
-###        if self.generator.params.adminPass and len(self.generator.params.adminPass) > 0:
+###        if self.helper.params.adminPass and len(self.helper.params.adminPass) > 0:
 ###            random.seed()
 ###            salt = ""
 ###            schars = [46,47]
@@ -706,7 +938,7 @@ class OSPParameters(RSpec.Resource):
 ###            for i in random.sample(schars,16):
 ###                salt += chr(i)
 ###                pass
-###            hpass = crypt.crypt(self.generator.params.adminPass,'$6$%s' % (salt,))
+###            hpass = crypt.crypt(self.helper.params.adminPass,'$6$%s' % (salt,))
 ###            param = ET.SubElement(el,paramXML)
 ###            param.text = "ADMIN_PASS_HASH='%s'" % (hpass,)
 ###            pass
@@ -716,34 +948,34 @@ class OSPParameters(RSpec.Resource):
 ###            pass
         
         param = ET.SubElement(el,paramXML)
-        param.text = "ENABLE_NEW_SERIAL_SUPPORT=%d" % (int(self.generator.params.enableNewSerialSupport))
+        param.text = "ENABLE_NEW_SERIAL_SUPPORT=%d" % (int(self.helper.params.enableNewSerialSupport))
         
         param = ET.SubElement(el,paramXML)
-        param.text = "DISABLE_SECURITY_GROUPS=%d" % (int(self.generator.params.disableSecurityGroups))
+        param.text = "DISABLE_SECURITY_GROUPS=%d" % (int(self.helper.params.disableSecurityGroups))
         
         param = ET.SubElement(el,paramXML)
-        param.text = "DEFAULT_SECGROUP_ENABLE_SSH_ICMP=%d" % (int(self.generator.params.enableInboundSshAndIcmp))
+        param.text = "DEFAULT_SECGROUP_ENABLE_SSH_ICMP=%d" % (int(self.helper.params.enableInboundSshAndIcmp))
         
         param = ET.SubElement(el,paramXML)
-        param.text = "CEILOMETER_USE_MONGODB=%d" % (int(self.generator.params.ceilometerUseMongoDB))
+        param.text = "CEILOMETER_USE_MONGODB=%d" % (int(self.helper.params.ceilometerUseMongoDB))
         
         param = ET.SubElement(el,paramXML)
-        param.text = "VERBOSE_LOGGING=\"%s\"" % (str(bool(self.generator.params.enableVerboseLogging)))
+        param.text = "VERBOSE_LOGGING=\"%s\"" % (str(bool(self.helper.params.enableVerboseLogging)))
         param = ET.SubElement(el,paramXML)
-        param.text = "DEBUG_LOGGING=\"%s\"" % (str(bool(self.generator.params.enableDebugLogging)))
+        param.text = "DEBUG_LOGGING=\"%s\"" % (str(bool(self.helper.params.enableDebugLogging)))
 
         return el
     pass
 
-DYNSLICE_CLASS = OSPGenerator
-DYNSLICE_GENERATOR = None
+DYNSLICE_CLASS = OSDynSliceManagerHelper
+DYNSLICE_HELPER = None
 
 if __name__ == '__main__':
-    generator = OSPGenerator()
-    DYNSLICE_GENERATOR = generator
-    rspecXML = generator.generate()
+    helper = OSDynSliceManagerHelper()
+    DYNSLICE_HELPER = helper
+    rspecXML = helper.generateRspec()
     if 'GENILIB_PORTAL_MODE' in os.environ:
-        generator.pc.printRequestRSpec(generator.rspec)
+        helper.pc.printRequestRSpec(helper.rspec)
     else:
         print rspecXML
     pass
