@@ -106,7 +106,7 @@ pc.defineParameter("keystoneUseMemcache","Keystone Uses Memcache",
 # advanced=True,
 pc.defineParameter("keystoneUseWSGI","Keystone Uses WSGI",
                    portal.ParameterType.INTEGER,
-                   -1, [ (-1,"(default)"),(1,"Yes"),(0,"No") ],
+                   2, [ (2,"(default)"),(1,"Yes"),(0,"No") ],
                    longDescription="Specify whether or not Keystone should use Apache/WSGI instead of its own server.  This is the default from Kilo onwards.  In our testing, this has seemed to slow down Keystone.")
 # advanced=True,
 pc.defineParameter("quotasOff","Unlimit Default Quotas",
@@ -717,7 +717,7 @@ class Parameters(RSpec.Resource):
         if params.keystoneUseWSGI == 0:
             param = ET.SubElement(el,paramXML)
             param.text = "KEYSTONEUSEWSGI=0"
-        elif params.keystoneUseWSGI == 0:
+        elif params.keystoneUseWSGI == 1:
             param = ET.SubElement(el,paramXML)
             param.text = "KEYSTONEUSEWSGI=1"
         else:
