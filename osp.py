@@ -8,7 +8,7 @@ import crypt
 import random
 
 # Don't want this as a param yet
-TBURL = "http://www.emulab.net/downloads/openstack-setup-v18.tar.gz"
+TBURL = "http://www.emulab.net/downloads/openstack-setup-v26.tar.gz"
 TBCMD = "sudo mkdir -p /root/setup && sudo -H /tmp/setup/setup-driver.sh 2>&1 | sudo tee /root/setup/setup-driver.log"
 
 #
@@ -94,23 +94,19 @@ pc.defineParameter("sessionTimeout","Horizon Session Timeout in Seconds",
                    portal.ParameterType.INTEGER,14400,advanced=True,
                    longDescription="Horizon session timeout in seconds.")
 
-# advanced=True,
 pc.defineParameter("keystoneVersion","Keystone API Version",
                    portal.ParameterType.INTEGER,
-                   0, [ (0,"(default)"),(2,"v2.0"),(3,"v3") ],
+                   0, [ (0,"(default)"),(2,"v2.0"),(3,"v3") ],advanced=True,
                    longDescription="Keystone API Version.  Defaults to v2.0 on Juno and Kilo; defaults to v3 on Liberty and onwards.  You can try to force v2.0 on Liberty and onwards, but we cannot guarantee support for this configuration.")
-# advanced=True,
 pc.defineParameter("keystoneUseMemcache","Keystone Uses Memcache",
-                   portal.ParameterType.BOOLEAN,False,
+                   portal.ParameterType.BOOLEAN,False,advanced=True,
                    longDescription="Specify whether or not Keystone should use Memcache as its token backend.  In our testing, this has seemed to exacerbate intermittent Keystone internal errors, so it is off by default, and by default, the SQL token backend is used instead.")
-# advanced=True,
 pc.defineParameter("keystoneUseWSGI","Keystone Uses WSGI",
                    portal.ParameterType.INTEGER,
-                   2, [ (2,"(default)"),(1,"Yes"),(0,"No") ],
+                   2, [ (2,"(default)"),(1,"Yes"),(0,"No") ],advanced=True,
                    longDescription="Specify whether or not Keystone should use Apache/WSGI instead of its own server.  This is the default from Kilo onwards.  In our testing, this has seemed to slow down Keystone.")
-# advanced=True,
 pc.defineParameter("quotasOff","Unlimit Default Quotas",
-                   portal.ParameterType.BOOLEAN,True,
+                   portal.ParameterType.BOOLEAN,True,advanced=True,
                    longDescription="Set the default Nova and Cinder quotas to unlimited, at least those that can be set via CLI utils (some cannot be set, but the significant ones can be set).")
 
 pc.defineParameter("disableSecurityGroups","Disable Security Group Enforcement",
