@@ -41,7 +41,6 @@ pc.defineParameter("osLinkSpeed", "Experiment Link Speed of all nodes",
                    [(0,"Any"),(1000000,"1Gb/s"),(10000000,"10Gb/s")],
                    longDescription="A specific link speed to use for each node.  All experiment network interfaces will request this speed.")
 
-
 pc.defineParameter("doAptUpgrade","Upgrade OpenStack packages and dependencies to the latest versions",
                    portal.ParameterType.BOOLEAN, False,advanced=True,
                    longDescription="The default images this profile uses have OpenStack and dependent packages preloaded.  To guarantee that these scripts always work, we no longer upgrade to the latest packages by default, to avoid changes.  If you want to ensure you have the latest packages, you should enable this option -- but if there are setup failures, we can't guarantee support.  NOTE: selecting this option requires that you also select the option to update the Apt package cache!")
@@ -80,6 +79,16 @@ pc.defineParameter("multiplexFlatLans", "Multiplex Flat Networks",
 pc.defineParameter("computeNodeCountSite2", "Number of compute nodes at Site 2",
                    portal.ParameterType.INTEGER, 0,advanced=True,
                    longDescription="You can add additional compute nodes from other CloudLab clusters, allowing you to experiment with remote VMs controlled from the central controller at the first site.")
+
+pc.defineParameter("blockstoreURN", "Remote Block Store URN",
+                   portal.ParameterType.STRING, "",advanced=True,
+                   longDescription="The URN of a remote block store that already exists that you want attached to the node you specified (defaults to the ctl node).  The block store must exist at the cluster at which you instantiate the profile!")
+pc.defineParameter("blockstoreMountNode", "Remote Block Store Mount Node",
+                   portal.ParameterType.STRING, "ctl",advanced=True,
+                   longDescription="The node on which you want your remote block store mounted; defaults to the controller node.")
+pc.defineParameter("blockstoreMountPoint", "Remote Block Store Mount Point",
+                   portal.ParameterType.STRING, "/storage",advanced=True,
+                   longDescription="The mount point at which you want your remote block store mounted.")
 
 pc.defineParameter("ipAllocationStrategy","IP Addressing",
                    portal.ParameterType.STRING,"script",[("cloudlab","CloudLab"),("script","This Script")],
@@ -476,10 +485,13 @@ else:
     image_tag_cp = 'OSCP'
     pass
 
+nodes = dict({})
+
 #
 # Add the controller node.
 #
 controller = RSpec.RawPC(params.controllerHost)
+nodes[params.controllerHost] = controller
 if params.osNodeType:
     controller.hardware_type = params.osNodeType
     pass
@@ -505,12 +517,12 @@ if mgmtlan:
     pass
 controller.addService(RSpec.Install(url=TBURL, path="/tmp"))
 controller.addService(RSpec.Execute(shell="sh",command=TBCMD))
-rspec.addResource(controller)
 
 #
 # Add the network manager (neutron) node.
 #
 networkManager = RSpec.RawPC(params.networkManagerHost)
+nodes[params.networkManagerHost] = networkManager
 if params.osNodeType:
     networkManager.hardware_type = params.osNodeType
     pass
@@ -536,7 +548,6 @@ if mgmtlan:
     pass
 networkManager.addService(RSpec.Install(url=TBURL, path="/tmp"))
 networkManager.addService(RSpec.Execute(shell="sh",command=TBCMD))
-rspec.addResource(networkManager)
 
 #
 # Add the compute nodes.  First we generate names for each node at each site;
@@ -562,6 +573,7 @@ for i in range(1,params.computeNodeCountSite2 + 1):
 for (siteNumber,cpnameList) in computeNodeNamesBySite.iteritems():
     for cpname in cpnameList:
         cpnode = RSpec.RawPC(cpname)
+        nodes[cpname] = cpnode
         if params.osNodeType:
             cpnode.hardware_type = params.osNodeType
         pass
@@ -587,15 +599,53 @@ for (siteNumber,cpnameList) in computeNodeNamesBySite.iteritems():
             pass
         cpnode.addService(RSpec.Install(url=TBURL, path="/tmp"))
         cpnode.addService(RSpec.Execute(shell="sh",command=TBCMD))
-        rspec.addResource(cpnode)
         computeNodeList += cpname + ' '
         pass
     pass
 
+#
+# Add the blockstore, if requested.
+#
+bsnode = None
+bslink = None
+if params.blockstoreURN != "":
+    if not nodes.has_key(params.blockstoreMountNode):
+        #
+        # This is a very late time to generate a warning, but that's ok!
+        #
+        perr = portal.ParameterError("The node on which you mount your block store must exist, and does not!",
+                                     ['blockstoreMountNode'])
+        pc.reportError(perr)
+        pc.verifyParameters()
+        pass
+    
+    rbsn = nodes[params.blockstoreMountNode]
+    myintf = rbsn.addInterface("ifbs0")
+    
+    bsnode = IG.RemoteBlockstore("bsnode",params.blockstoreMountPoint)
+    bsnode.Site("1")
+    bsintf = bsnode.interface
+    bsnode.dataset = params.blockstoreURN
+    #bsnode.size = params.N
+    
+    bslink = RSpec.Link("bslink")
+    bslink.addInterface(myintf)
+    bslink.addInterface(bsintf)
+    # Special blockstore attributes for this link.
+    bslink.best_effort = True
+    bslink.vlan_tagging = True
+    pass
+
+for nname in nodes.keys():
+    rspec.addResource(nodes[nname])
+if bsnode:
+    rspec.addResource(bsnode)
 for datalan in alllans:
     rspec.addResource(datalan)
 if mgmtlan:
     rspec.addResource(mgmtlan)
+if bslink:
+    rspec.addResource(bslink)
     pass
 
 #

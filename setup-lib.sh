@@ -54,6 +54,7 @@ DISABLE_SECURITY_GROUPS=0
 DEFAULT_SECGROUP_ENABLE_SSH_ICMP=1
 VERBOSE_LOGGING="False"
 DEBUG_LOGGING="False"
+SUPPORT_DYNAMIC_NODES=1
 KEYSTONEAPIVERSION=""
 TOKENTIMEOUT=14400
 SESSIONTIMEOUT=14400
@@ -312,6 +313,11 @@ if [ ! -f $TOPOMAP -o $UPDATING -ne 0 ]; then
 	cp -p $TOPOMAP $TOPOMAP.old
     fi
     $TMCC topomap | gunzip > $TOPOMAP
+    # Filter out blockstore nodes
+    cat $TOPOMAP | grep -v '^bsnode,' > $TOPOMAP.no.bsnode
+    mv $TOPOMAP.no.bsnode $TOPOMAP
+    cat $TOPOMAP | grep -v '^bslink,' > $TOPOMAP.no.bslink
+    mv $TOPOMAP.no.bslink $TOPOMAP
     if [ -f $TOPOMAP.old ]; then
 	diff -u $TOPOMAP.old $TOPOMAP > $TOPOMAP.diff
 	#
@@ -349,17 +355,37 @@ if [ \( -s $OURDIR/manifests.xml \) -a \( ! \( -s $OURDIR/fqdn.map \) \) ]; then
     if [ -s $OURDIR/fqdn.map ]; then
 	echo '' >> $OURDIR/fqdn.map
     fi
+    # Filter out any blockstore nodes
+    # XXX: this strategy doesn't work, because only the NM node makes
+    # the fqdn.map file.  So, just look for bsnode for now.
+    #BSNODES=`cat /var/emulab/boot/tmcc/storageconfig | sed -n -e 's/^.* HOSTID=\([^ \t]*\) .*$/\1/p' | xargs`
+    #for bs in $BSNODES ; do
+    #	cat $OURDIR/fqdn.map | grep -v "^${bs}"$'\t' > $OURDIR/fqdn.map.tmp
+    #	mv $OURDIR/fqdn.map.tmp $OURDIR/fqdn.map
+    #done
+    # XXX: why doesn't the tab grep work here, sigh...
+    #cat $OURDIR/fqdn.map | grep -v '^bsnode'$'\t' > $OURDIR/fqdn.map.tmp
+    cat $OURDIR/fqdn.map | grep -v '^bsnode' > $OURDIR/fqdn.map.tmp
+    mv $OURDIR/fqdn.map.tmp $OURDIR/fqdn.map
 fi
 
 #
 # Setup the fqdn map the non-geni way if necessary!
 #
 if [ ! -s $OURDIR/fqdn.map ]; then
-    NODES=`cat $TOPOMAP | grep -v '^#' | sed -n -e 's/^\([a-zA-Z0-9\-]*\),.*:.*$/\1/p' | xargs`
+    TNODES=`cat $TOPOMAP | grep -v '^#' | sed -n -e 's/^\([a-zA-Z0-9\-]*\),.*:.*$/\1/p' | xargs`
     FQDNS=""
-    for n in $NODES ; do 
+    NODES=""
+    for n in $TNODES ; do
+	# Filter out any blockstore nodes
+	grep -q "HOSTID=$n " /var/emulab/boot/tmcc/storageconfig
+	if [ $? -eq 0 ] ; then
+	    continue
+	fi
+	
 	fqdn="$n.$EEID.$EPID.$OURDOMAIN"
 	FQDNS="${FQDNS} $fqdn"
+	NODES="${NODES} $n"
 
 	/bin/echo -e "$n\t$fqdn" >> $OURDIR/fqdn.map
     done
