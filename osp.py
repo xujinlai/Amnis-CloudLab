@@ -256,8 +256,12 @@ if (params.vlanDataLanCount + params.vxlanDataLanCount \
     pc.reportWarning(perr)
     pass
 
-if params.vlanDataLanCount > 0 and params.multiplexFlatLans:
-    perr = portal.ParameterError("You cannot specify vlanDataLanCount > 0 and multiplexFlatLans == True !",['vlanDataLanCount','multiplexFlatLans'])
+if params.vlanDataLanCount > 0 and params.flatDataLanCount > 0:
+    perr = portal.ParameterError("You cannot specify vlanDataLanCount > 0 and flatDataLanCount > 0",['vlanDataLanCount','flatDataLanCount'])
+    pc.reportError(perr)
+    pass
+if params.vlanDataLanCount > 0 and params.greDataLanCount > 0:
+    perr = portal.ParameterError("You cannot specify vlanDataLanCount > 0 and greDataLanCount > 0",['vlanDataLanCount','greDataLanCount'])
     pc.reportError(perr)
     pass
 
@@ -371,7 +375,7 @@ for i in range(1,params.flatDataLanCount + 1):
     ipSubnetsUsed += 1
     pass
 for i in range(1,params.vlanDataLanCount + 1):
-    dlanstr = "%s-%d" % ('vlan-lan-',i)
+    dlanstr = "%s-%d" % ('vlan-lan',i)
     ipdb[dlanstr] = { 'base' : '10.%d' % (i + dataOffset + ipSubnetsUsed,),'netmask' : '255.255.0.0',
                       'values' : [-1,-1,10,0] }
     vlanstrs[i] = dlanstr
