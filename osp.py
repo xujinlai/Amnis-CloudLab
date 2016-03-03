@@ -87,8 +87,8 @@ pc.defineParameter("blockstoreMountNode", "Remote Block Store Mount Node",
                    portal.ParameterType.STRING, "ctl",advanced=True,
                    longDescription="The node on which you want your remote block store mounted; defaults to the controller node.")
 pc.defineParameter("blockstoreMountPoint", "Remote Block Store Mount Point",
-                   portal.ParameterType.STRING, "/storage",advanced=True,
-                   longDescription="The mount point at which you want your remote block store mounted.")
+                   portal.ParameterType.STRING, "/dataset",advanced=True,
+                   longDescription="The mount point at which you want your remote block store mounted.  Be careful where you mount it -- something might already be there (i.e., /storage is already taken).  Note also that this option requires a network interface, because it creates a link between the dataset and the node where the dataset is available.  Thus, just as for creating extra LANs, you might need to select the Multiplex Flat Networks option, which will also multiplex the blockstore link here.")
 
 pc.defineParameter("ipAllocationStrategy","IP Addressing",
                    portal.ParameterType.STRING,"script",[("cloudlab","CloudLab"),("script","This Script")],
