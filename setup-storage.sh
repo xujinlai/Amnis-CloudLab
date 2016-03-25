@@ -34,13 +34,6 @@ ARCH=`uname -m`
 
 maybe_install_packages lvm2
 
-if [ "$ARCH" = "aarch64" ]; then
-    # XXX: have to copy the .bak versions back into place on uBoot-nodes.
-    cp -p /boot/boot.scr.bak /boot/boot.scr
-    cp -p /boot/uImage.bak /boot/uImage
-    cp -p /boot/uInitrd.bak /boot/uInitrd
-fi
-
 #
 # First try to make LVM volumes; fall back to loop device in /storage.  We use
 # /storage for swift later, so we make the dir either way.
