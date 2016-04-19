@@ -34,7 +34,7 @@ pc.defineParameter("publicIPCount", "Number of public IP addresses",
                    portal.ParameterType.INTEGER, 4,
                    longDescription="Make sure to include both the number of floating IP addresses you plan to need for instances; and also for OpenVSwitch interface IP addresses.  Each OpenStack network this profile creates for you is bridged to the external, public network, so you also need a public IP address for each of those switch interfaces.  So, if you ask for one GRE tunnel network, and one flat data network (the default configuration), you would need two public IPs for switch interfaces, and then you request two additional public IPs that can be bound to instances as floating IPs.  If you ask for more networks, make sure to increase this number appropriately.")
 pc.defineParameter("osNodeType", "Hardware type of all nodes",
-                   portal.ParameterType.STRING, "",
+                   portal.ParameterType.NODETYPE, "",
                    longDescription="A specific hardware type to use for each node.  Cloudlab clusters all have machines of specific types.  When you set this field to a value that is a specific hardware type, you will only be able to instantiate this profile on clusters with machines of that type.  If unset, when you instantiate the profile, the resulting experiment may have machines of any available type allocated.")
 pc.defineParameter("osLinkSpeed", "Experiment Link Speed of all nodes",
                    portal.ParameterType.INTEGER, 0,
