@@ -43,6 +43,7 @@ DATATUNNELS=1
 DATAFLATLANS="lan-1"
 DATAVLANS=""
 DATAVXLANS=0
+DATAOTHERLANS=""
 USE_EXISTING_IPS=1
 DO_APT_INSTALL=1
 DO_APT_UPGRADE=0
@@ -616,7 +617,7 @@ if [ ! -f $OURDIR/mgmt-hosts -o $UPDATING -ne 0 ] ; then
     # flat networks.
     #
     if [ ${USE_EXISTING_IPS} -eq 0 ]; then
-	for lan in $DATAFLATLANS $DATAVLANS; do
+	for lan in $DATAFLATLANS $DATAVLANS $DATAOTHERLANS ; do
 	    if [ $UPDATING -eq 0 ]; then
 		prefix="10.$NEXTSPARESUBNET"
 		echo "$prefix" > $OURDIR/data-prefix.$lan
@@ -692,7 +693,7 @@ if [ ! -f $OURDIR/mgmt-hosts -o $UPDATING -ne 0 ] ; then
 	    fi
 	done
     else
-	for lan in $DATAFLATLANS ; do
+	for lan in $DATAFLATLANS $DATAOTHERLANS ; do
 	    cat $TOPOMAP | grep -v '^#' | sed -e 's/,/ /' \
 		| sed -n -e "s/\([a-zA-Z0-9_\-]*\) .*${lan}:\([0-9\.]*\).*\$/\2\t\1/p" \
 		> $OURDIR/data-hosts.$lan
@@ -884,7 +885,7 @@ fi
 # NB: this IP/mask is only valid after data ips have been assigned, because
 # they might not be the Emulab ones.
 #
-for lan in $DATAFLATLANS ; do
+for lan in $DATAFLATLANS $DATAOTHERLANS ; do
     if [ -e $OURDIR/info.$lan ] ; then
 	continue
     fi

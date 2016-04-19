@@ -2604,14 +2604,30 @@ if [ -e $OURDIR/random_admin_pass ]; then
     RANDPASSSTRING="We generated a random OpenStack admin and instance VM password for you, since one wasn't supplied.  The password is '${ADMIN_PASS}'"
 fi
 
+EXTDIRS=`find $DIRNAME/ext -maxdepth 1 -type d | grep -v ^\.\$ | grep -v $DIRNAME/ext\$ | xargs`
+if [ ! -z "$EXTDIRS" ]; then
+    echo "***"
+    echo "*** ALMOST Done with OpenStack Setup -- running extension setup scripts $EXTDIRS !"
+    echo "***"
+    echo "*** Login to your shiny new cloud at "
+    echo "  http://$CONTROLLER.$EEID.$EPID.${OURDOMAIN}/horizon/auth/login/?next=/horizon/project/instances/ !  ${RANDPASSSTRING}"
+    echo "***"
+
+    echo "Your OpenStack instance has almost completed setup -- running your extension setup scripts now ($EXTDIRS)!  Browse to http://$CONTROLLER.$EEID.$EPID.${OURDOMAIN}/horizon/auth/login/?next=/horizon/project/instances/ .  ${RANDPASSSTRING}" \
+	|  mail -s "OpenStack Instance ALMOST Finished Setting Up" ${SWAPPER_EMAIL}
+
+    for dir in $EXTDIRS ; do
+	dirbase=`basename $dir`
+	$DIRNAME/ext/$dirbase/setup.sh 1> $OURDIR/setup-ext-$dirbase.log 2>&1 </dev/null
+    done
+fi
+
 echo "***"
 echo "*** Done with OpenStack Setup!"
 echo "***"
 echo "*** Login to your shiny new cloud at "
 echo "  http://$CONTROLLER.$EEID.$EPID.${OURDOMAIN}/horizon/auth/login/?next=/horizon/project/instances/ !  ${RANDPASSSTRING}"
 echo "***"
-
-
 
 echo "Your OpenStack instance has completed setup!  Browse to http://$CONTROLLER.$EEID.$EPID.${OURDOMAIN}/horizon/auth/login/?next=/horizon/project/instances/ .  ${RANDPASSSTRING}" \
     |  mail -s "OpenStack Instance Finished Setting Up" ${SWAPPER_EMAIL}
