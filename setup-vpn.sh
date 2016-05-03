@@ -180,6 +180,11 @@ unset KEY_EXPIRE
 # Get the hosts files setup to point to the new management network
 # and setup the VPN on the clients.
 #
+maybe_install_packages pssh
+PSSH='/usr/bin/parallel-ssh -t 0 -O StrictHostKeyChecking=no '
+PHOSTS=""
+mkdir -p $OURDIR/pssh.setup-vpn.stdout $OURDIR/pssh.setup-vpn.stderr
+
 for node in $NEWVPNNODES
 do
     [ "$node" = "$NETWORKMANAGER" ] && continue
@@ -189,7 +194,10 @@ do
     scp -p -o StrictHostKeyChecking=no \
 	/etc/openvpn/ca.crt $KEY_DIR/$node.crt $KEY_DIR/$node.key \
 	$fqdn:$OURDIR
-    $SSH $fqdn $DIRNAME/setup-vpn-client.sh
+    PHOSTS="$PHOSTS -H $fqdn"
 done
+
+$PSSH -o $OURDIR/pssh.setup-vpn.stdout -e $OURDIR/pssh.setup-vpn.stderr \
+    $PHOSTS $DIRNAME/setup-vpn-client.sh
 
 exit 0

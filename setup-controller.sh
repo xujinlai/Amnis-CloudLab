@@ -49,6 +49,9 @@ __openstack() {
     done
 }
 
+maybe_install_packages pssh
+PSSH='/usr/bin/parallel-ssh -t 0 -O StrictHostKeyChecking=no '
+
 # Make sure our repos are setup.
 #apt-get install ubuntu-cloud-keyring
 #echo "deb http://ubuntu-cloud.archive.canonical.com/ubuntu" \
@@ -880,6 +883,9 @@ fi
 #
 # Install the Compute service on the compute nodes
 #
+PHOSTS=""
+mkdir -p $OURDIR/pssh.setup-compute.stdout $OURDIR/pssh.setup-compute.stderr
+
 if [ -z "${NOVA_COMPUTENODES_DONE}" ]; then
     NOVA_COMPUTENODES_DONE=1
 
@@ -890,8 +896,15 @@ if [ -z "${NOVA_COMPUTENODES_DONE}" ]; then
 	# Copy the latest settings (passwords, endpoints, whatever) over
 	scp -o StrictHostKeyChecking=no $SETTINGS admin-openrc.sh $fqdn:$OURDIR
 
-	$SSH $fqdn $DIRNAME/setup-compute.sh
+	PHOSTS="$PHOSTS -H $fqdn"
+    done
 
+    echo "*** Setting up Cmopute service on nodes: $PHOSTS"
+    $PSSH $PHOSTS -o $OURDIR/pssh.setup-compute.stdout \
+	-e $OURDIR/pssh.setup-compute.stderr $DIRNAME/setup-compute.sh
+
+    for node in $COMPUTENODES
+    do
 	touch $OURDIR/compute-done-${node}
     done
 
@@ -1148,6 +1161,10 @@ fi
 if [ -z "${NEUTRON_COMPUTENODES_DONE}" ]; then
     NEUTRON_COMPUTENODES_DONE=1
 
+    PHOSTS=""
+    mkdir -p $OURDIR/pssh.setup-compute-network.stdout \
+	$OURDIR/pssh.setup-compute-network.stderr
+
     for node in $COMPUTENODES
     do
 	fqdn=`getfqdn $node`
@@ -1155,8 +1172,16 @@ if [ -z "${NEUTRON_COMPUTENODES_DONE}" ]; then
 	# Copy the latest settings (passwords, endpoints, whatever) over
 	scp -o StrictHostKeyChecking=no $SETTINGS $fqdn:$SETTINGS
 
-	ssh -o StrictHostKeyChecking=no $fqdn $DIRNAME/setup-compute-network.sh
+	PHOSTS="$PHOSTS -H $fqdn"
+    done
 
+    echo "*** Setting up Compute network on nodes: $PHOSTS"
+    $PSSH $PHOSTS -o $OURDIR/pssh.setup-compute-network.stdout \
+	-e $OURDIR/pssh.setup-compute-network.stderr \
+	$DIRNAME/setup-compute-network.sh
+
+    for node in $COMPUTENODES
+    do
 	touch $OURDIR/compute-network-done-${node}
     done
 
@@ -2092,6 +2117,10 @@ fi
 if [ -z "${TELEMETRY_COMPUTENODES_DONE}" ]; then
     TELEMETRY_COMPUTENODES_DONE=1
 
+    PHOSTS=""
+    mkdir -p $OURDIR/pssh.setup-compute-telemetry.stdout \
+	$OURDIR/pssh.setup-compute-telemetry.stderr
+
     for node in $COMPUTENODES
     do
 	fqdn=`getfqdn $node`
@@ -2099,8 +2128,16 @@ if [ -z "${TELEMETRY_COMPUTENODES_DONE}" ]; then
 	# Copy the latest settings (passwords, endpoints, whatever) over
 	scp -o StrictHostKeyChecking=no $SETTINGS $fqdn:$SETTINGS
 
-	ssh -o StrictHostKeyChecking=no $fqdn $DIRNAME/setup-compute-telemetry.sh
+	PHOSTS="$PHOSTS -H $fqdn"
+    done
 
+    echo "*** Setting up Compute telemetry on nodes: $PHOSTS"
+    $PSSH $PHOSTS -o $OURDIR/pssh.setup-compute-telemetry.stdout \
+	-e $OURDIR/pssh.setup-compute-telemetry.stderr \
+	$DIRNAME/setup-compute-telemetry.sh
+
+    for node in $COMPUTENODES
+    do
 	touch $OURDIR/compute-telemetry-done-${node}
     done
 

@@ -24,6 +24,11 @@ if [ "$HOSTNAME" != "$NETWORKMANAGER" ]; then
     exit 0;
 fi
 
+maybe_install_packages pssh
+PSSH='/usr/bin/parallel-ssh -t 0 -O StrictHostKeyChecking=no '
+PHOSTS=""
+mkdir -p $OURDIR/pssh.setup-ovs-node.stdout $OURDIR/pssh.setup-ovs-node.stderr
+
 # Do the network manager node first, no ssh
 echo "*** Setting up OpenVSwitch on $HOSTNAME"
 $DIRNAME/setup-ovs-node.sh
@@ -32,9 +37,12 @@ for node in $NODES
 do
     [ "$node" = "$NETWORKMANAGER" ] && continue
 
-    echo "*** Setting up OpenVSwitch on $node"
     fqdn=`getfqdn $node`
-    $SSH $fqdn $DIRNAME/setup-ovs-node.sh
+    PHOSTS="$PHOSTS -H $fqdn"
 done
+
+echo "*** Setting up OpenVSwitch via pssh: $PHOSTS"
+$PSSH -o $OURDIR/pssh.setup-ovs-node.stdout -e $OURDIR/pssh.setup-ovs-node.stderr \
+    $PHOSTS $DIRNAME/setup-ovs-node.sh
 
 exit 0
