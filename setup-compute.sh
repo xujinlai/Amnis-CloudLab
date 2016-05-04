@@ -41,6 +41,26 @@ fi
 maybe_install_packages nova-compute sysfsutils
 maybe_install_packages libguestfs-tools libguestfs0 python-guestfs
 
+#
+# Once we install packages, if the user wants a bigger VM disk space
+# area, we make that and copy anything in /var/lib/nova into it (which
+# may include stuff that was just installed).  Then we bind mount it to
+# /var/lib/nova .
+#
+if [ "$COMPUTE_EXTRA_NOVA_DISK_SPACE" = "1" ]; then
+    mkdir -p /mnt/var-lib-nova
+    /usr/local/etc/emulab/mkextrafs.pl -r sda -s 4 /mnt/var-lib-nova
+    if [ $? = 0 ]; then
+	chown nova:nova /mnt/var-lib-nova
+	rsync -avz /var/lib/nova/ /mnt/var-lib-nova/
+	mount -o bind /mnt/var-lib-nova /var/lib/nova
+	echo "/mnt/var-lib-nova /var/lib/nova none defaults,bind 0 0" \
+	    >> /etc/fstab
+    else
+	echo "*** ERROR: could not make larger Nova /var/lib/nova dir!"
+    fi
+fi
+
 crudini --set /etc/nova/nova.conf DEFAULT rpc_backend rabbit
 crudini --set /etc/nova/nova.conf DEFAULT auth_strategy keystone
 crudini --set /etc/nova/nova.conf DEFAULT my_ip ${MGMTIP}

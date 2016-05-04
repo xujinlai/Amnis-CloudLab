@@ -65,6 +65,10 @@ QUOTASOFF=1
 KEYSTONEUSEMEMCACHE=0
 # Off by default for Juno; on for Kilo and on by default.
 KEYSTONEUSEWSGI=""
+# On by default; users will have to take full disk images of the
+# compute nodes if they have this enabled.
+COMPUTE_EXTRA_NOVA_DISK_SPACE="1"
+
 #
 # We have an 'adminapi' user that gets a random password.  Then, we have
 # the dashboard and instance password, that comes in from geni-lib/rspec as a
