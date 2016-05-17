@@ -112,6 +112,63 @@ if [ -z "${DB_ROOT_PASS}" ]; then
     service_enable mysql
     # Save the passwd
     echo "DB_ROOT_PASS=\"${DB_ROOT_PASS}\"" >> $SETTINGS
+
+    if [ -z "${MGMTLAN}" -a $OSVERSION -ge $OSLIBERTY ]; then
+        # Make sure mysqld won't start until after the openvpn
+	# mgmt net is up.
+	cat <<EOF >/etc/init.d/legacy-openvpn-net-waiter
+#!/bin/bash
+#
+### BEGIN INIT INFO
+# Provides:          legacy-openvpn-net-waiter
+# Required-Start:    \$network openvpn
+# Required-Stop:
+# Should-Start:      \$network openvpn
+# X-Start-Before:    mysql
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Waits for an IP address to appear on the mgmt net device.
+# Description:  Waits for an IP address to appear on the mgmt net device.
+### END INIT INFO
+#
+
+. /lib/lsb/init-functions
+
+case "\${1:-''}" in
+    'start')
+        while [ 1 -eq 1 ]; do
+            ip addr show | grep -q "$MGMTIP"
+            if [ \$? -eq 0 ]; then
+                log_daemon_msg "Found net device with ip addr $MGMTIP; allowing services to start" "openvpn"
+                break
+            else
+                sleep 1
+            fi
+        done
+        ;;
+    'stop')
+        exit 0
+        ;;
+    'restart')
+        exit 0
+        ;;
+    *)
+        exit 1
+        ;;
+esac
+
+exit 0
+EOF
+
+	chmod 755 /etc/init.d/legacy-openvpn-net-waiter
+
+	#sed -i -e 's/^# Required-Start:\(.*\)$/# Required-Start:\1 mgmt-net-waiter/' /etc/init.d/mysql
+	#sed -i -e 's/^# Should-Start:\(.*\)$/# Should-Start:\1 mgmt-net-waiter/' /etc/init.d/mysql
+
+	update-rc.d legacy-openvpn-net-waiter defaults
+	update-rc.d legacy-openvpn-net-waiter enable
+	#update-rc.d mysql enable
+    fi
 fi
 
 #
@@ -161,6 +218,31 @@ EOF
 	sleep 1
 	rabbitmqctl start_app
     done
+
+    if [ -z "${MGMTLAN}" -a $OSVERSION -ge $OSLIBERTY ]; then
+        # Make sure rabbitmq won't start until after the openvpn
+	# mgmt net is up.
+	cat <<EOF >/etc/systemd/system/openvpn-net-waiter.service
+[Unit]
+Description=OpenVPN Device Waiter
+After=network.target network-online.target local-fs.target
+Wants=network.target
+Before=rabbitmq-server.service
+Requires=rabbitmq-server.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/etc/init.d/legacy-openvpn-net-waiter start
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+	systemctl enable openvpn-net-waiter.service
+    fi
 fi
 
 #
