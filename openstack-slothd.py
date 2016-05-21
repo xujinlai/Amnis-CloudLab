@@ -156,6 +156,17 @@ def get_hypervisor_hostname(client,resource):
         pass
     return hostname
 
+def get_api_hostname(client,resource):
+    if 'host' in resource.metadata:
+        if resource.metadata['host'].startswith('compute.') \
+          and resource.metadata['host'].endswith(OURDOMAIN):
+            return resource.metadata['host'].lstrip('compute.')
+        elif resource.metadata['host'].startswith('network.') \
+          and resource.metadata['host'].endswith(OURDOMAIN):
+            return resource.metadata['host'].lstrip('network.')
+        pass
+    return None
+
 def fetchall(client):
     tt = time.gmtime()
     ct = time.mktime(tt)
@@ -169,7 +180,7 @@ def fetchall(client):
     #qm = QueryManager()
     q = client.query_samples.query(limit=1)
     for period in PERIODS:
-        pdict = {}
+        datadict[period] = {}
         vm_dict = dict() #count=vm_0,list=[])
         cpu_util_dict = dict()
         
@@ -182,28 +193,109 @@ def fetchall(client):
         pcts = time.strftime('%Y-%m-%dT%H:%M:%S',ptt)
         q = [{'field':'timestamp','value':pcts,'op':'ge',},
              {'field':'timestamp','value':cts,'op':'lt',}]
-        statistics = client.statistics.list('cpu_util',#period=period,
-                                            groupby='resource_id',
-                                            q=q)
-        LOG.debug("Statistics for cpu_util during period %d (len %d): %s"
-                  % (period,len(statistics),pp.pformat(statistics)))
-        for stat in statistics:
-            rid = stat.groupby['resource_id']
-            resource = get_resource(client,rid)
-            hostname = get_hypervisor_hostname(client,resource)
-            LOG.info("cpu_util for %s on %s = %f" % (rid,hostname,stat.avg))
-            if not hostname in vm_dict:
-                vm_dict[hostname] = {}
+
+        # First, query some rate meters for avg stats:
+        meters = ['cpu_util','network.incoming.bytes.rate',
+                  'network.outgoing.bytes.rate']
+        for meter in meters:
+            mdict = {}
+            statistics = client.statistics.list(meter,#period=period,
+                                                groupby='resource_id',
+                                                q=q)
+            LOG.debug("Statistics for %s during period %d (len %d): %s"
+                      % (meter,period,len(statistics),pp.pformat(statistics)))
+            for stat in statistics:
+                rid = stat.groupby['resource_id']
+                resource = get_resource(client,rid)
+                # For whatever reason, the resource_id for the network.*
+                # meters prefixes the VM UUIDs with instance-%d- ...
+                # so strip that out.
+                vmrid = rid
+                if rid.startswith('instance-'):
+                    vmrid = rid.lstrip('instance-')
+                    vidx = vmrid.find('-')
+                    vmrid = vmrid[(vidx+1):]
+                    pass
+                # Then, for the network.* meters, the results are
+                # per-interface, so strip that off too so we can
+                # report one number per VM.
+                vidx = vmrid.find('-tap')
+                if vidx > -1:
+                    vmrid = vmrid[:vidx]
+                    pass
+
+                hostname = get_hypervisor_hostname(client,resource)
+                LOG.info("%s for %s on %s = %f"
+                         % (meter,rid,hostname,stat.avg))
+                if not hostname in vm_dict:
+                    vm_dict[hostname] = {}
+                    pass
+                if not vmrid in vm_dict[hostname]:
+                    vm_dict[hostname][vmrid] = resource.metadata['display_name']
+                    pass
+                if not hostname in mdict:
+                    mdict[hostname] = dict(total=0.0,vms={})
+                    pass
+                mdict[hostname]['total'] += stat.avg
+                if not vmrid in mdict[hostname]['vms']:
+                    mdict[hostname]['vms'][vmrid] = stat.avg
+                else:
+                    mdict[hostname]['vms'][vmrid] += stat.avg
+                    pass
                 pass
-            vm_dict[hostname][rid] = resource.metadata['display_name']
-            if not hostname in cpu_util_dict:
-                cpu_util_dict[hostname] = dict(total=0.0,vms={})
-                pass
-            cpu_util_dict[hostname]['total'] += stat.avg
-            cpu_util_dict[hostname]['vms'][rid] = stat.avg
+            datadict[period][meter] = mdict
             pass
         
-        datadict[period] = dict(vm_info=vm_dict,cpu_util=cpu_util_dict)
+        datadict[period]['vm_info'] = vm_dict
+
+        # Now also query the API delta meters:
+        meters = [ 'network.create','network.update','network.delete',
+                   'subnet.create','subnet.update','subnet.delete',
+                   'port.create','port.update','port.delete',
+                   'router.create','router.update','router.delete',
+                   'image.upload','image.update' ]
+        rdicts = dict()
+        for meter in meters:
+            idx = meter.find('.')
+            if idx > -1:
+                rplural = "%s%s" % (meter[0:idx],'s')
+            else:
+                rplural = None
+                pass
+            if rplural and not rplural in rdicts:
+                rdicts[rplural] = dict()
+                pass
+            mdict = {}
+            statistics = client.statistics.list(meter,#period=period,
+                                                groupby='resource_id',
+                                                q=q)
+            LOG.debug("Statistics for %s during period %d (len %d): %s"
+                      % (meter,period,len(statistics),pp.pformat(statistics)))
+            for stat in statistics:
+                rid = stat.groupby['resource_id']
+                resource = get_resource(client,rid)
+                hostname = get_api_hostname(client,resource)
+                LOG.info("%s for %s on %s = %f (%s)"
+                         % (meter,rid,hostname,stat.sum,pp.pformat(resource)))
+                if rplural and not rid in rdicts[rplural]:
+                    rdicts[rplural][rid] = resource.metadata['name']
+                    pass
+                if rplural:
+                    rname = rplural
+                else:
+                    rname = 'resources'
+                    pass
+                if not hostname in mdict:
+                    mdict[hostname] = { 'total':0.0,rname:{} }
+                    pass
+                mdict[hostname]['total'] += stat.sum
+                mdict[hostname][rname][rid] = stat.sum
+                pass
+            datadict[period][meter] = mdict
+            pass
+        for (k,v) in rdicts.iteritems():
+            datadict[period][k] = v
+            pass
         pass
     
     return datadict
