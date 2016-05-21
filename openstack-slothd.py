@@ -147,7 +147,7 @@ def get_hypervisor_hostname(client,resource):
                 r_hostnames[hh] = hostname
                 pass
             pass
-        LOG.debug("resource: " + pp.pformat(resource))
+        #LOG.debug("resource: " + pp.pformat(resource))
         hh = resource.metadata['host']
         if not hh in r_hostnames.keys():
             LOG.error("hostname hash %s doesn't map to a known hypervisor hostname!" % (hh,))
@@ -171,7 +171,10 @@ def fetchall(client):
     tt = time.gmtime()
     ct = time.mktime(tt)
     cts = time.strftime('%Y-%m-%dT%H:%M:%S',tt)
-    datadict = {}
+
+    periods = {}
+    info = {}
+    #datadict = {}
     
     #
     # Ok, collect all the statistics, grouped by VM, for the period.  We
@@ -180,7 +183,7 @@ def fetchall(client):
     #qm = QueryManager()
     q = client.query_samples.query(limit=1)
     for period in PERIODS:
-        datadict[period] = {}
+        periods[period] = {}
         vm_dict = dict() #count=vm_0,list=[])
         cpu_util_dict = dict()
         
@@ -225,13 +228,15 @@ def fetchall(client):
                     pass
 
                 hostname = get_hypervisor_hostname(client,resource)
-                LOG.info("%s for %s on %s = %f"
-                         % (meter,rid,hostname,stat.avg))
+                LOG.info("%s for %s on %s = %f (resource=%s)"
+                         % (meter,rid,hostname,stat.avg,pp.pformat(resource)))
                 if not hostname in vm_dict:
                     vm_dict[hostname] = {}
                     pass
                 if not vmrid in vm_dict[hostname]:
-                    vm_dict[hostname][vmrid] = resource.metadata['display_name']
+                    vm_dict[hostname][vmrid] = dict(name=resource.metadata['display_name'],
+                                                    image=resource.metadata['image.name'],
+                                                    status=resource.metadata['status'])
                     pass
                 if not hostname in mdict:
                     mdict[hostname] = dict(total=0.0,vms={})
@@ -243,16 +248,24 @@ def fetchall(client):
                     mdict[hostname]['vms'][vmrid] += stat.avg
                     pass
                 pass
-            datadict[period][meter] = mdict
+            periods[period][meter] = mdict
             pass
         
-        datadict[period]['vm_info'] = vm_dict
+        info['vms'] = vm_dict
 
         # Now also query the API delta meters:
-        meters = [ 'network.create','network.update','network.delete',
-                   'subnet.create','subnet.update','subnet.delete',
-                   'port.create','port.update','port.delete',
-                   'router.create','router.update','router.delete',
+        # NB: very important that the .delete meters come first, for
+        # each resource type.  Why?  Because we only put the resource
+        # details into the info dict one time (because we don't know
+        # how to merge details for a given resource if we see it again
+        # later and it differs) -- and sometimes we know if a resource
+        # is deleted based on if the delete method has been called for
+        # it (i.e. for network resources); for other resources like
+        # images, there's a deleted bit in the metadata we can just read.
+        meters = [ 'network.delete','network.create','network.update',
+                   'subnet.delete','subnet.create','subnet.update',
+                   'port.delete','port.create','port.update',
+                   'router.delete','router.create','router.update',
                    'image.upload','image.update' ]
         rdicts = dict()
         for meter in meters:
@@ -278,7 +291,24 @@ def fetchall(client):
                 LOG.info("%s for %s on %s = %f (%s)"
                          % (meter,rid,hostname,stat.sum,pp.pformat(resource)))
                 if rplural and not rid in rdicts[rplural]:
-                    rdicts[rplural][rid] = resource.metadata['name']
+                    deleted = False
+                    if meter.endswith('.delete') \
+                       or ('deleted' in resource.metadata \
+                           and resource.metadata['deleted'] \
+                                 in ['True','true',True]):
+                        deleted = True
+                        pass
+                    rdicts[rplural][rid] = dict(name=resource.metadata['name'],
+                                                deleted=deleted)
+                    status = None
+                    if 'state' in resource.metadata:
+                        status = resource.metadata['state']
+                    elif 'status' in resource.metadata:
+                        status = resource.metadata['status']
+                        pass
+                    if not status is None:
+                        rdicts[rplural][rid]['status'] = str(status).lower()
+                        pass
                     pass
                 if rplural:
                     rname = rplural
@@ -291,14 +321,44 @@ def fetchall(client):
                 mdict[hostname]['total'] += stat.sum
                 mdict[hostname][rname][rid] = stat.sum
                 pass
-            datadict[period][meter] = mdict
+            periods[period][meter] = mdict
             pass
-        for (k,v) in rdicts.iteritems():
-            datadict[period][k] = v
+        for (res,infodict) in rdicts.iteritems():
+            # If we haven't seen this resource before, slap all
+            # the info we've found for all those resource ids
+            # into our info dict for this resource type.  Else,
+            # carefully merge -- if we've already collected info
+            # for a specific resource, don't overwrite that.
+            # The theory for the Else case is that newer info
+            # is better, if the older info differs (which I can't
+            # think right now it would... should be the same for
+            # all periods).
+            if not res in info:
+                info[res] = infodict
+            else:
+                for (resid,resinfodict) in infodict.iteritems():
+                    if not resid in info[res]:
+                        info[res][resid] = resinfodict
+                pass
             pass
         pass
+
+    ett = time.gmtime()
+    ect = time.mktime(ett)
+    ects = time.strftime('%Y-%m-%dT%H:%M:%S',ett)
+    gmoffset = time.timezone
+    daylight = False
+    if time.daylight:
+        gmoffset = time.altzone
+        daylight = True
+        pass
+
+    metadata = dict(start=cts,start_timestamp=ct,
+                    end=ects,end_timestamp=ect,
+                    duration=(ect-ct),gmoffset=gmoffset,
+                    daylight=daylight)
     
-    return datadict
+    return dict(periods=periods,info=info,META=metadata)
 
 def preload_resources(client):
     global resources
