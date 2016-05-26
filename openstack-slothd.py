@@ -24,6 +24,8 @@ import shutil
 from ceilometerclient import client
 from ceilometerclient.v2.query import QueryManager
 
+VERSION = 1
+
 CLOUDLAB_AUTH_FILE = '/root/setup/admin-openrc.py'
 KEYSTONE_OPTS = [ 'OS_PROJECT_DOMAIN_ID','OS_USER_DOMAIN_ID',
                   'OS_PROJECT_NAME','OS_TENANT_NAME',
@@ -49,7 +51,8 @@ OURDOMAIN = None
 
 projects = {}
 resources = {}
-hostnames = {}
+vhostnames = {}
+phostnames = {}
 r_hostnames = {}
 
 LOG = logging.getLogger(__name__)
@@ -141,7 +144,7 @@ def get_hypervisor_hostname(client,resource):
     else:
         if not resource.project_id in projects:
             projects[resource.project_id] = resource.project_id
-            for hostname in hostnames.keys():
+            for hostname in vhostnames.keys():
                 shash = hashlib.sha224(resource.project_id + hostname)
                 hh = shash.hexdigest()
                 r_hostnames[hh] = hostname
@@ -342,6 +345,9 @@ def fetchall(client):
                 pass
             pass
         pass
+    
+    info['host2vname'] = vhostnames
+    info['host2pnode'] = phostnames
 
     ett = time.gmtime()
     ect = time.mktime(ett)
@@ -356,7 +362,7 @@ def fetchall(client):
     metadata = dict(start=cts,start_timestamp=ct,
                     end=ects,end_timestamp=ect,
                     duration=(ect-ct),gmoffset=gmoffset,
-                    daylight=daylight)
+                    daylight=daylight,version=VERSION)
     
     return dict(periods=periods,info=info,META=metadata)
 
@@ -371,8 +377,9 @@ def preload_resources(client):
     pass
 
 def reload_hostnames():
-    global hostnames,OURDOMAIN
-    newhostnames = {}
+    global vhostnames,phostnames,OURDOMAIN
+    newvhostnames = {}
+    newphostnames = {}
     
     try:
         f = file(OURDIR + "/fqdn.map")
@@ -388,14 +395,31 @@ def reload_hostnames():
                 continue
             vname = la[0].lower()
             fqdn = la[1].lower()
-            newhostnames[fqdn] = vname
+            newvhostnames[fqdn] = vname
             if OURDOMAIN is None or OURDOMAIN == '':
                 idx = fqdn.find('.')
                 if idx > -1:
                     OURDOMAIN = fqdn[idx+1:]
                 pass
             pass
-        hostnames = newhostnames
+        vhostnames = newvhostnames
+        
+        f = file(OURDIR + "/fqdn.physical.map")
+        i = 0
+        for line in f:
+            i += 1
+            if len(line) == 0 or line[0] == '#':
+                continue
+            line = line.rstrip('\n')
+            la = line.split("\t")
+            if len(la) != 2:
+                LOG.warn("bad FQDN line %d; skipping" % (i,))
+                continue
+            pname = la[0].lower()
+            fqdn = la[1].lower()
+            newphostnames[fqdn] = pname
+            pass
+        phostnames = newphostnames
     except:
         LOG.exception("failed to reload hostnames, returning None")
         pass

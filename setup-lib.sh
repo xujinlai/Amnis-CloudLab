@@ -334,6 +334,7 @@ if [ ! -f $TOPOMAP -o $UPDATING -ne 0 ]; then
 
 	# Just remove the fqdn map and let it be recalculated below
 	rm -f $OURDIR/fqdn.map
+	rm -f $OURDIR/fqdn.physical.map
     fi
 fi
 
@@ -351,8 +352,8 @@ if [ ! -z "$MGMTLAN" ] ; then
 fi
 
 #
-# Create a map of node nickname to FQDN.  This supports geni multi-site
-# experiments.
+# Create a map of node nickname to FQDN (and another one of pnode id to FQDN).
+# This supports geni multi-site experiments.
 #
 if [ \( -s $OURDIR/manifests.xml \) -a \( ! \( -s $OURDIR/fqdn.map \) \) ]; then
     cat manifests.xml | tr -d '\n' | sed -e 's/<node /\n<node /g'  | sed -n -e "s/^<node [^>]*client_id=['\"]*\([^'\"]*\)['\"].*<host name=['\"]\([^'\"]*\)['\"].*$/\1\t\2/p" > $OURDIR/fqdn.map
@@ -372,6 +373,15 @@ if [ \( -s $OURDIR/manifests.xml \) -a \( ! \( -s $OURDIR/fqdn.map \) \) ]; then
     #cat $OURDIR/fqdn.map | grep -v '^bsnode'$'\t' > $OURDIR/fqdn.map.tmp
     cat $OURDIR/fqdn.map | grep -v '^bsnode' > $OURDIR/fqdn.map.tmp
     mv $OURDIR/fqdn.map.tmp $OURDIR/fqdn.map
+
+    cat manifests.xml | tr -d '\n' | sed -e 's/<node /\n<node /g'  | sed -n -e "s/^<node [^>]*component_id=['\"]*[a-zA-Z0-9:\+\.]*node+\([^'\"]*\)['\"].*<host name=['\"]\([^'\"]*\)['\"].*$/\1\t\2/p" > $OURDIR/fqdn.physical.map
+    # Add a newline if we wrote anything.
+    if [ -s $OURDIR/fqdn.physical.map ]; then
+	echo '' >> $OURDIR/fqdn.physical.map
+    fi
+    # Filter out any blockstore nodes
+    cat $OURDIR/fqdn.physical.map | grep -v '^bsnode' > $OURDIR/fqdn.physical.map.tmp
+    mv $OURDIR/fqdn.physical.map.tmp $OURDIR/fqdn.physical.map
 fi
 
 #
