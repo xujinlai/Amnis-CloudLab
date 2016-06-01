@@ -466,7 +466,7 @@ def main():
                           % (iteration,))
             pass
         
-        time.sleep(2 * MINUTE)
+        time.sleep(5 * MINUTE)
         pass
 
     #meters = client.meters.list(limit=LIMIT)
