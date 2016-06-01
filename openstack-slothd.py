@@ -151,7 +151,16 @@ def get_hypervisor_hostname(client,resource):
                 pass
             pass
         #LOG.debug("resource: " + pp.pformat(resource))
-        hh = resource.metadata['host']
+        hh = None
+        try:
+            hh = resource.metadata['host']
+        except:
+            if 'instance_id' in resource.metadata:
+                LOG.info("no hostname info for resource %s; trying instance_id" % (str(resource),))
+                return get_hypervisor_hostname(client,get_resource(client,resource.metadata['instance_id']))
+            else:
+                LOG.exception("no 'host' field in metadata for resource %s" % (str(resource,)))
+            pass
         if not hh in r_hostnames.keys():
             LOG.error("hostname hash %s doesn't map to a known hypervisor hostname!" % (hh,))
             return None
@@ -236,7 +245,8 @@ def fetchall(client):
                 if not hostname in vm_dict:
                     vm_dict[hostname] = {}
                     pass
-                if not vmrid in vm_dict[hostname]:
+                if not vmrid in vm_dict[hostname] and 'display_name' in resource.metadata \
+                   and 'image.name' in resource.metadata and 'status' in resource.metadata:
                     vm_dict[hostname][vmrid] = dict(name=resource.metadata['display_name'],
                                                     image=resource.metadata['image.name'],
                                                     status=resource.metadata['status'])

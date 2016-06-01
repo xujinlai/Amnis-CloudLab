@@ -2721,7 +2721,7 @@ fi
 #
 # Install and startup the slothd-for-openstack idleness detector
 #
-if [ $OSVERSION -ge $OSLIBERTY ]; then
+if [ $OSVERSION -ge $OSKILO ]; then
     cp -p $DIRNAME/openstack-slothd.py $OURDIR/
 
     cat <<EOF >/etc/systemd/system/openstack-slothd.service
