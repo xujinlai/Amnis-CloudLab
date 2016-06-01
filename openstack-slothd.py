@@ -61,6 +61,85 @@ logging.basicConfig(level=logging.DEBUG)
     
 pp = pprint.PrettyPrinter(indent=2)
 
+DMETERS = ['cpu_util','network.incoming.bytes.rate',
+           'network.outgoing.bytes.rate']
+# NB: very important that the .delete meters come first, for
+# each resource type.  Why?  Because we only put the resource
+# details into the info dict one time (because we don't know
+# how to merge details for a given resource if we see it again
+# later and it differs) -- and sometimes we know if a resource
+# is deleted based on if the delete method has been called for
+# it (i.e. for network resources); for other resources like
+# images, there's a deleted bit in the metadata we can just read.
+EMETERS = [ 'network.delete','network.create','network.update',
+            'subnet.delete','subnet.create','subnet.update',
+            'port.delete','port.create','port.update',
+            'router.delete','router.create','router.update',
+            'image.upload','image.update' ]
+
+HELP = {
+    'Summary': \
+      'This is a summary of OpenStack resource usage in your experiment over' \
+      ' several prior time periods (the last 10 minutes, hour, 6 hours, day,' \
+      ' and week).  It is collected by a simple Ceilometer script that' \
+      ' requests statistics from several OpenStack Ceilometer meters.' \
+      ' Because we\'re primarily interested in resource usage on a' \
+      ' per-physical-node basis, metrics and events are grouped by the' \
+      ' physical node that used the resource in question or originated the' \
+      ' event, and we show totals for the physical machine, as well as the' \
+      ' per-resource fine-grained metric value.  We collect several meter' \
+      ' values, including CPU utilization, network traffic, and API events.' \
+      ' These are described in more detail in the subsequent keys.  Finally,' \
+      ' some detailed metadata (i.e., VM disk image, name, etc) each' \
+      ' OpenStack resource measured by a meter during one of our time' \
+      ' periods is placed in the top-level dict under the \'info\' key.',
+    
+    'cpu_util': \
+      'An average of CPU utilization (percent) over the given time period.' \
+      ' OpenStack polls each VM\'s real CPU usage time at intervals, and the' \
+      ' difference in usage between polling intervals is used to calculate' \
+      ' the average CPU utilization over the interval.',
+    'network.incoming.bytes.rate': \
+      'The average rate of incoming network traffic to VMs.  OpenStack' \
+      ' collects cumulative samples at intervals of VM bandwidth usage,' \
+      ' and these samples are used to calculate a rate.  We then take the ' \
+      ' average of all rate "samples" over our time periods.',
+    'network.outgoing.bytes.rate': \
+      'The average rate of outgoing network traffic from VMs.  OpenStack' \
+      ' collects cumulative samples at intervals of VM bandwidth usage,' \
+      ' and these samples are used to calculate a rate.  We then take the ' \
+      ' average of all rate "samples" over our time periods.',
+
+    'network.delete': \
+      'The number of OpenStack virtual networks deleted during the period.',
+    'network.create': \
+      'The number of OpenStack virtual networks created during the period.',
+    'network.update': \
+      'The number of OpenStack virtual networks updated during the period.',
+    'subnet.delete': \
+      'The number of OpenStack virtual subnets deleted during the period.',
+    'subnet.create': \
+      'The number of OpenStack virtual subnets created during the period.',
+    'subnet.update': \
+      'The number of OpenStack virtual subnets updated during the period.',
+    'port.delete': \
+      'The number of OpenStack virtual network ports deleted during the period.',
+    'port.create': \
+      'The number of OpenStack virtual network ports created during the period.',
+    'port.update': \
+      'The number of OpenStack virtual network ports updated during the period.',
+    'router.delete': \
+      'The number of OpenStack virtual network routers deleted during the period.',
+    'router.create': \
+      'The number of OpenStack virtual network routers created during the period.',
+    'router.update': \
+      'The number of OpenStack virtual network routers updated during the period.',
+    'image.upload': \
+      'The number of images uploaded during the period.',
+    'image.update': \
+      'The number of images updated during the period.',
+}
+
 def build_keystone_args():
     global KEYSTONE_OPTS, CLOUDLAB_AUTH_FILE
     
@@ -210,9 +289,7 @@ def fetchall(client):
              {'field':'timestamp','value':cts,'op':'lt',}]
 
         # First, query some rate meters for avg stats:
-        meters = ['cpu_util','network.incoming.bytes.rate',
-                  'network.outgoing.bytes.rate']
-        for meter in meters:
+        for meter in DMETERS:
             mdict = {}
             statistics = client.statistics.list(meter,#period=period,
                                                 groupby='resource_id',
@@ -267,21 +344,8 @@ def fetchall(client):
         info['vms'] = vm_dict
 
         # Now also query the API delta meters:
-        # NB: very important that the .delete meters come first, for
-        # each resource type.  Why?  Because we only put the resource
-        # details into the info dict one time (because we don't know
-        # how to merge details for a given resource if we see it again
-        # later and it differs) -- and sometimes we know if a resource
-        # is deleted based on if the delete method has been called for
-        # it (i.e. for network resources); for other resources like
-        # images, there's a deleted bit in the metadata we can just read.
-        meters = [ 'network.delete','network.create','network.update',
-                   'subnet.delete','subnet.create','subnet.update',
-                   'port.delete','port.create','port.update',
-                   'router.delete','router.create','router.update',
-                   'image.upload','image.update' ]
         rdicts = dict()
-        for meter in meters:
+        for meter in EMETERS:
             idx = meter.find('.')
             if idx > -1:
                 rplural = "%s%s" % (meter[0:idx],'s')
@@ -374,7 +438,7 @@ def fetchall(client):
                     duration=(ect-ct),gmoffset=gmoffset,
                     daylight=daylight,version=VERSION)
     
-    return dict(periods=periods,info=info,META=metadata)
+    return dict(periods=periods,info=info,META=metadata,HELP=HELP)
 
 def preload_resources(client):
     global resources
