@@ -2718,6 +2718,35 @@ if [ -z "${SETUP_BASIC_DONE}" ]; then
     echo "SETUP_BASIC_DONE=\"1\"" >> $SETTINGS
 fi
 
+#
+# Install and startup the slothd-for-openstack idleness detector
+#
+if [ $OSVERSION -ge $OSLIBERTY ]; then
+    cp -p $DIRNAME/openstack-slothd.py $OURDIR/
+
+    cat <<EOF >/etc/systemd/system/openstack-slothd.service
+[Unit]
+Description=OpenStack Slothd
+After=network.target network-online.target local-fs.target
+Wants=network.target
+Before=rabbitmq-server.service
+Requires=rabbitmq-server.service
+
+[Service]
+Type=simple
+RemainAfterExit=no
+ExecStart=$OURDIR/openstack-slothd.py
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl enable openstack-slothd.service
+    systemctl restart openstack-slothd.service
+fi
+
 RANDPASSSTRING=""
 if [ -e $OURDIR/random_admin_pass ]; then
     RANDPASSSTRING="We generated a random OpenStack admin and instance VM password for you, since one wasn't supplied.  The password is '${ADMIN_PASS}'"
