@@ -271,8 +271,6 @@ def fetchall(client):
     # Ok, collect all the statistics, grouped by VM, for the period.  We
     # have to specify this duration
     #
-    #qm = QueryManager()
-    q = client.query_samples.query(limit=1)
     for period in PERIODS:
         periods[period] = {}
         vm_dict = dict() #count=vm_0,list=[])
@@ -292,7 +290,7 @@ def fetchall(client):
         for meter in DMETERS:
             mdict = {}
             statistics = client.statistics.list(meter,#period=period,
-                                                groupby='resource_id',
+                                                groupby=['resource_id'],
                                                 q=q)
             LOG.debug("Statistics for %s during period %d (len %d): %s"
                       % (meter,period,len(statistics),pp.pformat(statistics)))
@@ -357,7 +355,7 @@ def fetchall(client):
                 pass
             mdict = {}
             statistics = client.statistics.list(meter,#period=period,
-                                                groupby='resource_id',
+                                                groupby=['resource_id'],
                                                 q=q)
             LOG.debug("Statistics for %s during period %d (len %d): %s"
                       % (meter,period,len(statistics),pp.pformat(statistics)))

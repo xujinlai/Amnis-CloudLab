@@ -2721,12 +2721,11 @@ fi
 #
 # Install and startup the slothd-for-openstack idleness detector
 #
+cp -p $DIRNAME/openstack-slothd.py $OURDIR/
 if [ $OSVERSION -ge $OSKILO ]; then
-    cp -p $DIRNAME/openstack-slothd.py $OURDIR/
-
     cat <<EOF >/etc/systemd/system/openstack-slothd.service
 [Unit]
-Description=OpenStack Slothd
+Description=Cloudlab OpenStack Resource Usage Collector
 After=network.target network-online.target local-fs.target
 Wants=network.target
 Before=rabbitmq-server.service
@@ -2745,6 +2744,33 @@ EOF
 
     systemctl enable openstack-slothd.service
     systemctl restart openstack-slothd.service
+else
+    cat <<EOF >/etc/init/openstack-slothd.conf
+# openstack-slothd - Cloudlab OpenStack Resource Usage Collector
+#
+# openstack-slothd collects OpenStack resource usage statistics
+
+description     "Cloudlab OpenStack slothd"
+
+start on runlevel [2345]
+stop on runlevel [!2345]
+
+respawn
+respawn limit 10 5
+umask 022
+
+expect stop
+
+console none
+
+pre-start script
+    test -x /root/setup/openstack-slothd.py || { stop; exit 0; }
+end script
+
+exec /root/setup/openstack-slothd.py &
+EOF
+    service openstack-slothd enable
+    service openstack-slothd start
 fi
 
 RANDPASSSTRING=""
