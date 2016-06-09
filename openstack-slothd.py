@@ -44,6 +44,9 @@ WEEK = DAY * 7
 
 PERIODS = [10*MINUTE,HOUR,6*HOUR,DAY,WEEK]
 
+INTERVALS = { DAY  : 5 * MINUTE,
+              WEEK : HOUR }
+
 OURDIR = '/root/setup'
 OUTDIR = '/root/setup'
 OUTBASENAME = 'cloudlab-openstack-stats.json'
@@ -264,8 +267,10 @@ def fetchall(client):
     cts = time.strftime('%Y-%m-%dT%H:%M:%S',tt)
 
     periods = {}
+    intervals = {}
     info = {}
     #datadict = {}
+    vm_dict = dict() #count=vm_0,list=[])
     
     #
     # Ok, collect all the statistics, grouped by VM, for the period.  We
@@ -273,13 +278,13 @@ def fetchall(client):
     #
     for period in PERIODS:
         periods[period] = {}
-        vm_dict = dict() #count=vm_0,list=[])
         cpu_util_dict = dict()
         
         daylightfactor = 0
         if time.daylight:
             daylightfactor -= HOUR
             pass
+        
         pct = ct - period + daylightfactor
         ptt = time.localtime(pct)
         pcts = time.strftime('%Y-%m-%dT%H:%M:%S',ptt)
@@ -329,15 +334,16 @@ def fetchall(client):
                 if not hostname in mdict:
                     mdict[hostname] = dict(total=0.0,vms={})
                     pass
-                mdict[hostname]['total'] += stat.avg
+                mdict[hostname]['total'] += round(stat.avg,4)
                 if not vmrid in mdict[hostname]['vms']:
-                    mdict[hostname]['vms'][vmrid] = stat.avg
+                    mdict[hostname]['vms'][vmrid] = round(stat.avg,4)
                 else:
-                    mdict[hostname]['vms'][vmrid] += stat.avg
+                    mdict[hostname]['vms'][vmrid] += round(stat.avg,4)
                     pass
                 pass
             periods[period][meter] = mdict
             pass
+        
         
         info['vms'] = vm_dict
 
@@ -417,7 +423,85 @@ def fetchall(client):
                 pass
             pass
         pass
+        
+    #
+    # Now query the same meters, but for 5-minute intervals over the
+    # past 24 hours, and for 1-hr intervals over the past week.
+    #
+    for (period,interval) in INTERVALS.iteritems():
+        intervals[period] = {}
+        cpu_util_dict = dict()
+        
+        daylightfactor = 0
+        if time.daylight:
+            daylightfactor -= HOUR
+            pass
+        
+        pct = ct - period + daylightfactor
+        ptt = time.localtime(pct)
+        pcts = time.strftime('%Y-%m-%dT%H:%M:%S',ptt)
+        q = [{'field':'timestamp','value':pcts,'op':'ge',},
+             {'field':'timestamp','value':cts,'op':'lt',}]
+
+        # First, query some rate meters for avg stats:
+        for meter in DMETERS:
+            mdict = {}
+            statistics = client.statistics.list(meter,period=interval,
+                                                groupby=['resource_id'],
+                                                q=q)
+            LOG.debug("Statistics (interval %d) for %s during period %d"
+                      " (len %d): %s"
+                      % (interval,meter,period,len(statistics),
+                         pp.pformat(statistics)))
+            for stat in statistics:
+                rid = stat.groupby['resource_id']
+                resource = get_resource(client,rid)
+                # For whatever reason, the resource_id for the network.*
+                # meters prefixes the VM UUIDs with instance-%d- ...
+                # so strip that out.
+                vmrid = rid
+                if rid.startswith('instance-'):
+                    vmrid = rid.lstrip('instance-')
+                    vidx = vmrid.find('-')
+                    vmrid = vmrid[(vidx+1):]
+                    pass
+                # Then, for the network.* meters, the results are
+                # per-interface, so strip that off too so we can
+                # report one number per VM.
+                vidx = vmrid.find('-tap')
+                if vidx > -1:
+                    vmrid = vmrid[:vidx]
+                    pass
+
+                hostname = get_hypervisor_hostname(client,resource)
+                LOG.info("%s for %s on %s = %f (resource=%s)"
+                         % (meter,rid,hostname,stat.avg,pp.pformat(resource)))
+                if not hostname in vm_dict:
+                    vm_dict[hostname] = {}
+                    pass
+                if not vmrid in vm_dict[hostname] and 'display_name' in resource.metadata \
+                   and 'image.name' in resource.metadata and 'status' in resource.metadata:
+                    vm_dict[hostname][vmrid] = dict(name=resource.metadata['display_name'],
+                                                    image=resource.metadata['image.name'],
+                                                    status=resource.metadata['status'])
+                    pass
+                if not hostname in mdict:
+                    mdict[hostname] = dict(vms={}) #dict(total=0.0,vms={})
+                    pass
+                #mdict[hostname]['total'] += stat.avg
+                if not vmrid in mdict[hostname]['vms']:
+                    mdict[hostname]['vms'][vmrid] = {'__FLATTEN__':True}
+                    pass
+                pet = time.strptime(stat.period_end,'%Y-%m-%dT%H:%M:%S')
+                pes = time.mktime(pet)
+                mdict[hostname]['vms'][vmrid][pes] = \
+                  dict(avg=round(stat.avg,4),max=round(stat.max,4),n=round(stat.count,4))
+                pass
+            intervals[period][meter] = mdict
+            pass
+        pass
     
+    info['vms'] = vm_dict
     info['host2vname'] = vhostnames
     info['host2pnode'] = phostnames
 
@@ -434,9 +518,10 @@ def fetchall(client):
     metadata = dict(start=cts,start_timestamp=ct,
                     end=ects,end_timestamp=ect,
                     duration=(ect-ct),gmoffset=gmoffset,
-                    daylight=daylight,version=VERSION)
+                    daylight=daylight,version=VERSION,
+                    periods=PERIODS,intervals=INTERVALS)
     
-    return dict(periods=periods,info=info,META=metadata,HELP=HELP)
+    return dict(periods=periods,intervals=intervals,info=info,META=metadata,HELP=HELP)
 
 def preload_resources(client):
     global resources
@@ -520,7 +605,8 @@ def main():
             reload_hostnames()
             newdatadict = fetchall(cclient)
             f = file(tmpoutfile,'w')
-            f.write(json.dumps(newdatadict,sort_keys=True,indent=4) + "\n")
+            #,cls=FlatteningJSONEncoder)
+            f.write(json.dumps(newdatadict,sort_keys=True,indent=None) + '\n')
             f.close()
             shutil.move(tmpoutfile,outfile)
         except:
@@ -528,6 +614,7 @@ def main():
                           % (iteration,))
             pass
         
+        LOG.debug("Sleeping for 5 minutes...")
         time.sleep(5 * MINUTE)
         pass
 
