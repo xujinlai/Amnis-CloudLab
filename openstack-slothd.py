@@ -41,8 +41,9 @@ MINUTE = 60
 HOUR = MINUTE * 60
 DAY = HOUR * 24
 WEEK = DAY * 7
+EPOCH = '__EPOCH__'
 
-PERIODS = [10*MINUTE,HOUR,6*HOUR,DAY,WEEK]
+PERIODS = [10*MINUTE,HOUR,6*HOUR,DAY,WEEK,EPOCH]
 
 INTERVALS = { DAY  : 5 * MINUTE,
               WEEK : HOUR }
@@ -60,12 +61,16 @@ r_hostnames = {}
 
 LOG = logging.getLogger(__name__)
 # Define a default handler at INFO logging level
-logging.basicConfig(level=logging.DEBUG)
-    
+logging.basicConfig(level=logging.INFO)
+
 pp = pprint.PrettyPrinter(indent=2)
 
 DMETERS = ['cpu_util','network.incoming.bytes.rate',
            'network.outgoing.bytes.rate']
+# We no longer collect these meters for periods; for periods,
+# all we collect are the event meters.  We collect the DMETERS
+# only for intervals now.
+PERIOD_DMETERS = [ 'instance' ]
 # NB: very important that the .delete meters come first, for
 # each resource type.  Why?  Because we only put the resource
 # details into the info dict one time (because we don't know
@@ -76,7 +81,7 @@ DMETERS = ['cpu_util','network.incoming.bytes.rate',
 # images, there's a deleted bit in the metadata we can just read.
 EMETERS = [ 'network.delete','network.create','network.update',
             'subnet.delete','subnet.create','subnet.update',
-            'port.delete','port.create','port.update',
+#            'port.delete','port.create','port.update',
             'router.delete','router.create','router.update',
             'image.upload','image.update' ]
 
@@ -173,9 +178,9 @@ def build_keystone_args():
             LOG.exception("could not build keystone args!")
         pass
     elif os.geteuid() != 0:
-        LOG.info("you are not root (%d); not checking %s",os.geteuid(),CLOUDLAB_AUTH_FILE)
+        LOG.warn("you are not root (%d); not checking %s",os.geteuid(),CLOUDLAB_AUTH_FILE)
     elif not os.path.exists(CLOUDLAB_AUTH_FILE):
-        LOG.info("%s does not exist; not loading auth opts from it",CLOUDLAB_AUTH_FILE)
+        LOG.warn("%s does not exist; not loading auth opts from it",CLOUDLAB_AUTH_FILE)
 
     return ret
 
@@ -238,7 +243,7 @@ def get_hypervisor_hostname(client,resource):
             hh = resource.metadata['host']
         except:
             if 'instance_id' in resource.metadata:
-                LOG.info("no hostname info for resource %s; trying instance_id" % (str(resource),))
+                LOG.debug("no hostname info for resource %s; trying instance_id" % (str(resource),))
                 return get_hypervisor_hostname(client,get_resource(client,resource.metadata['instance_id']))
             else:
                 LOG.exception("no 'host' field in metadata for resource %s" % (str(resource,)))
@@ -277,7 +282,12 @@ def fetchall(client):
     # have to specify this duration
     #
     for period in PERIODS:
-        periods[period] = {}
+        periodkey = period
+        if period == EPOCH:
+            period = time.time()
+            pass
+        
+        periods[periodkey] = {}
         cpu_util_dict = dict()
         
         daylightfactor = 0
@@ -292,7 +302,9 @@ def fetchall(client):
              {'field':'timestamp','value':cts,'op':'lt',}]
 
         # First, query some rate meters for avg stats:
-        for meter in DMETERS:
+        for meter in PERIOD_DMETERS:
+            LOG.info("getting statistics for meter %s during period %s"
+                     % (meter,str(period)))
             mdict = {}
             statistics = client.statistics.list(meter,#period=period,
                                                 groupby=['resource_id'],
@@ -320,16 +332,22 @@ def fetchall(client):
                     pass
 
                 hostname = get_hypervisor_hostname(client,resource)
-                LOG.info("%s for %s on %s = %f (resource=%s)"
-                         % (meter,rid,hostname,stat.avg,pp.pformat(resource)))
+                LOG.debug("%s for %s on %s = %f (resource=%s)"
+                          % (meter,rid,hostname,stat.avg,pp.pformat(resource)))
                 if not hostname in vm_dict:
                     vm_dict[hostname] = {}
                     pass
-                if not vmrid in vm_dict[hostname] and 'display_name' in resource.metadata \
-                   and 'image.name' in resource.metadata and 'status' in resource.metadata:
-                    vm_dict[hostname][vmrid] = dict(name=resource.metadata['display_name'],
-                                                    image=resource.metadata['image.name'],
-                                                    status=resource.metadata['status'])
+                if not vmrid in vm_dict[hostname]:
+                    vm_dict[hostname][vmrid] = {}
+                if not 'name' in vm_dict[hostname][vmrid] \
+                   and 'display_name' in resource.metadata:
+                    vm_dict[hostname][vmrid]['name'] = resource.metadata['display_name']
+                if not 'image' in vm_dict[hostname][vmrid] \
+                   and 'image.name' in resource.metadata:
+                    vm_dict[hostname][vmrid]['image'] = resource.metadata['image.name']
+                if not 'status' in vm_dict[hostname][vmrid] \
+                   and 'status' in resource.metadata:
+                    vm_dict[hostname][vmrid]['status'] = resource.metadata['status']
                     pass
                 if not hostname in mdict:
                     mdict[hostname] = dict(total=0.0,vms={})
@@ -341,7 +359,7 @@ def fetchall(client):
                     mdict[hostname]['vms'][vmrid] += round(stat.avg,4)
                     pass
                 pass
-            periods[period][meter] = mdict
+            periods[periodkey][meter] = mdict
             pass
         
         
@@ -350,6 +368,8 @@ def fetchall(client):
         # Now also query the API delta meters:
         rdicts = dict()
         for meter in EMETERS:
+            LOG.info("getting statistics for event meter %s during period %s"
+                     % (meter,str(period)))
             idx = meter.find('.')
             if idx > -1:
                 rplural = "%s%s" % (meter[0:idx],'s')
@@ -369,8 +389,11 @@ def fetchall(client):
                 rid = stat.groupby['resource_id']
                 resource = get_resource(client,rid)
                 hostname = get_api_hostname(client,resource)
-                LOG.info("%s for %s on %s = %f (%s)"
-                         % (meter,rid,hostname,stat.sum,pp.pformat(resource)))
+                if not hostname:
+                    hostname = 'UNKNOWN'
+                    pass
+                LOG.debug("%s for %s on %s = %f (%s)"
+                          % (meter,rid,hostname,stat.sum,pp.pformat(resource)))
                 if rplural and not rid in rdicts[rplural]:
                     deleted = False
                     if meter.endswith('.delete') \
@@ -379,7 +402,10 @@ def fetchall(client):
                                  in ['True','true',True]):
                         deleted = True
                         pass
-                    rdicts[rplural][rid] = dict(name=resource.metadata['name'],
+                    rmname = None
+                    if 'name' in resource.metadata:
+                        rmname = resource.metadata['name']
+                    rdicts[rplural][rid] = dict(name=rmname,
                                                 deleted=deleted)
                     status = None
                     if 'state' in resource.metadata:
@@ -402,7 +428,7 @@ def fetchall(client):
                 mdict[hostname]['total'] += stat.sum
                 mdict[hostname][rname][rid] = stat.sum
                 pass
-            periods[period][meter] = mdict
+            periods[periodkey][meter] = mdict
             pass
         for (res,infodict) in rdicts.iteritems():
             # If we haven't seen this resource before, slap all
@@ -445,6 +471,8 @@ def fetchall(client):
 
         # First, query some rate meters for avg stats:
         for meter in DMETERS:
+            LOG.info("getting statistics for meter %s during period %s interval %s"
+                     % (meter,str(period),str(interval)))
             mdict = {}
             statistics = client.statistics.list(meter,period=interval,
                                                 groupby=['resource_id'],
@@ -474,23 +502,30 @@ def fetchall(client):
                     pass
 
                 hostname = get_hypervisor_hostname(client,resource)
-                LOG.info("%s for %s on %s = %f (resource=%s)"
-                         % (meter,rid,hostname,stat.avg,pp.pformat(resource)))
+                LOG.debug("%s for %s on %s = %f (resource=%s)"
+                          % (meter,rid,hostname,stat.avg,pp.pformat(resource)))
                 if not hostname in vm_dict:
                     vm_dict[hostname] = {}
                     pass
-                if not vmrid in vm_dict[hostname] and 'display_name' in resource.metadata \
-                   and 'image.name' in resource.metadata and 'status' in resource.metadata:
-                    vm_dict[hostname][vmrid] = dict(name=resource.metadata['display_name'],
-                                                    image=resource.metadata['image.name'],
-                                                    status=resource.metadata['status'])
+                if not vmrid in vm_dict[hostname]:
+                    vm_dict[hostname][vmrid] = {}
+                if not 'name' in vm_dict[hostname][vmrid] \
+                   and 'display_name' in resource.metadata:
+                    vm_dict[hostname][vmrid]['name'] = resource.metadata['display_name']
+                if not 'image' in vm_dict[hostname][vmrid] \
+                   and 'image.name' in resource.metadata:
+                    vm_dict[hostname][vmrid]['image'] = resource.metadata['image.name']
+                if not 'status' in vm_dict[hostname][vmrid] \
+                   and 'status' in resource.metadata:
+                    vm_dict[hostname][vmrid]['status'] = resource.metadata['status']
                     pass
                 if not hostname in mdict:
                     mdict[hostname] = dict(vms={}) #dict(total=0.0,vms={})
                     pass
                 #mdict[hostname]['total'] += stat.avg
                 if not vmrid in mdict[hostname]['vms']:
-                    mdict[hostname]['vms'][vmrid] = {'__FLATTEN__':True}
+                    mdict[hostname]['vms'][vmrid] = {}
+                    #mdict[hostname]['vms'][vmrid] = {'__FLATTEN__':True}
                     pass
                 pet = time.strptime(stat.period_end,'%Y-%m-%dT%H:%M:%S')
                 pes = time.mktime(pet)
