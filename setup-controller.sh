@@ -351,6 +351,10 @@ EOF
 
 	mkdir -p /var/www/cgi-bin/keystone
 	wget -O /var/www/cgi-bin/keystone/admin "http://git.openstack.org/cgit/openstack/keystone/plain/httpd/keystone.py?h=stable/${OSCODENAME}"
+	if [ ! $? -eq 0 ]; then
+            # Try the EOL version...
+            wget -O /var/www/cgi-bin/keystone/admin "http://git.openstack.org/cgit/openstack/keystone/plain/httpd/keystone.py?h=${OSCODENAME}-eol"
+	fi
 	cp -p /var/www/cgi-bin/keystone/admin /var/www/cgi-bin/keystone/main 
 	chown -R keystone:keystone /var/www/cgi-bin/keystone
 	chmod 755 /var/www/cgi-bin/keystone/*
@@ -2170,6 +2174,10 @@ EOF
 
 	a2ensite wsgi-ceilometer
 	wget -O /usr/bin/ceilometer-wsgi-app https://raw.githubusercontent.com/openstack/ceilometer/stable/${OSCODENAME}/ceilometer/api/app.wsgi
+	if [ ! $? -eq 0 ]; then
+            # Try the EOL version
+            wget -O /usr/bin/ceilometer-wsgi-app https://raw.githubusercontent.com/openstack/ceilometer/${OSCODENAME}-eol/ceilometer/api/app.wsgi
+	fi
 	
 	service apache2 reload
     else
