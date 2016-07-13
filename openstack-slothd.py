@@ -53,11 +53,17 @@ OUTDIR = '/root/setup'
 OUTBASENAME = 'cloudlab-openstack-stats.json'
 OURDOMAIN = None
 
+USE_PRELOAD_RESOURCES = False
+USE_UUID_MAP = False
+
 projects = {}
 resources = {}
 vhostnames = {}
 phostnames = {}
 r_hostnames = {}
+
+uuidmap = {}
+uuidmap_counter = 0
 
 LOG = logging.getLogger(__name__)
 # Define a default handler at INFO logging level
@@ -266,6 +272,19 @@ def get_api_hostname(client,resource):
         pass
     return None
 
+def get_short_uuid(uuid):
+    global uuidmap,uuidmap_counter
+
+    if not USE_UUID_MAP:
+        return uuid
+    
+    if uuid in uuidmap:
+        return uuidmap[uuid]
+
+    uuidmap_counter += 1
+    uuidmap[uuid] = "uu" + str(uuidmap_counter)
+    return uuidmap[uuid]
+
 def fetchall(client):
     tt = time.gmtime()
     ct = time.mktime(tt)
@@ -331,6 +350,8 @@ def fetchall(client):
                     vmrid = vmrid[:vidx]
                     pass
 
+                vmrid = get_short_uuid(vmrid)
+                
                 hostname = get_hypervisor_hostname(client,resource)
                 LOG.debug("%s for %s on %s = %f (resource=%s)"
                           % (meter,rid,hostname,stat.avg,pp.pformat(resource)))
@@ -388,6 +409,7 @@ def fetchall(client):
             for stat in statistics:
                 rid = stat.groupby['resource_id']
                 resource = get_resource(client,rid)
+                rid = get_short_uuid(rid)
                 hostname = get_api_hostname(client,resource)
                 if not hostname:
                     hostname = 'UNKNOWN'
@@ -501,6 +523,8 @@ def fetchall(client):
                     vmrid = vmrid[:vidx]
                     pass
 
+                vmrid = get_short_uuid(vmrid)
+                
                 hostname = get_hypervisor_hostname(client,resource)
                 LOG.debug("%s for %s on %s = %f (resource=%s)"
                           % (meter,rid,hostname,stat.avg,pp.pformat(resource)))
@@ -539,6 +563,7 @@ def fetchall(client):
     info['vms'] = vm_dict
     info['host2vname'] = vhostnames
     info['host2pnode'] = phostnames
+    info['uuidmap'] = uuidmap
 
     ett = time.gmtime()
     ect = time.mktime(ett)
@@ -627,7 +652,7 @@ def main():
     
     cclient = client.get_client(2,**kargs)
     
-    if False:
+    if USE_PRELOAD_RESOURCES:
         preload_resources(cclient)
         pass
     
