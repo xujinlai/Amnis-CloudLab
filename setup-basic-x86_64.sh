@@ -29,11 +29,51 @@ fi
 
 echo "*** Downloading an x86_64 image ..."
 
-#wget https://cloud-images.ubuntu.com/trusty/current/trusty-server-cloudimg-amd64-disk1.img
-wget http://boss.apt.emulab.net/downloads/trusty-server-cloudimg-amd64-disk1.img
+imgname=trusty-server-cloudimg-amd64-disk1.img
+imgnameshort=trusty-server
+
+#
+# First try the local boss, then Apt, then just grab from Ubuntu.
+#
+if [ ! -f $imgname ]; then
+    retries=3
+    while [ $retries -gt 0 ]; do
+	wget http://boss.${OURDOMAIN}/downloads/$imgname
+	if [ $? -eq 0 ]; then
+	    break
+	else
+	    sleep 5
+	    retries=`expr $retries - 1`
+	fi
+    done
+fi
+if [ ! -f $imgname ]; then
+    retries=3
+    while [ $retries -gt 0 ]; do
+	wget http://boss.apt.emulab.net/downloads/$imgname
+	if [ $? -eq 0 ]; then
+	    break
+	else
+	    sleep 5
+	    retries=`expr $retries - 1`
+	fi
+    done
+fi
+if [ ! -f $imgname ]; then
+    retries=100
+    while [ $retries -gt 0 ]; do
+	wget https://cloud-images.ubuntu.com/trusty/current/$imgname
+	if [ $? -eq 0 ]; then
+	    break
+	else
+	    sleep 5
+	    retries=`expr $retries - 1`
+	fi
+    done
+fi
 
 modprobe nbd max_part=8
-qemu-nbd --connect=/dev/nbd0 trusty-server-cloudimg-amd64-disk1.img
+qemu-nbd --connect=/dev/nbd0 $imgname
 
 mount /dev/nbd0p1 /mnt/
 
@@ -82,7 +122,7 @@ GLANCEOPTS=""
 if [ "$OSCODENAME" = "juno" -o "$OSCODENAME" = "kilo" ]; then
     GLANCEOPTS="--is-public True"
 fi
-glance image-create --name trusty-server ${GLANCEOPTS}  --disk-format qcow2 --container-format bare --progress --file trusty-server-cloudimg-amd64-disk1.img
+glance image-create --name ${imgnameshort} ${GLANCEOPTS}  --disk-format qcow2 --container-format bare --progress --file $imgname
 
 mount /dev/nbd0p1 /mnt/
 
@@ -143,7 +183,7 @@ umount /mnt
 
 echo "*** Importing new multi-nic image ..."
 
-glance image-create --name trusty-server-multi-nic ${GLANCEOPTS} --disk-format qcow2 --container-format bare --progress --file trusty-server-cloudimg-amd64-disk1.img
+glance image-create --name ${imgnameshort}-multi-nic ${GLANCEOPTS} --disk-format qcow2 --container-format bare --progress --file $imgname
 
 qemu-nbd -d /dev/nbd0
 
