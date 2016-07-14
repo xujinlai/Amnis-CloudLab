@@ -480,9 +480,9 @@ unified() {
 
 # Setup apt-get to not prompt us
 export DEBIAN_FRONTEND=noninteractive
-#  -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
+DPKGOPTS='-o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"'
 APTGETINSTALLOPTS='-y'
-APTGETINSTALL="apt-get install $APTGETINSTALLOPTS"
+APTGETINSTALL="apt-get $DPKGOPTS install $APTGETINSTALLOPTS"
 # Don't install/upgrade packages if this is not set
 if [ ${DO_APT_INSTALL} -eq 0 ]; then
     APTGETINSTALL="/bin/true ${APTGETINSTALL}"
