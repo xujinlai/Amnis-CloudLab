@@ -479,8 +479,11 @@ unified() {
 }
 
 # Setup apt-get to not prompt us
+echo "force-confdef" > /etc/dpkg/dpkg.cfg.d/cloudlab
+echo "force-confold" >> /etc/dpkg/dpkg.cfg.d/cloudlab
 export DEBIAN_FRONTEND=noninteractive
-DPKGOPTS='-o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"'
+# -o Dpkg::Options::="--force-confold" -o Dpkg::Options::="--force-confdef" 
+DPKGOPTS=''
 APTGETINSTALLOPTS='-y'
 APTGETINSTALL="apt-get $DPKGOPTS install $APTGETINSTALLOPTS"
 # Don't install/upgrade packages if this is not set
