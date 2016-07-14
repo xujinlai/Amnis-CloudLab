@@ -51,7 +51,7 @@ maybe_install_packages neutron-plugin-ml2 neutron-plugin-openvswitch-agent \
     neutron-l3-agent neutron-dhcp-agent conntrack neutron-metering-agent
 
 # If not a shared controller, don't want neutron connecting to nonexistent db
-if [ ! "$CONTROLLER" = "$NETWORKMANAGER" ]; then
+if ! unified ; then
     crudini --del /etc/neutron/neutron.conf database connection
     crudini --del /etc/neutron/neutron.conf keystone_authtoken auth_host
     crudini --del /etc/neutron/neutron.conf keystone_authtoken auth_port

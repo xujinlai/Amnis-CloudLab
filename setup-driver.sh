@@ -18,6 +18,76 @@ echo "*** Setting up root ssh pubkey access across all nodes..."
 # All nodes need to publish public keys, and acquire others'
 $DIRNAME/setup-root-ssh.sh 1> $OURDIR/setup-root-ssh.log 2>&1
 
+if [ -f $SETTINGS ]; then
+    . $SETTINGS
+fi
+
+if [ "$HOSTNAME" = "$NETWORKMANAGER" ]; then
+
+    echo "*** Waiting for ssh access to all nodes..."
+
+    for node in $NODES ; do
+	[ "$node" = "$NETWORKMANAGER" ] && continue
+
+	SUCCESS=1
+	fqdn=`getfqdn $node`
+	while [ $SUCCESS -ne 0 ] ; do
+	    sleep 1
+	    ssh -o ConnectTimeout=1 -o PasswordAuthentication=No -o NumberOfPasswordPrompts=0 -o StrictHostKeyChecking=No $fqdn /bin/ls > /dev/null
+	    SUCCESS=$?
+	done
+	echo "*** $node is up!"
+    done
+
+    #
+    # Get our hosts files setup to point to the new management network.
+    # (These were created one-time in setup-lib.sh)
+    #
+    cat $OURDIR/mgmt-hosts > /etc/hosts
+    echo "127.0.0.1 localhost" >> /etc/hosts
+    for node in $NODES 
+    do
+	[ "$node" = "$NETWORKMANAGER" ] && continue
+
+	fqdn=`getfqdn $node`
+	$SSH $fqdn mkdir -p $OURDIR
+	scp -p -o StrictHostKeyChecking=no \
+	    $SETTINGS $OURDIR/mgmt-hosts $OURDIR/mgmt-netmask \
+	    $OURDIR/data-hosts $OURDIR/data-netmask \
+	    $fqdn:$OURDIR
+	$SSH $fqdn cp $OURDIR/mgmt-hosts /etc/hosts
+	$SSH $fqdn 'echo 127.0.0.1 localhost | tee -a /etc/hosts'
+    done
+
+    echo "*** Setting up the Management Network"
+
+    if [ -z "${MGMTLAN}" ]; then
+	echo "*** Building a VPN-based Management Network"
+
+	$DIRNAME/setup-vpn.sh 1> $OURDIR/setup-vpn.log 2>&1
+
+        # Give the VPN a chance to settle down
+	PINGED=0
+	while [ $PINGED -eq 0 ]; do
+	    sleep 2
+	    ping -c 1 $CONTROLLER
+	    if [ $? -eq 0 ]; then
+		PINGED=1
+	    fi
+	done
+    else
+	echo "*** Using $MGMTLAN as the Management Network"
+    fi
+
+    echo "*** Moving Interfaces into OpenVSwitch Bridges"
+
+    $DIRNAME/setup-ovs.sh 1> $OURDIR/setup-ovs.log 2>&1
+
+    echo "*** Telling controller to set up OpenStack!"
+
+    ssh -o StrictHostKeyChecking=no ${CONTROLLER} "/bin/touch $OURDIR/networkmanager-driver-done"
+fi
+
 if [ "$HOSTNAME" = "$CONTROLLER" ]; then
     #
     # Wait for networkmanager setup to touch a special file indicating that
@@ -37,72 +107,5 @@ if [ "$HOSTNAME" = "$CONTROLLER" ]; then
 elif [ "$HOSTNAME" != "$NETWORKMANAGER" ]; then
     exit 0;
 fi
-
-if [ -f $SETTINGS ]; then
-    . $SETTINGS
-fi
-
-echo "*** Waiting for ssh access to all nodes..."
-
-for node in $NODES ; do
-    [ "$node" = "$NETWORKMANAGER" ] && continue
-
-    SUCCESS=1
-    fqdn=`getfqdn $node`
-    while [ $SUCCESS -ne 0 ] ; do
-	sleep 1
-	ssh -o ConnectTimeout=1 -o PasswordAuthentication=No -o NumberOfPasswordPrompts=0 -o StrictHostKeyChecking=No $fqdn /bin/ls > /dev/null
-	SUCCESS=$?
-    done
-    echo "*** $node is up!"
-done
-
-#
-# Get our hosts files setup to point to the new management network.
-# (These were created one-time in setup-lib.sh)
-#
-cat $OURDIR/mgmt-hosts > /etc/hosts
-echo "127.0.0.1 localhost" >> /etc/hosts
-for node in $NODES 
-do
-    [ "$node" = "$NETWORKMANAGER" ] && continue
-
-    fqdn=`getfqdn $node`
-    $SSH $fqdn mkdir -p $OURDIR
-    scp -p -o StrictHostKeyChecking=no \
-	$SETTINGS $OURDIR/mgmt-hosts $OURDIR/mgmt-netmask \
-	$OURDIR/data-hosts $OURDIR/data-netmask \
-	$fqdn:$OURDIR
-    $SSH $fqdn cp $OURDIR/mgmt-hosts /etc/hosts
-    $SSH $fqdn 'echo 127.0.0.1 localhost | tee -a /etc/hosts'
-done
-
-echo "*** Setting up the Management Network"
-
-if [ -z "${MGMTLAN}" ]; then
-    echo "*** Building a VPN-based Management Network"
-
-    $DIRNAME/setup-vpn.sh 1> $OURDIR/setup-vpn.log 2>&1
-
-    # Give the VPN a chance to settle down
-    PINGED=0
-    while [ $PINGED -eq 0 ]; do
-	sleep 2
-	ping -c 1 $CONTROLLER
-	if [ $? -eq 0 ]; then
-	    PINGED=1
-	fi
-    done
-else
-    echo "*** Using $MGMTLAN as the Management Network"
-fi
-
-echo "*** Moving Interfaces into OpenVSwitch Bridges"
-
-$DIRNAME/setup-ovs.sh 1> $OURDIR/setup-ovs.log 2>&1
-
-echo "*** Telling controller to set up OpenStack!"
-
-ssh -o StrictHostKeyChecking=no ${CONTROLLER} "/bin/touch $OURDIR/networkmanager-driver-done"
 
 exit 0

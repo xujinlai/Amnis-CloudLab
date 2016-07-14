@@ -467,6 +467,17 @@ elif [ $UPDATING -ne 0 ]; then
     sed -i -e "s/^\(COMPUTENODES=\"[^\"]*\"\)\$/COMPUTENODES=\"$COMPUTENODES\"/" $SETTINGS
 fi
 
+#
+# 0 (true) if networkmanager node is also the controller; 1 if not.
+#
+unified() {
+    if [ "$NETWORKMANAGER" = "$CONTROLLER" ]; then
+	return 0
+    else
+	return 1
+    fi
+}
+
 # Setup apt-get to not prompt us
 export DEBIAN_FRONTEND=noninteractive
 #  -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
@@ -577,7 +588,9 @@ if [ ! -f $OURDIR/mgmt-hosts -o $UPDATING -ne 0 ] ; then
 	if [ $UPDATING -eq 0 ]; then
 	    echo "255.255.0.0" > $OURDIR/mgmt-netmask
 	    echo "192.168.0.1 $NETWORKMANAGER" > $OURDIR/mgmt-hosts
-	    echo "192.168.0.3 $CONTROLLER" >> $OURDIR/mgmt-hosts
+	    if ! unified ; then
+		echo "192.168.0.3 $CONTROLLER" >> $OURDIR/mgmt-hosts
+	    fi
 	    o3=0
 	    o4=5
 	else
@@ -639,7 +652,9 @@ if [ ! -f $OURDIR/mgmt-hosts -o $UPDATING -ne 0 ] ; then
 		echo "$prefix.0.0/255.255.0.0" > $OURDIR/data-cidr.$lan
 		echo "$prefix.0.0" > $OURDIR/data-network.$lan
 		echo "$prefix.0.1 $NETWORKMANAGER" > $OURDIR/data-hosts.$lan
-		echo "$prefix.0.3 $CONTROLLER" >> $OURDIR/data-hosts.$lan
+		if ! unified ; then
+		    echo "$prefix.0.3 $CONTROLLER" >> $OURDIR/data-hosts.$lan
+		fi
 
                 #
                 # Now set static IPs for the compute nodes.

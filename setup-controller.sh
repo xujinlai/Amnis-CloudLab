@@ -1227,16 +1227,23 @@ fi
 #
 # Install the Network service on the networkmanager
 #
-if [ -z "${NEUTRON_NETWORKMANAGER_DONE}" -a ! "$CONTROLLER" = "$NETWORKMANAGER" ]; then
+if [ -z "${NEUTRON_NETWORKMANAGER_DONE}" ]; then
     NEUTRON_NETWORKMANAGER_DONE=1
 
-    fqdn=`getfqdn $NETWORKMANAGER`
+    if ! unified ; then
+	echo "*** Setting up separate networkmanager"
 
-    # Copy the latest settings (passwords, endpoints, whatever) over
-    scp -o StrictHostKeyChecking=no $SETTINGS $fqdn:$SETTINGS
+	fqdn=`getfqdn $NETWORKMANAGER`
 
-    ssh -o StrictHostKeyChecking=no $fqdn \
+        # Copy the latest settings (passwords, endpoints, whatever) over
+	scp -o StrictHostKeyChecking=no $SETTINGS $fqdn:$SETTINGS
+
+	ssh -o StrictHostKeyChecking=no $fqdn \
+	    $DIRNAME/setup-networkmanager.sh
+    else
+	echo "*** Setting up unified networkmanager on controller"
 	$DIRNAME/setup-networkmanager.sh
+    fi
 
     echo "NEUTRON_NETWORKMANAGER_DONE=\"${NEUTRON_NETWORKMANAGER_DONE}\"" >> $SETTINGS
 fi
@@ -2193,8 +2200,12 @@ EOF
     service_enable ceilometer-alarm-notifier
 
     # NB: restart the neutron ceilometer agent too
-    fqdn=`getfqdn $NETWORKMANAGER`
-    ssh -o StrictHostKeyChecking=no $fqdn service neutron-metering-agent restart
+    if ! unified ; then
+	fqdn=`getfqdn $NETWORKMANAGER`
+	ssh -o StrictHostKeyChecking=no $fqdn service neutron-metering-agent restart
+    else
+	service neutron-metering-agent restart
+    fi
 
     echo "CEILOMETER_DBPASS=\"${CEILOMETER_DBPASS}\"" >> $SETTINGS
     echo "CEILOMETER_PASS=\"${CEILOMETER_PASS}\"" >> $SETTINGS

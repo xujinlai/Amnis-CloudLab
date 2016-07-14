@@ -8,7 +8,7 @@ import crypt
 import random
 
 # Don't want this as a param yet
-TBURL = "http://www.emulab.net/downloads/openstack-setup-v26.tar.gz"
+TBURL = "http://www.emulab.net/downloads/openstack-setup-v33-johnsond.tar.gz"
 TBCMD = "sudo mkdir -p /root/setup && sudo -H /tmp/setup/setup-driver.sh 2>&1 | sudo tee /root/setup/setup-driver.log"
 
 #
@@ -145,8 +145,8 @@ pc.defineParameter("controllerHost", "Name of controller node",
                    portal.ParameterType.STRING, "ctl", advanced=True,
                    longDescription="The short name of the controller node.  You shold leave this alone unless you really want the hostname to change.")
 pc.defineParameter("networkManagerHost", "Name of network manager node",
-                   portal.ParameterType.STRING, "nm",advanced=True,
-                   longDescription="The short name of the network manager (neutron) node.  You shold leave this alone unless you really want the hostname to change.")
+                   portal.ParameterType.STRING, "ctl",advanced=True,
+                   longDescription="The short name of the network manager (neutron) node.  If you specify the same name here as you did for the controller, then your controller and network manager will be unified into a single node.  You shold leave this alone unless you really want the hostname to change.")
 pc.defineParameter("computeHostBaseName", "Base name of compute node(s)",
                    portal.ParameterType.STRING, "cp", advanced=True,
                    longDescription="The base string of the short name of the compute nodes (node names will look like cp-1, cp-2, ... or cp-s2-1, cp-s2-2, ... (for nodes at Site 2, if you request those)).  You shold leave this alone unless you really want the hostname to change.")
@@ -223,6 +223,11 @@ params = pc.bindParameters()
 ###    #
 ###    pass
 
+if params.controllerHost == params.networkManagerHost \
+  and params.release in [ 'juno','kilo' ]:
+    perr = portal.ParameterWarning("We do not support use of the same physical node as both controller and networkmanager for older Juno and Kilo releases of this profile.  You can try it, but it may not work.  To revert to the old behavior, open the Advanced Parameters and change the networkManagerHost parameter to nm .",['release','controllerHost','networkManagerHost'])
+    pc.reportWarning(perr)
+    pass
 if params.computeNodeCount > 8:
     perr = portal.ParameterWarning("Are you creating a real cloud?  Otherwise, do you really need more than 8 compute nodes?  Think of your fellow users scrambling to get nodes :).",['computeNodeCount'])
     pc.reportWarning(perr)
@@ -522,36 +527,40 @@ if mgmtlan:
 controller.addService(RSpec.Install(url=TBURL, path="/tmp"))
 controller.addService(RSpec.Execute(shell="sh",command=TBCMD))
 
-#
-# Add the network manager (neutron) node.
-#
-networkManager = RSpec.RawPC(params.networkManagerHost)
-nodes[params.networkManagerHost] = networkManager
-if params.osNodeType:
-    networkManager.hardware_type = params.osNodeType
-    pass
-networkManager.Site("1")
-networkManager.disk_image = "urn:publicid:IDN+utah.cloudlab.us+image+emulab-ops//%s-%s" % (image_os,image_tag_nm)
-i = 0
-for datalan in alllans:
-    iface = networkManager.addInterface("if%d" % (i,))
-    datalan.addInterface(iface)
-    if generateIPs:
-        iface.addAddress(RSpec.IPv4Address(get_next_ipaddr(datalan.client_id),
-                                           get_netmask(datalan.client_id)))
+if params.controllerHost != params.networkManagerHost:
+    #
+    # Add the network manager (neutron) node.
+    #
+    networkManager = RSpec.RawPC(params.networkManagerHost)
+    nodes[params.networkManagerHost] = networkManager
+    if params.osNodeType:
+        networkManager.hardware_type = params.osNodeType
         pass
-    i += 1
-    pass
-if mgmtlan:
-    iface = networkManager.addInterface("ifM")
-    mgmtlan.addInterface(iface)
-    if generateIPs:
-        iface.addAddress(RSpec.IPv4Address(get_next_ipaddr(mgmtlan.client_id),
-                                           get_netmask(mgmtlan.client_id)))
+    networkManager.Site("1")
+    networkManager.disk_image = "urn:publicid:IDN+utah.cloudlab.us+image+emulab-ops//%s-%s" % (image_os,image_tag_nm)
+    i = 0
+    for datalan in alllans:
+        iface = networkManager.addInterface("if%d" % (i,))
+        datalan.addInterface(iface)
+        if generateIPs:
+            iface.addAddress(
+                RSpec.IPv4Address(get_next_ipaddr(datalan.client_id),
+                                  get_netmask(datalan.client_id)))
+            pass
+        i += 1
         pass
+    if mgmtlan:
+        iface = networkManager.addInterface("ifM")
+        mgmtlan.addInterface(iface)
+        if generateIPs:
+            iface.addAddress(
+                RSpec.IPv4Address(get_next_ipaddr(mgmtlan.client_id),
+                                  get_netmask(mgmtlan.client_id)))
+            pass
+        pass
+    networkManager.addService(RSpec.Install(url=TBURL, path="/tmp"))
+    networkManager.addService(RSpec.Execute(shell="sh",command=TBCMD))
     pass
-networkManager.addService(RSpec.Install(url=TBURL, path="/tmp"))
-networkManager.addService(RSpec.Execute(shell="sh",command=TBCMD))
 
 #
 # Add the compute nodes.  First we generate names for each node at each site;
