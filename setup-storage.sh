@@ -126,11 +126,11 @@ else
     crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	auth_url http://${CONTROLLER}:35357
     crudini --set /etc/cinder/cinder.conf keystone_authtoken \
-	auth_plugin password
+	${AUTH_TYPE_PARAM} password
     crudini --set /etc/cinder/cinder.conf keystone_authtoken \
-	project_domain_id default
+	${PROJECT_DOMAIN_PARAM} default
     crudini --set /etc/cinder/cinder.conf keystone_authtoken \
-	user_domain_id default
+	${USER_DOMAIN_PARAM} default
     crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	project_name service
     crudini --set /etc/cinder/cinder.conf keystone_authtoken \

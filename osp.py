@@ -26,8 +26,8 @@ pc = portal.Context()
 # Define *many* parameters; see the help docs in geni-lib to learn how to modify.
 #
 pc.defineParameter("release","OpenStack Release",
-                   portal.ParameterType.STRING,"liberty",[("liberty","Liberty"),("kilo","Kilo"),("juno","Juno")],
-                   longDescription="We provide either OpenStack Liberty (Ubuntu 15.10); Kilo (Ubuntu 15.04); or Juno (Ubuntu 14.10).  OpenStack is installed from packages available on these distributions.")
+                   portal.ParameterType.STRING,"mitaka",[("mitaka","Mitaka"),("liberty","Liberty"),("kilo","Kilo (deprecated)"),("juno","Juno (deprecated)")],
+                   longDescription="We provide OpenStack Mitaka (Ubuntu 16.04); Liberty (Ubuntu 15.10); Kilo (Ubuntu 15.04); or Juno (Ubuntu 14.10).  OpenStack is installed from packages available on these distributions.")
 pc.defineParameter("computeNodeCount", "Number of compute nodes (at Site 1)",
                    portal.ParameterType.INTEGER, 1)
 pc.defineParameter("publicIPCount", "Number of public IP addresses",
@@ -41,6 +41,19 @@ pc.defineParameter("osLinkSpeed", "Experiment Link Speed of all nodes",
                    [(0,"Any"),(1000000,"1Gb/s"),(10000000,"10Gb/s")],
                    longDescription="A specific link speed to use for each node.  All experiment network interfaces will request this speed.")
 
+pc.defineParameter("ml2plugin","ML2 Plugin",
+                   portal.ParameterType.STRING,"openvswitch",
+                   [("openvswitch","OpenVSwitch"),
+                    ("linuxbridge","Linux Bridge")],
+                   longDescription="Starting in Liberty and onwards, we support both the OpenVSwitch and LinuxBridge ML2 plugins to create virtual networks in Neutron.  OpenVSwitch remains our default and best-supported option.  Note: you cannot use GRE tunnels with the LinuxBridge driver; you'll need to use VXLAN tunnels instead.  And by default, the profile allocates 1 GRE tunnel -- so you must change that immediately, or you will see an error.")
+
+
+pc.defineParameter("ubuntuMirrorHost","Ubuntu Package Mirror Hostname",
+                   portal.ParameterType.STRING,"",advanced=True,
+                   longDescription="A specific Ubuntu package mirror host to use instead of us.archive.ubuntu.com (mirror must have Ubuntu in top-level dir, or you must also edit the mirror path parameter below)")
+pc.defineParameter("ubuntuMirrorPath","Ubuntu Package Mirror Path",
+                   portal.ParameterType.STRING,"",
+                   longDescription="A specific Ubuntu package mirror path to use instead of /ubuntu/ (you must also set a value for the package mirror parameter)")
 pc.defineParameter("doAptUpgrade","Upgrade OpenStack packages and dependencies to the latest versions",
                    portal.ParameterType.BOOLEAN, False,advanced=True,
                    longDescription="The default images this profile uses have OpenStack and dependent packages preloaded.  To guarantee that these scripts always work, we no longer upgrade to the latest packages by default, to avoid changes.  If you want to ensure you have the latest packages, you should enable this option -- but if there are setup failures, we can't guarantee support.  NOTE: selecting this option requires that you also select the option to update the Apt package cache!")
@@ -228,6 +241,16 @@ if params.controllerHost == params.networkManagerHost \
     perr = portal.ParameterWarning("We do not support use of the same physical node as both controller and networkmanager for older Juno and Kilo releases of this profile.  You can try it, but it may not work.  To revert to the old behavior, open the Advanced Parameters and change the networkManagerHost parameter to nm .",['release','controllerHost','networkManagerHost'])
     pc.reportWarning(perr)
     pass
+if params.ml2plugin == 'linuxbridge' \
+  and params.release in [ 'juno','kilo' ]:
+    perr = portal.ParameterError("Kilo and Juno do not support the linuxbridge Neutron ML2 driver!",['release','ml2plugin'])
+    pc.reportError(perr)
+    pass
+if params.ml2plugin == 'linuxbridge' and params.greDataLanCount > 0:
+    perr = portal.ParameterError("The Neutron ML2 linuxbridge driver does not support GRE tunnel networks.  You should add VXLAN tunnels instead.",['greDataLanCount','ml2plugin','vxlanDataLanCount'])
+    pc.reportError(perr)
+    pass
+
 if params.computeNodeCount > 8:
     perr = portal.ParameterWarning("Are you creating a real cloud?  Otherwise, do you really need more than 8 compute nodes?  Think of your fellow users scrambling to get nodes :).",['computeNodeCount'])
     pc.reportWarning(perr)
@@ -318,7 +341,7 @@ for param in pc._parameterOrder:
     pass
 
 tourDescription = \
-  "This profile provides a highly-configurable OpenStack instance with a controller, network manager, and one or more compute nodes (potentially at multiple Cloudlab sites). This profile runs x86 or ARM64 nodes. It sets up OpenStack Liberty, Kilo, or Juno (on Ubuntu 15.10, 15.04, or 14.10) according to your choice, and configures all OpenStack services, pulls in some VM disk images, and creates basic networks accessible via floating IPs.  You'll be able to create instances and access them over the Internet in just a few minutes. When you click the Instantiate button, you'll be presented with a list of parameters that you can change to control what your OpenStack instance will look like; **carefully** read the parameter documentation on that page (or in the Instructions) to understand the various features available to you."
+  "This profile provides a highly-configurable OpenStack instance with a controller, network manager, and one or more compute nodes (potentially at multiple Cloudlab sites). This profile runs x86 or ARM64 nodes. It sets up OpenStack Mitaka, Liberty, Kilo, or Juno (on Ubuntu 15.10, 15.04, or 14.10) according to your choice, and configures all OpenStack services, pulls in some VM disk images, and creates basic networks accessible via floating IPs.  You'll be able to create instances and access them over the Internet in just a few minutes. When you click the Instantiate button, you'll be presented with a list of parameters that you can change to control what your OpenStack instance will look like; **carefully** read the parameter documentation on that page (or in the Instructions) to understand the various features available to you."
 
 ###if not params.adminPass or len(params.adminPass) == 0:
 passwdHelp = "Your OpenStack admin and instance VM password is randomly-generated by Cloudlab, and it is: `{password-adminPass}` ."
@@ -477,13 +500,18 @@ else:
 #
 # Construct the disk image URNs we're going to set the various nodes to load.
 #
+image_project = 'emulab-ops'
+image_urn = 'utah.cloudlab.us'
 if params.release == "juno":
     image_os = 'UBUNTU14-10-64'
 elif params.release == "kilo":
     image_os = 'UBUNTU15-04-64'
-else:
+elif params.release == 'liberty':
     image_os = 'UBUNTU15-10-64'
+else:
+    image_os = 'UBUNTU16-64'
     pass
+
 if params.fromScratch:
     image_tag_cn = 'STD'
     image_tag_nm = 'STD'
@@ -492,6 +520,12 @@ else:
     image_tag_cn = 'OSCN'
     image_tag_nm = 'OSNM'
     image_tag_cp = 'OSCP'
+    pass
+
+if params.release == 'mitaka':
+    image_urn = 'emulab.net'
+#    image_project = 'tbres'
+#    image_tag_cn = image_tag_nm = image_tag_cp = 'BETA-3'
     pass
 
 nodes = dict({})
@@ -505,7 +539,7 @@ if params.osNodeType:
     controller.hardware_type = params.osNodeType
     pass
 controller.Site("1")
-controller.disk_image = "urn:publicid:IDN+utah.cloudlab.us+image+emulab-ops//%s-%s" % (image_os,image_tag_cn)
+controller.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s" % (image_urn,image_project,image_os,image_tag_cn)
 i = 0
 for datalan in alllans:
     iface = controller.addInterface("if%d" % (i,))
@@ -537,7 +571,7 @@ if params.controllerHost != params.networkManagerHost:
         networkManager.hardware_type = params.osNodeType
         pass
     networkManager.Site("1")
-    networkManager.disk_image = "urn:publicid:IDN+utah.cloudlab.us+image+emulab-ops//%s-%s" % (image_os,image_tag_nm)
+    networkManager.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s" % (image_urn,image_project,image_os,image_tag_nm)
     i = 0
     for datalan in alllans:
         iface = networkManager.addInterface("if%d" % (i,))
@@ -591,7 +625,7 @@ for (siteNumber,cpnameList) in computeNodeNamesBySite.iteritems():
             cpnode.hardware_type = params.osNodeType
         pass
         cpnode.Site(str(siteNumber))
-        cpnode.disk_image = "urn:publicid:IDN+utah.cloudlab.us+image+emulab-ops//%s-%s" % (image_os,image_tag_cp)
+        cpnode.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s" % (image_urn,image_project,image_os,image_tag_cp)
         i = 0
         for datalan in alllans:
             iface = cpnode.addInterface("if%d" % (i,))
@@ -784,6 +818,17 @@ class Parameters(RSpec.Resource):
         
         param = ET.SubElement(el,paramXML)
         param.text = "QUOTASOFF=%d" % (int(bool(params.quotasOff)))
+        
+        if params.ubuntuMirrorHost != "":
+            param = ET.SubElement(el,paramXML)
+            param.text = "UBUNTUMIRRORHOST=\"%s\"" % (params.ubuntuMirrorHost,)
+        if params.ubuntuMirrorPath != "":
+            param = ET.SubElement(el,paramXML)
+            param.text = "UBUNTUMIRRORPATH=\"%s\"" % (params.ubuntuMirrorPath,)
+            pass
+
+        param = ET.SubElement(el,paramXML)
+        param.text = "ML2PLUGIN=%s" % (str(params.ml2plugin))
 
         return el
     pass

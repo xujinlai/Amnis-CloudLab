@@ -30,6 +30,7 @@ SCP="scp -p -o StrictHostKeyChecking=no"
 CONTROLLER="ctl"
 NETWORKMANAGER="nm"
 STORAGEHOST="ctl"
+SHAREHOST="ctl"
 OBJECTHOST="ctl"
 COMPUTENODES=""
 BAREMETALNODES=""
@@ -48,6 +49,8 @@ USE_EXISTING_IPS=1
 DO_APT_INSTALL=1
 DO_APT_UPGRADE=0
 DO_APT_UPDATE=1
+UBUNTUMIRRORHOST=""
+UBUNTUMIRRORPATH=""
 ENABLE_NEW_SERIAL_SUPPORT=0
 DO_UBUNTU_CLOUDARCHIVE=1
 BUILD_AARCH64_FROM_CORE=0
@@ -68,6 +71,9 @@ KEYSTONEUSEWSGI=""
 # On by default; users will have to take full disk images of the
 # compute nodes if they have this enabled.
 COMPUTE_EXTRA_NOVA_DISK_SPACE="1"
+# Support linuxbridge plugin too, but still default to openvswitch.
+ML2PLUGIN="openvswitch"
+MANILADRIVER="generic"
 
 #
 # We have an 'adminapi' user that gets a random password.  Then, we have
@@ -245,6 +251,7 @@ HAVE_SYSTEMD=`expr $? = 0`
 OSJUNO=10
 OSKILO=11
 OSLIBERTY=12
+OSMITAKA=13
 
 . /etc/lsb-release
 if [ ${DISTRIB_CODENAME} = "wily" ]; then
@@ -254,6 +261,10 @@ if [ ${DISTRIB_CODENAME} = "wily" ]; then
 elif [ ${DISTRIB_CODENAME} = "vivid" ]; then
     OSCODENAME="kilo"
     OSVERSION=$OSKILO
+    REGION="RegionOne"
+elif [ ${DISTRIB_CODENAME} = "xenial" ]; then
+    OSCODENAME="mitaka"
+    OSVERSION=$OSMITAKA
     REGION="RegionOne"
 else
     OSCODENAME="juno"
@@ -291,6 +302,22 @@ elif [ "x$KEYSTONEUSEWSGI" = "x1" ]; then
 else
     KEYSTONEUSEWSGI=0
 fi
+
+#
+# The keystone auth_token parameter names are project_domain_name and
+# user_domain_name as of Mitaka.  The auth_token parameter name has
+# also changed.
+#
+if [ $OSVERSION -ge $OSMITAKA ]; then
+    PROJECT_DOMAIN_PARAM="project_domain_name"
+    USER_DOMAIN_PARAM="user_domain_name"
+    AUTH_TYPE_PARAM="auth_type"
+else
+    PROJECT_DOMAIN_PARAM="project_domain_id"
+    USER_DOMAIN_PARAM="user_domain_id"
+    AUTH_TYPE_PARAM="auth_plugin"
+fi
+
 
 if [ $GENIUSER -eq 1 ]; then
     SWAPPER_EMAIL=`geni-get slice_email`
@@ -478,6 +505,27 @@ unified() {
     fi
 }
 
+##
+## Setup our Ubuntu package mirror, if necessary.
+##
+grep MIRRORSETUP $SETTINGS
+if [ ! $? -eq 0 ]; then
+    if [ ! "x${UBUNTUMIRRORHOST}" = "x" ]; then
+	oldstr='us.archive.ubuntu.com'
+	newstr="${UBUNTUMIRRORHOST}"
+
+	if [ ! "x${UBUNTUMIRRORPATH}" = "x" ]; then
+	    oldstr='us.archive.ubuntu.com/ubuntu'
+	    newstr="${UBUNTUMIRRORHOST}/${UBUNTUMIRRORPATH}"
+	fi
+
+	echo "*** Changing Ubuntu mirror from $oldstr to $newstr ..."
+	sed -E -i.us.archive.ubuntu.com -e "s|(${oldstr})|$newstr|" /etc/apt/sources.list
+    fi
+
+    echo "MIRRORSETUP=1" >> $SETTINGS
+fi
+
 # Setup apt-get to not prompt us
 echo "force-confdef" > /etc/dpkg/dpkg.cfg.d/cloudlab
 echo "force-confold" >> /etc/dpkg/dpkg.cfg.d/cloudlab
@@ -652,7 +700,7 @@ if [ ! -f $OURDIR/mgmt-hosts -o $UPDATING -ne 0 ] ; then
 		prefix="10.$NEXTSPARESUBNET"
 		echo "$prefix" > $OURDIR/data-prefix.$lan
 		echo "255.255.0.0" > $OURDIR/data-netmask.$lan
-		echo "$prefix.0.0/255.255.0.0" > $OURDIR/data-cidr.$lan
+		echo "$prefix.0.0/16" > $OURDIR/data-cidr.$lan
 		echo "$prefix.0.0" > $OURDIR/data-network.$lan
 		echo "$prefix.0.1 $NETWORKMANAGER" > $OURDIR/data-hosts.$lan
 		if ! unified ; then
@@ -742,7 +790,8 @@ $netmask
 EOF
 	    unset IFS
 	    network=`printf "%d.%d.%d.%d\n" "$((i1 & m1))" "$((i2 & m2))" "$((i3 & m3))" "$((i4 & m4))"`
-	    echo "$network/$netmask" > $OURDIR/data-cidr.$lan
+	    cidr=`python $DIRNAME/ipcalc.py mask2bits $netmask`
+	    echo "$network/$cidr" > $OURDIR/data-cidr.$lan
 	    echo "$network" > $OURDIR/data-network.$lan
 
 	    if [ $UPDATING -eq 0 ]; then
@@ -834,7 +883,7 @@ if [ ${DATATUNNELS} -gt 0 ]; then
 
 	echo "LAN='$LAN'" >> $OURDIR/ipinfo.$LAN
 	echo "ALLOCATION_POOL='start=10.${subnet}.1.1,end=10.${subnet}.254.254'" >> $OURDIR/ipinfo.$LAN
-	echo "CIDR='10.$subnet.0.0/255.255.0.0'" >> $OURDIR/ipinfo.$LAN
+	echo "CIDR='10.$subnet.0.0/16'" >> $OURDIR/ipinfo.$LAN
 
 	NEXTSPARESUBNET=`expr ${NEXTSPARESUBNET} - 1`
 	i=`expr $i + 1`
@@ -857,7 +906,7 @@ for lan in $DATAVLANS ; do
 
     echo "LAN='$LAN'" >> $OURDIR/ipinfo.$LAN
     echo "ALLOCATION_POOL='start=10.${subnet}.1.1,end=10.${subnet}.254.254'" >> $OURDIR/ipinfo.$LAN
-    echo "CIDR='10.$subnet.0.0/255.255.0.0'" >> $OURDIR/ipinfo.$LAN
+    echo "CIDR='10.$subnet.0.0/16'" >> $OURDIR/ipinfo.$LAN
 
     NEXTSPARESUBNET=`expr ${NEXTSPARESUBNET} - 1`
 done
@@ -880,7 +929,7 @@ if [ ${DATAVXLANS} -gt 0 ]; then
 
 	echo "LAN='$LAN'" >> $OURDIR/ipinfo.$LAN
 	echo "ALLOCATION_POOL='start=10.${subnet}.1.1,end=10.${subnet}.254.254'" >> $OURDIR/ipinfo.$LAN
-	echo "CIDR='10.$subnet.0.0/255.255.0.0'" >> $OURDIR/ipinfo.$LAN
+	echo "CIDR='10.$subnet.0.0/16'" >> $OURDIR/ipinfo.$LAN
 
 	NEXTSPARESUBNET=`expr ${NEXTSPARESUBNET} - 1`
 	i=`expr $i + 1`
@@ -1025,10 +1074,18 @@ if [ ! -f $OURDIR/neutron.vars ]; then
     #
     # Figure out the bridge mappings
     #
-    bridge_mappings="bridge_mappings=external:br-ex"
+    if [ "${ML2PLUGIN}" = "openvswitch" ]; then
+	bridge_mappings="bridge_mappings=external:br-ex"
+    else
+	bridge_mappings="physical_interface_mappings=external:${EXTERNAL_NETWORK_INTERFACE}"
+    fi
     for lan in $DATAFLATLANS ; do
 	. $OURDIR/info.${lan}
-	bridge_mappings="${bridge_mappings},${lan}:${DATABRIDGE}"
+	if [ "${ML2PLUGIN}" = "openvswitch" ]; then
+	    bridge_mappings="${bridge_mappings},${lan}:${DATABRIDGE}"
+	else
+	    bridge_mappings="${bridge_mappings},${lan}:${DATADEV}"
+	fi
     done
     for lan in $DATAVLANS ; do
 	. $OURDIR/info.${lan}
@@ -1037,7 +1094,11 @@ if [ ! -f $OURDIR/neutron.vars ]; then
 	if [ $? = 0 ] ; then
 	    continue;
 	else
-	    bridge_mappings="${bridge_mappings},${DATAVLANDEV}:${DATABRIDGE}"
+	    if [ "${ML2PLUGIN}" = "openvswitch" ]; then
+		bridge_mappings="${bridge_mappings},${DATAVLANDEV}:${DATABRIDGE}"
+	    else
+		bridge_mappings="${bridge_mappings},${lan}:${DATADEV}"
+	    fi
 	fi
     done
 
@@ -1091,6 +1152,26 @@ if [ ! -f $OURDIR/neutron.vars ]; then
     echo "gre_local_ip=\"${gre_local_ip}\"" >> $OURDIR/neutron.vars
     echo "enable_tunneling=\"${enable_tunneling}\"" >> $OURDIR/neutron.vars
     echo "tunnel_types=\"${tunnel_types}\"" >> $OURDIR/neutron.vars
+
+    if [ "${ML2PLUGIN}" = "openvswitch" ]; then
+	interface_driver='neutron.agent.linux.interface.OVSInterfaceDriver'
+    else
+	interface_driver='neutron.agent.linux.interface.BridgeInterfaceDriver'
+    fi
+
+    echo "interface_driver=\"${interface_driver}\"" >> $OURDIR/neutron.vars
+    
+    fwdriver=""
+    if [ "${ML2PLUGIN}" = "openvswitch" ]; then
+	fwdriver="neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver"
+    else
+	fwdriver="neutron.agent.linux.iptables_firewall.IptablesFirewallDriver"
+    fi
+    if [ ${DISABLE_SECURITY_GROUPS} -eq 1 ]; then
+	fwdriver="neutron.agent.firewall.NoopFirewallDriver"
+    fi
+
+    echo "fwdriver=\"${fwdriver}\"" >> $OURDIR/neutron.vars
 
 fi
 

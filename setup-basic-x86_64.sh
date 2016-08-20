@@ -187,4 +187,35 @@ glance image-create --name ${imgnameshort}-multi-nic ${GLANCEOPTS} --disk-format
 
 qemu-nbd -d /dev/nbd0
 
+#
+# Setup the Manila service image so that Manila works out of the box.
+#
+imgname=manila-service-image-master.qcow2
+urls="http://boss.${OURDOMAIN}/downloads/openstack/$imgname http://boss.apt.emulab.net/downloads/openstack/$imgname http://tarballs.openstack.org/manila-image-elements/images/$imgname"
+for url in $urls ; do
+    if [ ! -f $imgname ]; then
+	retries=3
+	while [ $retries -gt 0 ]; do
+	    wget -O $imgname $url
+	    if [ $? -eq 0 ]; then
+		break
+	    else
+		sleep 5
+		retries=`expr $retries - 1`
+	    fi
+	done
+    fi
+    if [ -f $imgname ]; then
+	break
+    fi
+done
+
+if [ -f $imgname ]; then
+    glance image-create --name manila-service-image --file $imgname \
+	--disk-format qcow2 --container-format bare --progress \
+	--visibility public
+else
+    echo "ERROR: could not download $imgname from Cloudlab nor Ubuntu; Manila will not work without a service image!"
+fi
+
 exit 0

@@ -48,11 +48,19 @@ if [ ${DATATUNNELS} -gt 0 ]; then
 
 	echo "*** Creating GRE data network $LAN and subnet $CIDR ..."
 
-	neutron net-create ${LAN}-net --provider:network_type gre
+	neutron net-create ${LAN}-net --shared --provider:network_type gre
 	neutron subnet-create ${LAN}-net  --name ${LAN}-subnet "$CIDR"
 	neutron router-create ${LAN}-router
 	neutron router-interface-add ${LAN}-router ${LAN}-subnet
 	neutron router-gateway-set ${LAN}-router ext-net
+
+	# Create a share network for this network...
+	if [ $OSVERSION -ge $OSMITAKA ]; then
+	    NETID=`neutron net-show ${LAN}-net | awk '/ id / { print $4 }'`
+	    SUBNETID=`neutron subnet-show ${LAN}-subnet | awk '/ id / { print $4 }'`
+	    manila share-network-create --name share-${LAN}-net \
+		--neutron-net-id $NETID --neutron-subnet-id $SUBNETID
+	fi
 
 	i=`expr $i + 1`
     done
@@ -95,6 +103,14 @@ for lan in ${DATAFLATLANS} ; do
 	    neutron port-update $port --fixed-ip subnet_id=$subnetid,ip_address=$newipaddr
 	fi
     done
+
+    # Create a share network for this network...
+    if [ $OSVERSION -ge $OSMITAKA ]; then
+	NETID=`neutron net-show ${lan}-net | awk '/ id / { print $4 }'`
+	SUBNETID=`neutron subnet-show ${lan}-subnet | awk '/ id / { print $4 }'`
+	manila share-network-create --name share-${lan}-net \
+	    --neutron-net-id $NETID --neutron-subnet-id $SUBNETID
+    fi
 done
 
 for lan in ${DATAVLANS} ; do
@@ -113,6 +129,14 @@ for lan in ${DATAVLANS} ; do
     #if [ $PUBLICCOUNT -ge 3 ] ; then
 	neutron router-gateway-set ${lan}-router ext-net
     #fi
+
+    # Create a share network for this network...
+    if [ $OSVERSION -ge $OSMITAKA ]; then
+	NETID=`neutron net-show ${lan}-net | awk '/ id / { print $4 }'`
+	SUBNETID=`neutron subnet-show ${lan}-subnet | awk '/ id / { print $4 }'`
+	manila share-network-create --name share-${lan}-net \
+	    --neutron-net-id $NETID --neutron-subnet-id $SUBNETID
+    fi
 done
 
 #
@@ -127,11 +151,19 @@ if [ ${DATAVXLANS} -gt 0 ]; then
 
 	echo "*** Creating VXLAN data network $LAN and subnet $CIDR ..."
 
-	neutron net-create ${LAN}-net --provider:network_type vxlan
+	neutron net-create ${LAN}-net --shared --provider:network_type vxlan
 	neutron subnet-create ${LAN}-net  --name ${LAN}-subnet "$CIDR"
 	neutron router-create ${LAN}-router
 	neutron router-interface-add ${LAN}-router ${LAN}-subnet
 	neutron router-gateway-set ${LAN}-router ext-net
+
+	# Create a share network for this network...
+	if [ $OSVERSION -ge $OSMITAKA ]; then
+	    NETID=`neutron net-show ${LAN}-net | awk '/ id / { print $4 }'`
+	    SUBNETID=`neutron subnet-show ${LAN}-subnet | awk '/ id / { print $4 }'`
+	    manila share-network-create --name share-${LAN}-net \
+		--neutron-net-id $NETID --neutron-subnet-id $SUBNETID
+	fi
 
 	i=`expr $i + 1`
     done

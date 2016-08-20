@@ -255,6 +255,31 @@ if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
 fi
 
 #
+# Always install memcache now.
+#
+if [ -z "${MEMCACHE_DONE}" ]; then
+    maybe_install_packages memcached python-memcache
+
+    # Ensure memcached also listens on private controller network
+    cat <<EOF >> /etc/memcached.conf
+-l ${MGMTIP}
+EOF
+
+    if [ ${HAVE_SYSTEMD} -eq 1 ]; then
+	mkdir /etc/systemd/system/memcached.service.d
+	cat <<EOF >/etc/systemd/system/memcached.service.d/local-ifup.conf
+[Unit]
+Requires=networking.service
+After=networking.service
+EOF
+    fi
+    service_restart memcached
+    service_enable memcached
+
+    echo "MEMCACHE_DONE=1" >> $SETTINGS
+fi
+
+#
 # Install the Identity Service
 #
 if [ -z "${KEYSTONE_DBPASS}" ]; then
@@ -265,7 +290,8 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
 
     maybe_install_packages keystone python-keystoneclient
     if [ $OSVERSION -ge $OSKILO ]; then
-	maybe_install_packages memcached python-memcache apache2
+	maybe_install_packages apache2
+	maybe_install_packages libapache2-mod-wsgi
     fi
 
     ADMIN_TOKEN=`$PSWDGEN`
@@ -295,7 +321,7 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
 	    crudini --set /etc/keystone/keystone.conf token driver \
 		'keystone.token.persistence.backends.sql.Token'
 	fi
-    else
+    elif [ $OSVERSION -ge $OSLIBERTY ]; then
 	crudini --set /etc/keystone/keystone.conf token provider 'uuid'
 	crudini --set /etc/keystone/keystone.conf revoke driver 'sql'
 	if [ $KEYSTONEUSEMEMCACHE -eq 1 ]; then
@@ -305,6 +331,17 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
 	else
 	    crudini --set /etc/keystone/keystone.conf token driver 'sql'
 	fi
+    else
+	crudini --set /etc/keystone/keystone.conf token provider fernet
+	
+	if [ $KEYSTONEUSEMEMCACHE -eq 1 ]; then
+	    crudini --set /etc/keystone/keystone.conf token driver 'memcache'
+	    crudini --set /etc/keystone/keystone.conf memcache servers \
+		'localhost:11211'
+	fi
+
+	keystone-manage fernet_setup --keystone-user keystone \
+	    --keystone-group keystone
     fi
 
     crudini --set /etc/keystone/keystone.conf DEFAULT verbose ${VERBOSE_LOGGING}
@@ -509,6 +546,10 @@ EOF
 	keystone user-role-add --tenant admin --user ${ADMIN_API} --role admin
 	keystone user-role-add --tenant admin --user ${ADMIN_API} --role _member_
     else
+	if [ $OSVERSION -ge $OSMITAKA ]; then
+	    openstack domain create --description "Default Domain" default
+	fi
+
 	__openstack project create $DOMARG --description "Admin Project" admin
 	__openstack user create $DOMARG --password "${APSWD}" \
 	    --email "${SWAPPER_EMAIL}" admin
@@ -574,8 +615,13 @@ fi
 # if they're set.
 #
 if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
-    echo "export OS_PROJECT_DOMAIN_ID=default" > $OURDIR/admin-openrc-newcli.sh
-    echo "export OS_USER_DOMAIN_ID=default" >> $OURDIR/admin-openrc-newcli.sh
+    if [ $OSVERSION -lt $OSMITAKA ]; then
+	echo "export OS_PROJECT_DOMAIN_ID=default" > $OURDIR/admin-openrc-newcli.sh
+	echo "export OS_USER_DOMAIN_ID=default" >> $OURDIR/admin-openrc-newcli.sh
+    else
+	echo "export OS_PROJECT_DOMAIN_NAME=default" > $OURDIR/admin-openrc-newcli.sh
+	echo "export OS_USER_DOMAIN_NAME=default" >> $OURDIR/admin-openrc-newcli.sh
+    fi
 fi
 echo "export OS_PROJECT_NAME=admin" >> $OURDIR/admin-openrc-newcli.sh
 echo "export OS_TENANT_NAME=admin" >> $OURDIR/admin-openrc-newcli.sh
@@ -588,8 +634,13 @@ else
     echo "export OS_IDENTITY_API_VERSION=2.0" >> $OURDIR/admin-openrc-newcli.sh
 fi
 if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
-    echo "OS_PROJECT_DOMAIN_ID=\"default\"" > $OURDIR/admin-openrc-newcli.py
-    echo "OS_USER_DOMAIN_ID=\"default\"" >> $OURDIR/admin-openrc-newcli.py
+    if [ $OSVERSION -lt $OSMITAKA ]; then
+	echo "OS_PROJECT_DOMAIN_ID=\"default\"" > $OURDIR/admin-openrc-newcli.py
+	echo "OS_USER_DOMAIN_ID=\"default\"" >> $OURDIR/admin-openrc-newcli.py
+    else
+	echo "OS_PROJECT_DOMAIN_NAME=\"default\"" > $OURDIR/admin-openrc-newcli.py
+	echo "OS_USER_DOMAIN_NAME=\"default\"" >> $OURDIR/admin-openrc-newcli.py
+    fi
 fi
 echo "OS_PROJECT_NAME=\"admin\"" >> $OURDIR/admin-openrc-newcli.py
 echo "OS_TENANT_NAME=\"admin\"" >> $OURDIR/admin-openrc-newcli.py
@@ -615,8 +666,13 @@ if [ $OSVERSION -eq $OSJUNO ]; then
     ln -sf $OURDIR/admin-openrc-oldcli.py $OURDIR/admin-openrc.py
 else
     if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
-	export OS_PROJECT_DOMAIN_ID=default
-	export OS_USER_DOMAIN_ID=default
+	if [ $OSVERSION -lt $OSMITAKA ]; then
+	    export OS_PROJECT_DOMAIN_ID=default
+	    export OS_USER_DOMAIN_ID=default
+	else
+	    export OS_PROJECT_DOMAIN_NAME=default
+	    export OS_USER_DOMAIN_NAME=default
+	fi
     fi
     export OS_PROJECT_NAME=admin
     export OS_TENANT_NAME=admin
@@ -716,11 +772,11 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:35357
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
-	    auth_plugin password
+	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
-	    project_domain_id default
+	    ${PROJECT_DOMAIN_PARAM} default
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
-	    user_domain_id default
+	    ${USER_DOMAIN_PARAM} default
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
 	    project_name service
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
@@ -769,11 +825,11 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:35357
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
-	    auth_plugin password
+	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
-	    project_domain_id default
+	    ${PROJECT_DOMAIN_PARAM} default
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
-	    user_domain_id default
+	    ${USER_DOMAIN_PARAM} default
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
 	    project_name service
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
@@ -808,6 +864,12 @@ if [ -z "${NOVA_DBPASS}" ]; then
     echo "create database nova" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on nova.* to 'nova'@'localhost' identified by '$NOVA_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on nova.* to 'nova'@'%' identified by '$NOVA_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+
+    if [ $OSVERSION -ge $OSMITAKA ]; then
+	echo "create database nova_api" | mysql -u root --password="$DB_ROOT_PASS"
+	echo "grant all privileges on nova_api.* to 'nova'@'localhost' identified by '$NOVA_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+	echo "grant all privileges on nova_api.* to 'nova'@'%' identified by '$NOVA_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+    fi
 
     if [ $OSVERSION -eq $OSJUNO ]; then
 	keystone user-create --name nova --pass $NOVA_PASS
@@ -859,12 +921,27 @@ EOF
 	chmod ug+x $OURDIR/novaconsole.sh
     fi
 
+    # XXX: Liberty/Mitaka must have lost ec2 stuff by default?
+    if [ $OSVERSION -ge $OSLIBERTY ]; then
+	crudini --set /etc/nova/nova.conf \
+	    DEFAULT enabled_apis osapi_compute,metadata
+    fi
+
     crudini --set /etc/nova/nova.conf database connection \
 	"mysql://nova:$NOVA_DBPASS@$CONTROLLER/nova"
+    if [ $OSVERSION -ge $OSMITAKA ]; then
+	crudini --set /etc/nova/nova.conf api_database connection \
+	    "mysql://nova:$NOVA_DBPASS@$CONTROLLER/nova_api"
+    fi
     crudini --set /etc/nova/nova.conf DEFAULT rpc_backend rabbit
     crudini --set /etc/nova/nova.conf DEFAULT auth_strategy keystone
     crudini --set /etc/nova/nova.conf DEFAULT my_ip ${MGMTIP}
-    crudini --set /etc/nova/nova.conf glance host $CONTROLLER
+    if [ $OSVERSION -lt $OSMITAKA ]; then
+	crudini --set /etc/nova/nova.conf glance host $CONTROLLER
+    else
+	crudini --set /etc/nova/nova.conf \
+	    glance api_servers http://${CONTROLLER}:9292
+    fi
     crudini --set /etc/nova/nova.conf DEFAULT verbose ${VERBOSE_LOGGING}
     crudini --set /etc/nova/nova.conf DEFAULT debug ${DEBUG_LOGGING}
 
@@ -896,17 +973,28 @@ EOF
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:35357
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
-	    auth_plugin password
+	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
-	    project_domain_id default
+	    ${PROJECT_DOMAIN_PARAM} default
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
-	    user_domain_id default
+	    ${USER_DOMAIN_PARAM} default
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
 	    project_name service
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
 	    username nova
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
 	    password "${NOVA_PASS}"
+
+	if [ $OSVERSION -ge $OSMITAKA ]; then
+	    crudini --set /etc/nova/nova.conf keystone_authtoken \
+		memcached_servers ${CONTROLLER}:11211
+	fi
+
+	if [ $OSVERSION -ge $OSMITAKA ]; then
+	    crudini --set /etc/nova/nova.conf DEFAULT use_neutron True
+	    crudini --set /etc/nova/nova.conf \
+		DEFAULT firewall_driver nova.virt.firewall.NoopFirewallDriver
+	fi
     fi
 
     if [ $OSVERSION -lt $OSLIBERTY ]; then
@@ -943,8 +1031,12 @@ EOF
 	crudini --set /etc/nova/nova.conf serial_console enabled true
     fi
 
+    if [ $OSVERSION -ge $OSMITAKA ]; then
+	su -s /bin/sh -c "nova-manage api_db sync" nova
+    fi
     su -s /bin/sh -c "nova-manage db sync" nova
 
+    service_restart memcached
     service_restart nova-api
     service_enable nova-api
     service_restart nova-cert
@@ -1104,17 +1196,22 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:35357
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
-	    auth_plugin password
+	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
-	    project_domain_id default
+	    ${PROJECT_DOMAIN_PARAM} default
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
-	    user_domain_id default
+	    ${USER_DOMAIN_PARAM} default
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	    project_name service
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	    username neutron
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	    password "${NEUTRON_PASS}"
+
+	if [ $OSVERSION -ge $OSMITAKA ]; then
+	    crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+		memcached_servers ${CONTROLLER}:11211
+	fi
     fi
 
     crudini --set /etc/neutron/neutron.conf DEFAULT \
@@ -1138,22 +1235,22 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
     else
 	crudini --set /etc/neutron/neutron.conf nova \
 	    auth_url http://$CONTROLLER:35357
-	crudini --set /etc/neutron/neutron.conf nova auth_plugin password
-	crudini --set /etc/neutron/neutron.conf nova project_domain_id default
-	crudini --set /etc/neutron/neutron.conf nova user_domain_id default
+	crudini --set /etc/neutron/neutron.conf nova ${AUTH_TYPE_PARAM} password
+	crudini --set /etc/neutron/neutron.conf nova ${PROJECT_DOMAIN_PARAM} default
+	crudini --set /etc/neutron/neutron.conf nova ${USER_DOMAIN_PARAM} default
 	crudini --set /etc/neutron/neutron.conf nova region_name $REGION
 	crudini --set /etc/neutron/neutron.conf nova project_name service
 	crudini --set /etc/neutron/neutron.conf nova username nova
 	crudini --set /etc/neutron/neutron.conf nova password ${NOVA_PASS}
+
+	if [ $OSVERSION -ge $OSMITAKA ]; then
+	    crudini --set /etc/neutron/neutron.conf nova \
+		memcached_servers ${CONTROLLER}:11211
+	fi
     fi
 
     crudini --set /etc/neutron/neutron.conf DEFAULT \
 	notification_driver messagingv2
-	
-    fwdriver="neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver"
-    if [ ${DISABLE_SECURITY_GROUPS} -eq 1 ]; then
-	fwdriver="neutron.agent.firewall.NoopFirewallDriver"
-    fi
 
     crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
 	type_drivers ${network_types}
@@ -1177,15 +1274,22 @@ EOF
 	enable_security_group True
     crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup \
 	enable_ipset True
-    crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup \
-	firewall_driver $fwdriver
+    if [ -n "$fwdriver" ]; then
+	crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup \
+	    firewall_driver $fwdriver
+    fi
 
     crudini --set /etc/nova/nova.conf DEFAULT \
 	network_api_class nova.network.neutronv2.api.API
     crudini --set /etc/nova/nova.conf DEFAULT \
 	security_group_api neutron
-    crudini --set /etc/nova/nova.conf DEFAULT \
-	linuxnet_interface_driver nova.network.linux_net.LinuxOVSInterfaceDriver
+    if [ "${ML2PLUGIN}" = "openvswitch" ]; then
+	crudini --set /etc/nova/nova.conf DEFAULT linuxnet_interface_driver \
+	    nova.network.linux_net.LinuxOVSInterfaceDriver
+    else
+	crudini --set /etc/nova/nova.conf DEFAULT linuxnet_interface_driver \
+	    nova.network.linux_net.NeutronLinuxBridgeInterfaceDriver
+    fi
     crudini --set /etc/nova/nova.conf DEFAULT \
 	firewall_driver nova.virt.firewall.NoopFirewallDriver
 
@@ -1200,12 +1304,35 @@ EOF
 	crudini --set /etc/nova/nova.conf neutron \
 	    auth_url http://$CONTROLLER:35357
     fi
-    crudini --set /etc/nova/nova.conf neutron \
-	admin_tenant_name service
-    crudini --set /etc/nova/nova.conf neutron \
-	admin_username neutron
-    crudini --set /etc/nova/nova.conf neutron \
-	admin_password ${NEUTRON_PASS}
+    if [ $OSVERSION -lt $OSMITAKA ]; then
+	crudini --set /etc/nova/nova.conf neutron \
+	    auth_plugin password
+	crudini --set /etc/nova/nova.conf neutron \
+	    admin_tenant_name service
+	crudini --set /etc/nova/nova.conf neutron \
+	    admin_username neutron
+	crudini --set /etc/nova/nova.conf neutron \
+	    admin_password ${NEUTRON_PASS}
+    else
+	crudini --set /etc/nova/nova.conf neutron \
+	    ${PROJECT_DOMAIN_PARAM} default
+	crudini --set /etc/nova/nova.conf neutron \
+	    ${USER_DOMAIN_PARAM} default
+	crudini --set /etc/nova/nova.conf neutron \
+	    auth_type password
+	crudini --set /etc/nova/nova.conf neutron \
+	    project_name service
+	crudini --set /etc/nova/nova.conf neutron \
+	    username neutron
+	crudini --set /etc/nova/nova.conf neutron \
+	    password ${NEUTRON_PASS}
+	crudini --set /etc/nova/nova.conf neutron region_name $REGION
+
+	if [ $OSVERSION -ge $OSMITAKA ]; then
+	    crudini --set /etc/nova/nova.conf neutron \
+		memcached_servers ${CONTROLLER}:11211
+	fi
+    fi
     crudini --set /etc/nova/nova.conf neutron \
 	service_metadata_proxy True
     crudini --set /etc/nova/nova.conf neutron \
@@ -1278,6 +1405,20 @@ if [ -z "${NEUTRON_COMPUTENODES_DONE}" ]; then
 	touch $OURDIR/compute-network-done-${node}
     done
 
+    # For whatever reason, this makes the linuxbridge plugin happy
+    service_restart neutron-server
+    # Make sure neutron is alive before continuing
+    retries=30
+    while [ $retries -gt 0 ]; do
+	neutron net-list
+	if [ $? -eq 0 ]; then
+            break
+        else
+            sleep 2
+            retries=`eval $retries - 1`
+        fi
+    done
+
     echo "NEUTRON_COMPUTENODES_DONE=\"${NEUTRON_COMPUTENODES_DONE}\"" >> $SETTINGS
 fi
 
@@ -1295,11 +1436,12 @@ if [ -z "${NEUTRON_NETWORKS_DONE}" ]; then
 	    --provider:physical_network external --provider:network_type flat
     fi
 
-    mygw=`ip route show default | sed -n -e 's/^default via \([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
-    mynet=`ip route show dev br-ex | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\/[0-9]*\) .*$/\1/p'`
+    # Written by setup-(ovs|linuxbridge)-node.sh before changing the
+    # default Cloudlab control/expt net config.
+    . $OURDIR/ctlnet.vars
 
     neutron subnet-create ext-net --name ext-subnet \
-	--disable-dhcp --gateway $mygw $mynet
+	--disable-dhcp --gateway $ctlgw $ctlnet
 
     SID=`neutron subnet-show ext-subnet | awk '/ id / {print $4}'`
     # NB: get rid of the default one!
@@ -1324,12 +1466,13 @@ fi
 if [ -z "${DASHBOARD_DONE}" ]; then
     DASHBOARD_DONE=1
 
-    maybe_install_packages openstack-dashboard apache2 libapache2-mod-wsgi memcached python-memcache
+    maybe_install_packages openstack-dashboard apache2 libapache2-mod-wsgi
 
     sed -i -e "s/OPENSTACK_HOST.*=.*\$/OPENSTACK_HOST = \"${CONTROLLER}\"/" \
 	/etc/openstack-dashboard/local_settings.py
     sed -i -e 's/^.*ALLOWED_HOSTS = \[.*$/ALLOWED_HOSTS = \["*"\]/' \
 	/etc/openstack-dashboard/local_settings.py
+
     grep -q SESSION_TIMEOUT /etc/openstack-dashboard/local_settings.py
     if [ $? -eq 0 ]; then
 	sed -i -e "s/^.*SESSION_TIMEOUT.*=.*\$/SESSION_TIMEOUT = ${SESSIONTIMEOUT}/" \
@@ -1338,6 +1481,7 @@ if [ -z "${DASHBOARD_DONE}" ]; then
 	echo "SESSION_TIMEOUT = ${SESSIONTIMEOUT}" \
 	    >> /etc/openstack-dashboard/local_settings.py
     fi
+
     grep -q OPENSTACK_KEYSTONE_DEFAULT_ROLE /etc/openstack-dashboard/local_settings.py
     if [ $? -eq 0 ]; then
 	sed -i -e "s/^.*OPENSTACK_KEYSTONE_DEFAULT_ROLE.*=.*\$/OPENSTACK_KEYSTONE_DEFAULT_ROLE = \"user\"/" \
@@ -1358,10 +1502,53 @@ CACHES = {
 EOF
     fi
 
+    if [ $OSVERSION -ge $OSMITAKA ]; then
+	cat <<EOF >> /etc/openstack-dashboard/local_settings.py
+SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+EOF
+    fi
+
+    if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
+	grep OPENSTACK_KEYSTONE_URL /etc/openstack-dashboard/local_settings.py
+	if [ $? -eq 0 ]; then
+	    sed -i -e "s|^.*OPENSTACK_KEYSTONE_URL.*=.*\$|OPENSTACK_KEYSTONE_URL = \"http://%s:5000/v3\" % OPENSTACK_HOST|" \
+		/etc/openstack-dashboard/local_settings.py
+	else
+	    cat <<EOF >> /etc/openstack-dashboard/local_settings.py
+OPENSTACK_KEYSTONE_URL = "http://%s:5000/v3" % OPENSTACK_HOST
+EOF
+	fi
+	# Just slap this in :(.
+#XXX "image": 2,
+	cat <<EOF >> /etc/openstack-dashboard/local_settings.py
+OPENSTACK_API_VERSIONS = {
+    "identity": 3,
+    "volume": 2,
+}
+EOF
+	grep OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT /etc/openstack-dashboard/local_settings.py
+	if [ $? -eq 0 ]; then
+	    sed -i -e "s|^.*OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT.*=.*\$|OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = True|" \
+		/etc/openstack-dashboard/local_settings.py
+	else
+	    cat <<EOF >> /etc/openstack-dashboard/local_settings.py
+OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = True
+EOF
+	fi
+	grep OPENSTACK_KEYSTONE_DEFAULT_DOMAIN /etc/openstack-dashboard/local_settings.py
+	if [ $? -eq 0 ]; then
+	    sed -i -e "s|^.*OPENSTACK_KEYSTONE_DEFAULT_DOMAIN.*=.*\$|OPENSTACK_KEYSTONE_DEFAULT_DOMAIN = 'default'|" \
+		/etc/openstack-dashboard/local_settings.py
+	else
+	    cat <<EOF >> /etc/openstack-dashboard/local_settings.py
+OPENSTACK_KEYSTONE_DEFAULT_DOMAIN = 'default'
+EOF
+	fi
+    fi
+
     service_restart apache2
     service_enable apache2
     service_restart memcached
-    service_enable memcached
 
     echo "DASHBOARD_DONE=\"${DASHBOARD_DONE}\"" >> $SETTINGS
 fi
@@ -1490,17 +1677,22 @@ if [ -z "${CINDER_DBPASS}" ]; then
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:35357
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
-	    auth_plugin password
+	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
-	    project_domain_id default
+	    ${PROJECT_DOMAIN_PARAM} default
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
-	    user_domain_id default
+	    ${USER_DOMAIN_PARAM} default
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	    project_name service
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	    username cinder
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	    password "${CINDER_PASS}"
+
+	if [ $OSVERSION -ge $OSMITAKA ]; then
+	    crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+		memcached_servers ${CONTROLLER}:11211
+	fi
     fi
 
     crudini --set /etc/cinder/cinder.conf DEFAULT glance_host ${CONTROLLER}
@@ -1549,6 +1741,187 @@ if [ -z "${STORAGE_HOST_DONE}" ]; then
 fi
 
 #
+# Install some shared storage.
+#
+if [ $OSVERSION -ge $OSMITAKA -a -z "${MANILA_DBPASS}" ]; then
+    MANILA_DBPASS=`$PSWDGEN`
+    MANILA_PASS=`$PSWDGEN`
+
+    echo "create database manila" | mysql -u root --password="$DB_ROOT_PASS"
+    echo "grant all privileges on manila.* to 'manila'@'localhost' identified by '$MANILA_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+    echo "grant all privileges on manila.* to 'manila'@'%' identified by '$MANILA_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+
+    __openstack user create $DOMARG --password $MANILA_PASS manila
+    __openstack role add --user manila --project service admin
+    __openstack service create --name manila \
+	--description "OpenStack Shared File Systems" share
+    __openstack service create --name manilav2 \
+	--description "OpenStack Shared File Systems" sharev2
+
+    if [ $KEYSTONEAPIVERSION -lt 3 ]; then
+	__openstack endpoint create \
+	    --publicurl http://${CONTROLLER}:8786/v1/%\(tenant_id\)s \
+	    --internalurl http://${CONTROLLER}:8786/v1/%\(tenant_id\)s \
+	    --adminurl http://${CONTROLLER}:8786/v1/%\(tenant_id\)s \
+	    --region $REGION \
+	    share
+	__openstack endpoint create \
+	    --publicurl http://${CONTROLLER}:8786/v2/%\(tenant_id\)s \
+	    --internalurl http://${CONTROLLER}:8786/v2/%\(tenant_id\)s \
+	    --adminurl http://${CONTROLLER}:8786/v2/%\(tenant_id\)s \
+	    --region $REGION \
+	    sharev2
+    else
+	__openstack endpoint create --region $REGION \
+	    share public http://${CONTROLLER}:8786/v1/%\(tenant_id\)s
+	__openstack endpoint create --region $REGION \
+	    share internal http://${CONTROLLER}:8786/v1/%\(tenant_id\)s
+	__openstack endpoint create --region $REGION \
+	    share admin http://${CONTROLLER}:8786/v1/%\(tenant_id\)s
+	
+	__openstack endpoint create --region $REGION \
+	    sharev2 public http://${CONTROLLER}:8786/v2/%\(tenant_id\)s
+	__openstack endpoint create --region $REGION \
+	    sharev2 internal http://${CONTROLLER}:8786/v2/%\(tenant_id\)s
+	__openstack endpoint create --region $REGION \
+	    sharev2 admin http://${CONTROLLER}:8786/v2/%\(tenant_id\)s
+    fi
+
+    maybe_install_packages manila-api manila-scheduler python-manilaclient
+
+    crudini --set /etc/manila/manila.conf \
+	database connection "mysql://manila:$MANILA_DBPASS@$CONTROLLER/manila"
+
+    crudini --del /etc/manila/manila.conf keystone_authtoken auth_host
+    crudini --del /etc/manila/manila.conf keystone_authtoken auth_port
+    crudini --del /etc/manila/manila.conf keystone_authtoken auth_protocol
+
+    crudini --set /etc/manila/manila.conf DEFAULT rpc_backend rabbit
+    crudini --set /etc/manila/manila.conf DEFAULT auth_strategy keystone
+    crudini --set /etc/manila/manila.conf DEFAULT verbose ${VERBOSE_LOGGING}
+    crudini --set /etc/manila/manila.conf DEFAULT debug ${DEBUG_LOGGING}
+    crudini --set /etc/manila/manila.conf DEFAULT my_ip ${MGMTIP}
+    crudini --set /etc/manila/manila.conf DEFAULT \
+	default_share_type default_share_type
+    crudini --set /etc/manila/manila.conf DEFAULT \
+	rootwrap_config /etc/manila/rootwrap.conf
+
+    crudini --set /etc/manila/manila.conf oslo_messaging_rabbit \
+	rabbit_host $CONTROLLER
+    crudini --set /etc/manila/manila.conf oslo_messaging_rabbit \
+	rabbit_userid ${RABBIT_USER}
+    crudini --set /etc/manila/manila.conf oslo_messaging_rabbit \
+	rabbit_password "${RABBIT_PASS}"
+
+    crudini --set /etc/manila/manila.conf keystone_authtoken \
+	memcached_servers ${CONTROLLER}:11211
+    crudini --set /etc/manila/manila.conf keystone_authtoken \
+	auth_uri http://${CONTROLLER}:5000
+    crudini --set /etc/manila/manila.conf keystone_authtoken \
+	auth_url http://${CONTROLLER}:35357
+    crudini --set /etc/manila/manila.conf keystone_authtoken \
+	${AUTH_TYPE_PARAM} password
+    crudini --set /etc/manila/manila.conf keystone_authtoken \
+	${PROJECT_DOMAIN_PARAM} default
+    crudini --set /etc/manila/manila.conf keystone_authtoken \
+	${USER_DOMAIN_PARAM} default
+    crudini --set /etc/manila/manila.conf keystone_authtoken \
+	project_name service
+    crudini --set /etc/manila/manila.conf keystone_authtoken \
+	username manila
+    crudini --set /etc/manila/manila.conf keystone_authtoken \
+	password "${MANILA_PASS}"
+
+    crudini --set /etc/manila/manila.conf oslo_concurrency \
+	lock_path /var/lib/manila/tmp
+
+    su -s /bin/sh -c "manila-manage db sync" manila
+
+    # For now, create the default flavor for the service image here.
+    # The actual image is downloaded/created in setup-basic-*.sh .
+    # It is nice to create it before the daemons run so they don't whine.
+    __openstack flavor create manila-service-flavor \
+	--id 100 --ram 256 --disk 0 --vcpus 1
+
+    service_restart manila-scheduler
+    service_enable manila-scheduler
+    service_restart manila-api
+    service_enable manila-api
+    rm -f /var/lib/manila/manila.sqlite
+
+    # Create the default_share_type we set in manila.conf above.
+    manila type-create default_share_type True
+
+    # Note: we create the default share networks in setup-basic.sh
+
+    # Install the UI... complicated by buggy packages.
+    maybe_install_packages python-manila-ui
+    #
+    # The initial mitaka manila-ui package does not include the template
+    # files, ugh!
+    #
+    dpkg-query -L python-manila-ui | grep -q templates
+    if [ ! $? -eq 0 ]; then
+	if [ ! $DO_APT_UPDATE -eq 0 ]; then
+	    # Enable the src repos
+	    cp -p /etc/apt/sources.list /etc/apt.sources.list.nosrc
+	    sed -i.orig -E -e 's/^ *# *(deb-src.* xenial (universe|main).*)$/\1/' \
+		/etc/apt/sources.list
+	    sed -i.orig2 -E -e 's/^ *# *(deb-src.* xenial-updates .*)$/\1/' \
+		/etc/apt/sources.list
+	    apt-get update
+	    # Get the source package
+	    cwd=`pwd`
+	    mkdir -p tmp-python-manila-ui
+	    cd tmp-python-manila-ui
+	    apt-get source -y python-manila-ui
+	    apt-get remove --purge -y python-manila-ui
+	    apt-get build-dep -y python-manila-ui
+	    srcdir=`find . -maxdepth 1 -type d -name manila-ui-\*`
+	    cd $srcdir
+	    cat <<EOF >MANIFEST.in
+recursive-include manila_ui/dashboards/admin/shares/templates *
+recursive-include manila_ui/dashboards/project/shares/templates *
+recursive-include manila_ui/dashboards/project/templates *
+EOF
+	    echo "add manifest for templates" | dpkg-source --auto-commit --commit . add-manifest-templates
+	    export DEB_BUILD_OPTIONS=nocheck
+	    dpkg-buildpackage -uc
+	    cd ..
+	    dpkg -i python-manila-ui*.deb
+	    # Remove the src repos:
+	    sed -i.orig -E -e 's/^(deb-src.*)$/# \1/' /etc/apt/sources.list
+	    # Cleanup env
+	    unset DEB_BUILD_OPTIONS
+	    cd $cwd
+	else
+	    echo "Error: python-manila-ui does not appear to have templates, but you have requested not to update our Apt cache, so we can't download the source pagckage."
+	fi
+    fi
+
+    service_restart apache2
+    service_restart memcached
+
+    echo "MANILA_DBPASS=\"${MANILA_DBPASS}\"" >> $SETTINGS
+    echo "MANILA_PASS=\"${MANILA_PASS}\"" >> $SETTINGS
+fi
+
+if [ -z "${SHARE_HOST_DONE}" ]; then
+    fqdn=`getfqdn $SHAREHOST`
+
+    if [ "${SHAREHOST}" = "${CONTROLLER}" ]; then
+	$DIRNAME/setup-share-node.sh
+    else
+        # Copy the latest settings (passwords, endpoints, whatever) over
+	scp -o StrictHostKeyChecking=no $SETTINGS $fqdn:$SETTINGS
+
+	ssh -o StrictHostKeyChecking=no $fqdn $DIRNAME/setup-share-node.sh
+    fi
+
+    echo "SHARE_HOST_DONE=\"1\"" >> $SETTINGS
+fi
+
+#
 # Install some object storage.
 #
 #if [ 0 -eq 1 -a -z "${SWIFT_DBPASS}" ]; then
@@ -1593,7 +1966,7 @@ if [ -z "${SWIFT_PASS}" ]; then
     fi
 
     maybe_install_packages swift swift-proxy python-swiftclient \
-	python-keystoneclient python-keystonemiddleware memcached
+	python-keystoneclient python-keystonemiddleware
 
     mkdir -p /etc/swift
 
@@ -1622,6 +1995,8 @@ if [ -z "${SWIFT_PASS}" ]; then
 	    'catch_errors gatekeeper healthcheck proxy-logging cache container_sync bulk ratelimit authtoken keystoneauth container-quotas account-quotas slo dlo versioned_writes proxy-logging proxy-server'
     fi
 
+    crudini --set /etc/swift/proxy-server.conf \
+	app:proxy-server use 'egg:swift#proxy'
     crudini --set /etc/swift/proxy-server.conf \
 	app:proxy-server allow_account_management true
     crudini --set /etc/swift/proxy-server.conf \
@@ -1655,12 +2030,16 @@ if [ -z "${SWIFT_PASS}" ]; then
 	    filter:authtoken auth_uri "http://${CONTROLLER}:5000"
 	crudini --set /etc/swift/proxy-server.conf \
 	    filter:authtoken auth_url "http://${CONTROLLER}:35357"
+	if [ $OSVERSION -ge $OSMITAKA ]; then
+	    crudini --set /etc/swift/proxy-server.conf \
+		memcached_servers ${CONTROLLER}:11211
+	fi
 	crudini --set /etc/swift/proxy-server.conf \
-	    filter:authtoken auth_plugin password
+	    filter:authtoken ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/swift/proxy-server.conf \
-	    filter:authtoken project_domain_id default
+	    filter:authtoken ${PROJECT_DOMAIN_PARAM} default
 	crudini --set /etc/swift/proxy-server.conf \
-	    filter:authtoken user_domain_id default
+	    filter:authtoken ${USER_DOMAIN_PARAM} default
 	crudini --set /etc/swift/proxy-server.conf \
 	    filter:authtoken project_name service
 	crudini --set /etc/swift/proxy-server.conf \
@@ -1674,7 +2053,7 @@ if [ -z "${SWIFT_PASS}" ]; then
     crudini --set /etc/swift/proxy-server.conf \
 	filter:cache use 'egg:swift#memcache'
     crudini --set /etc/swift/proxy-server.conf \
-	filter:cache memcache_servers 127.0.0.1:11211
+	filter:cache memcache_servers ${CONTROLLER}:11211
 
     crudini --del /etc/swift/proxy-server.conf keystone_authtoken auth_host
     crudini --del /etc/swift/proxy-server.conf keystone_authtoken auth_port
@@ -1743,19 +2122,25 @@ if [ -z "${OBJECT_RING_DONE}" ]; then
 
     objip=`cat $OURDIR/mgmt-hosts | grep $OBJECTHOST | cut -d ' ' -f 1`
 
-    swift-ring-builder account.builder create 10 3 1
+    swift-ring-builder account.builder create 10 2 1
     swift-ring-builder account.builder \
 	add r1z1-${objip}:6002/swiftv1 100
+    swift-ring-builder account.builder \
+	add r1z1-${objip}:6002/swiftv1-2 100
     swift-ring-builder account.builder rebalance
 
-    swift-ring-builder container.builder create 10 3 1
+    swift-ring-builder container.builder create 10 2 1
     swift-ring-builder container.builder \
 	add r1z1-${objip}:6001/swiftv1 100
+    swift-ring-builder container.builder \
+	add r1z1-${objip}:6001/swiftv1-2 100
     swift-ring-builder container.builder rebalance
 
-    swift-ring-builder object.builder create 10 3 1
+    swift-ring-builder object.builder create 10 2 1
     swift-ring-builder object.builder \
 	add r1z1-${objip}:6000/swiftv1 100
+    swift-ring-builder object.builder \
+	add r1z1-${objip}:6000/swiftv1-2 100
     swift-ring-builder object.builder rebalance
 
     if [ "${OBJECTHOST}" != "${CONTROLLER}" ]; then
@@ -1888,22 +2273,27 @@ if [ -z "${HEAT_DBPASS}" ]; then
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:35357
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
-	    auth_plugin password
+	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
-	    project_domain_id default
+	    ${PROJECT_DOMAIN_PARAM} default
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
-	    user_domain_id default
+	    ${USER_DOMAIN_PARAM} default
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
 	    project_name service
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
 	    username heat
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
 	    password "${HEAT_PASS}"
+
+	if [ $OSVERSION -ge $OSMITAKA ]; then
+	    crudini --set /etc/heat/heat.conf keystone_authtoken \
+		memcached_servers ${CONTROLLER}:11211
+	fi
     fi
 
     if [ $OSVERSION -ge $OSLIBERTY ]; then
 	crudini --set /etc/heat/heat.conf trustee \
-	    auth_plugin password
+	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/heat/heat.conf trustee \
 	    auth_url http://${CONTROLLER}:35357
 	crudini --set /etc/heat/heat.conf trustee \
@@ -1911,7 +2301,7 @@ if [ -z "${HEAT_DBPASS}" ]; then
 	crudini --set /etc/heat/heat.conf trustee \
 	    password ${HEAT_PASS}
 	crudini --set /etc/heat/heat.conf trustee \
-	    user_domain_id default
+	    ${USER_DOMAIN_PARAM} default
 
 	crudini --set /etc/heat/heat.conf clients_keystone \
 	    auth_uri http://${CONTROLLER}:5000
@@ -2082,12 +2472,16 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:35357
+	if [ $OSVERSION -ge $OSMITAKA ]; then
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+		memcached_servers  ${CONTROLLER}:11211
+	fi
 	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    auth_plugin password
+	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    project_domain_id default
+	    ${PROJECT_DOMAIN_PARAM} default
 	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    user_domain_id default
+	    ${USER_DOMAIN_PARAM} default
 	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	    project_name service
 	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
@@ -2096,19 +2490,45 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    password "${CEILOMETER_PASS}"
     fi
 
-    crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
-	os_auth_url http://${CONTROLLER}:5000/v2.0
-    crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
-	os_username ceilometer
-    crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
-	os_tenant_name service
-    crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
-	os_password ${CEILOMETER_PASS}
-    if [ $OSVERSION -ge $OSKILO ]; then
+    if [ $OSVERSION -lt $OSMITAKA ]; then
 	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
-	    os_endpoint_type internalURL
+	    os_auth_url http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	    os_username ceilometer
+	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	    os_tenant_name service
+	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	    os_password ${CEILOMETER_PASS}
+	if [ $OSVERSION -ge $OSKILO ]; then
+	    crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+		os_endpoint_type internalURL
+	    crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
 		os_region_name $REGION
+	fi
+    else
+	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	    auth_type password
+	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	    auth_url http://${CONTROLLER}:5000/${KAPISTR}
+	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	    username ceilometer
+	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	    ${PROJECT_DOMAIN_PARAM} default
+	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	    ${USER_DOMAIN_PARAM} default
+	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	    project_name service
+	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	    password ${CEILOMETER_PASS}
+	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	    interface internalURL
+	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	    region_name $REGION
+
+	if [ $OSVERSION -ge $OSMITAKA ]; then
+	    crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+		memcached_servers ${CONTROLLER}:11211
+	fi
     fi
 
     crudini --set /etc/ceilometer/ceilometer.conf notification \
@@ -2257,8 +2677,13 @@ if [ -z "${TELEMETRY_GLANCE_DONE}" ]; then
 	RIS=DEFAULT
     fi
 
-    crudini --set /etc/glance/glance-api.conf DEFAULT \
-	notification_driver messagingv2
+    if [ $OSVERSION -lt $OSMITAKA ]; then
+	crudini --set /etc/glance/glance-api.conf DEFAULT \
+	    notification_driver messagingv2
+    else
+	crudini --set /etc/glance/glance-api.conf \
+	    oslo_messaging_notifications driver messagingv2
+    fi
     crudini --set /etc/glance/glance-api.conf DEFAULT \
 	rpc_backend rabbit
     crudini --set /etc/glance/glance-api.conf $RIS \
@@ -2268,8 +2693,13 @@ if [ -z "${TELEMETRY_GLANCE_DONE}" ]; then
     crudini --set /etc/glance/glance-api.conf $RIS \
 	rabbit_password ${RABBIT_PASS}
 
-    crudini --set /etc/glance/glance-registry.conf DEFAULT \
-	notification_driver messagingv2
+    if [ $OSVERSION -lt $OSMITAKA ]; then
+	crudini --set /etc/glance/glance-registry.conf DEFAULT \
+	    notification_driver messagingv2
+    else
+	crudini --set /etc/glance/glance-registry.conf \
+	    oslo_messaging_notifications driver messagingv2
+    fi
     crudini --set /etc/glance/glance-registry.conf DEFAULT \
 	rpc_backend rabbit
     crudini --set /etc/glance/glance-registry.conf $RIS \
@@ -2382,6 +2812,26 @@ if [ -z "${TROVE_DBPASS}" ]; then
 
     maybe_install_packages python-trove python-troveclient python-glanceclient \
 	trove-api trove-taskmanager trove-conductor
+    if [ $OSVERSION -ge $OSMITAKA ]; then
+	sepdashpkg=`apt-cache search --names-only ^python-trove-dashboard\$ | wc -l`
+	if [ ! "$sepdashpkg" = "0" ]; then
+            # Bug in mitaka package -- postinstall fails to remove this file.
+	    madedir=0
+	    if [ ! -f /var/lib/openstack-dashboard/secret-key/.secret_key_store ]; then
+		if [ ! -d /var/lib/openstack-dashboard/secret-key ]; then
+		    madedir=1
+		    mkdir -p /var/lib/openstack-dashboard/secret-key
+		fi
+		touch /var/lib/openstack-dashboard/secret-key/.secret_key_store
+	    fi
+
+	    maybe_install_packages python-trove-dashboard
+
+	    if [ $madedir -eq 1 ]; then
+		rm -rf /var/lib/openstack-dashboard/secret-key
+	    fi
+	fi
+    fi
 
     echo "create database trove" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on trove.* to 'trove'@'localhost' identified by '$TROVE_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
@@ -2423,70 +2873,156 @@ if [ -z "${TROVE_DBPASS}" ]; then
 	fi
     fi
 
+    # trove.conf core stuff
+    crudini --set /etc/trove/trove.conf DEFAULT verbose ${VERBOSE_LOGGING}
+    crudini --set /etc/trove/trove.conf DEFAULT debug ${DEBUG_LOGGING}
+    crudini --set /etc/trove/trove.conf DEFAULT log_dir /var/log/trove
+    crudini --set /etc/ceilometer/ceilometer.conf DEFAULT bind_host ${MGMTIP}
+    crudini --set /etc/trove/trove.conf DEFAULT rpc_backend rabbit
+    if [ $OSVERSION -lt $OSLIBERTY ]; then
+	crudini --set /etc/trove/trove.conf DEFAULT rabbit_host ${CONTROLLER}
+	crudini --set /etc/trove/trove.conf DEFAULT rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/trove/trove.conf DEFAULT rabbit_password ${RABBIT_PASS}
+    else
+	crudini --set /etc/trove/trove.conf oslo_messaging_rabbit \
+	    rabbit_host ${CONTROLLER}
+	crudini --set /etc/trove/trove.conf oslo_messaging_rabbit \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/trove/trove.conf oslo_messaging_rabbit \
+	    rabbit_password ${RABBIT_PASS}
+    fi
+    crudini --set /etc/trove/trove.conf DEFAULT \
+	trove_auth_url http://${CONTROLLER}:5000/${KAPISTR}
+    crudini --set /etc/trove/trove.conf DEFAULT \
+	nova_compute_url http://${CONTROLLER}:8774/v2
+    crudini --set /etc/trove/trove.conf DEFAULT \
+	cinder_url http://${CONTROLLER}:8776/v1
+    crudini --set /etc/trove/trove.conf DEFAULT \
+	swift_url http://${CONTROLLER}:8080/v1/AUTH_
+    # XXX: not sure when this got replaced by database::connection...
+    crudini --set /etc/trove/trove.conf DEFAULT \
+	sql_connection mysql://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
+    crudini --set /etc/trove/trove.conf \
+	database connection mysql://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
+    crudini --set /etc/trove/trove.conf DEFAULT \
+	notifier_queue_hostname ${CONTROLLER}
+
+    # trove-taskmanager.conf core stuff
+    crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	verbose ${VERBOSE_LOGGING}
+    crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	debug ${DEBUG_LOGGING}
+    crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	log_dir /var/log/trove
+    crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	rpc_backend rabbit
+    if [ $OSVERSION -lt $OSLIBERTY ]; then
+	crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	    rabbit_host ${CONTROLLER}
+	crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	    rabbit_password ${RABBIT_PASS}
+    else
+	crudini --set /etc/trove/trove-taskmanager.conf oslo_messaging_rabbit \
+	    rabbit_host ${CONTROLLER}
+	crudini --set /etc/trove/trove-taskmanager.conf oslo_messaging_rabbit \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/trove/trove-taskmanager.conf oslo_messaging_rabbit \
+	    rabbit_password ${RABBIT_PASS}
+    fi
+    crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	trove_auth_url http://${CONTROLLER}:5000/${KAPISTR}
+    crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	nova_compute_url http://${CONTROLLER}:8774/v2
+    crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	cinder_url http://${CONTROLLER}:8776/v1
+    crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	swift_url http://${CONTROLLER}:8080/v1/AUTH_
+    # XXX: not sure when this got replaced by database::connection...
+    crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	sql_connection mysql://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
+    crudini --set /etc/trove/trove-taskmanager.conf \
+	database connection mysql://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
+    crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	notifier_queue_hostname ${CONTROLLER}
+
+    # trove-conductor.conf core stuff
+    crudini --set /etc/trove/trove-conductor.conf DEFAULT \
+	verbose ${VERBOSE_LOGGING}
+    crudini --set /etc/trove/trove-conductor.conf DEFAULT \
+	debug ${DEBUG_LOGGING}
+    crudini --set /etc/trove/trove-conductor.conf DEFAULT \
+	log_dir /var/log/trove
+    crudini --set /etc/trove/trove-conductor.conf DEFAULT \
+	rpc_backend rabbit
+    if [ $OSVERSION -lt $OSLIBERTY ]; then
+	crudini --set /etc/trove/trove-conductor.conf DEFAULT \
+	    rabbit_host ${CONTROLLER}
+	crudini --set /etc/trove/trove-conductor.conf DEFAULT \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/trove/trove-conductor.conf DEFAULT \
+	    rabbit_password ${RABBIT_PASS}
+    else
+	crudini --set /etc/trove/trove-conductor.conf oslo_messaging_rabbit \
+	    rabbit_host ${CONTROLLER}
+	crudini --set /etc/trove/trove-conductor.conf oslo_messaging_rabbit \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/trove/trove-conductor.conf oslo_messaging_rabbit \
+	    rabbit_password ${RABBIT_PASS}
+    fi
+    crudini --set /etc/trove/trove-conductor.conf DEFAULT \
+	trove_auth_url http://${CONTROLLER}:5000/${KAPISTR}
+    crudini --set /etc/trove/trove-conductor.conf DEFAULT \
+	nova_compute_url http://${CONTROLLER}:8774/v2
+    crudini --set /etc/trove/trove-conductor.conf DEFAULT \
+	cinder_url http://${CONTROLLER}:8776/v1
+    crudini --set /etc/trove/trove-conductor.conf DEFAULT \
+	swift_url http://${CONTROLLER}:8080/v1/AUTH_
+    # XXX: not sure when this got replaced by database::connection...
+    crudini --set /etc/trove/trove-conductor.conf DEFAULT \
+	sql_connection mysql://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
+    crudini --set /etc/trove/trove-conductor.conf \
+	database connection mysql://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
+    crudini --set /etc/trove/trove-conductor.conf DEFAULT \
+	notifier_queue_hostname ${CONTROLLER}
+
+    # A few extras for taskmanager.conf
+    crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	nova_proxy_admin_user ${ADMIN_API}
+    crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	nova_proxy_admin_pass ${ADMIN_API_PASS}
+    crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	nova_proxy_admin_tenant_name service
+    crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	taskmanager_manager trove.taskmanager.manager.Manager
+    crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	
+    crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	
+    # A few more things for the main conf file
+    crudini --set /etc/trove/trove.conf DEFAULT default_datastore mysql
+    crudini --set /etc/trove/trove.conf DEFAULT add_addresses True
+    crudini --set /etc/trove/trove.conf DEFAULT \
+	network_label_regex '^NETWORK_LABEL$'
+    crudini --set /etc/trove/trove.conf DEFAULT \
+	api_paste_config /etc/trove/api-paste.ini
+
     # Just slap these in.
-    cat <<EOF >> /etc/trove/trove.conf
+    cat <<EOF >> /etc/trove/trove-guestagent.conf
 [DEFAULT]
-rpc_backend = rabbit
 rabbit_host = ${CONTROLLER}
 rabbit_userid = ${RABBIT_USER}
 rabbit_password = ${RABBIT_PASS}
-verbose = ${VERBOSE_LOGGING}
-debug = ${DEBUG_LOGGING}
-log_dir = /var/log/trove
 trove_auth_url = http://${CONTROLLER}:5000/${KAPISTR}
-nova_compute_url = http://${CONTROLLER}:8774/v2
-cinder_url = http://${CONTROLLER}:8776/v1
-swift_url = http://${CONTROLLER}:8080/v1/AUTH_
-sql_connection = mysql://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
-notifier_queue_hostname = ${CONTROLLER}
-default_datastore = mysql
-# Config option for showing the IP address that nova doles out
-add_addresses = True
-network_label_regex = ^NETWORK_LABEL$
-api_paste_config = /etc/trove/api-paste.ini
-taskmanager_manager = trove.taskmanager.manager.Manager
-EOF
-    cat <<EOF >> /etc/trove/trove-taskmanager.conf
-[DEFAULT]
-rpc_backend = rabbit
-rabbit_host = ${CONTROLLER}
-rabbit_userid = ${RABBIT_USER}
-rabbit_password = ${RABBIT_PASS}
-verbose = ${VERBOSE_LOGGING}
-debug = ${DEBUG_LOGGING}
-log_dir = /var/log/trove
-trove_auth_url = http://${CONTROLLER}:5000/${KAPISTR}
-nova_compute_url = http://${CONTROLLER}:8774/v2
-cinder_url = http://${CONTROLLER}:8776/v1
-swift_url = http://${CONTROLLER}:8080/v1/AUTH_
-sql_connection = mysql://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
-notifier_queue_hostname = ${CONTROLLER}
-# Configuration options for talking to nova via the novaclient.
-# These options are for an admin user in your keystone config.
-# It proxy's the token received from the user to send to nova via this admin users creds,
-# basically acting like the client via that proxy token.
 nova_proxy_admin_user = ${ADMIN_API}
 nova_proxy_admin_pass = ${ADMIN_API_PASS}
 nova_proxy_admin_tenant_name = service
 taskmanager_manager = trove.taskmanager.manager.Manager
 EOF
-    cat <<EOF >> /etc/trove/trove-conductor.conf
-[DEFAULT]
-rpc_backend = rabbit
-rabbit_host = ${CONTROLLER}
-rabbit_userid = ${RABBIT_USER}
-rabbit_password = ${RABBIT_PASS}
-verbose = ${VERBOSE_LOGGING}
-debug = ${DEBUG_LOGGING}
-log_dir = /var/log/trove
-trove_auth_url = http://${CONTROLLER}:5000/${KAPISTR}
-nova_compute_url = http://${CONTROLLER}:8774/v2
-cinder_url = http://${CONTROLLER}:8776/v1
-swift_url = http://${CONTROLLER}:8080/v1/AUTH_
-sql_connection = mysql://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
-notifier_queue_hostname = ${CONTROLLER}
-EOF
-    cat <<EOF >> /etc/trove/api-paste.ini
+
+    if [ $OSVERSION -lt $OSKILO ]; then
+	cat <<EOF >> /etc/trove/api-paste.ini
 [filter:authtoken]
 auth_uri = http://${CONTROLLER}:5000/${KAPISTR}
 identity_uri = http://${CONTROLLER}:35357
@@ -2495,13 +3031,31 @@ admin_password = ${TROVE_PASS}
 admin_tenant_name = service
 signing_dir = /var/cache/trove
 EOF
+    else
+	crudini --set /etc/trove/trove.conf keystone_authtoken \
+	    auth_uri http://${CONTROLLER}:5000
+	crudini --set /etc/trove/trove.conf keystone_authtoken \
+	    auth_url http://${CONTROLLER}:35357
+	crudini --set /etc/trove/trove.conf keystone_authtoken \
+	    ${AUTH_TYPE_PARAM} password
+	crudini --set /etc/trove/trove.conf keystone_authtoken \
+	    ${PROJECT_DOMAIN_PARAM} default
+	crudini --set /etc/trove/trove.conf keystone_authtoken \
+	    ${USER_DOMAIN_PARAM} default
+	crudini --set /etc/trove/trove.conf keystone_authtoken \
+	    project_name service
+	crudini --set /etc/trove/trove.conf keystone_authtoken \
+	    username trove
+	crudini --set /etc/trove/trove.conf keystone_authtoken \
+	    password ${TROVE_PASS}
+	crudini --set /etc/trove/trove.conf keystone_authtoken \
+	    region_name $REGION
 
-    crudini --set /etc/trove/trove.conf \
-	database connection mysql://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
-    crudini --set /etc/trove/trove-taskmanager.conf \
-	database connection mysql://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
-    crudini --set /etc/trove/trove-conductor.conf \
-	database connection mysql://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
+	if [ $OSVERSION -ge $OSMITAKA ]; then
+	    crudini --set /etc/trove/trove.conf keystone_authtoken \
+		memcached_servers ${CONTROLLER}:11211
+	fi
+    fi
 
     sed -i -e "s/^\\(.*auth_host.*=.*\\)$/#\1/" /etc/trove/api-paste.ini
     sed -i -e "s/^\\(.*auth_port.*=.*\\)$/#\1/" /etc/trove/api-paste.ini
@@ -2509,6 +3063,14 @@ EOF
 
     mkdir -p /var/cache/trove
     chown -R trove:trove /var/cache/trove
+
+    sed -i.orig -E -e 's|(CONFIG_FILE=.*)$|CONFIG_FILE="/etc/trove/trove-taskmanager.conf"|' /etc/init/trove-taskmanager.conf
+    sed -i.orig -E -e 's|(CONFIG_FILE=.*)$|CONFIG_FILE="/etc/trove/trove-conductor.conf"|' /etc/init/trove-conductor.conf
+    sed -i.orig -E -e 's|(CONFIG_FILE=.*)$|CONFIG_FILE="/etc/trove/trove-taskmanager.conf"|' /etc/init.d/trove-taskmanager
+    sed -i.orig -E -e 's|(CONFIG_FILE=.*)$|CONFIG_FILE="/etc/trove/trove-conductor.conf"|' /etc/init.d/trove-conductor
+    if [ ${HAVE_SYSTEMD} -eq 1 ]; then
+	systemctl daemon-reload
+    fi
 
     su -s /bin/sh -c "/usr/bin/trove-manage db_sync" trove
     if [ ! $? -eq 0 ]; then
@@ -2523,7 +3085,8 @@ EOF
     su -s /bin/sh -c "trove-manage datastore_update mysql ''" trove
 
     # XXX: Create a trove image!
-
+    #maybe_install_packages qemu-utils kpartx
+    #git clone https://git.openstack.org/openstack/diskimage-builder
     # trove-manage --config-file /etc/trove/trove.conf datastore_version_update \
     #    mysql mysql-5.5 mysql $glance_image_ID mysql-server-5.5 1
 
@@ -2533,6 +3096,9 @@ EOF
     service_enable trove-taskmanager
     service_restart trove-conductor
     service_enable trove-conductor
+
+    service_restart apache2
+    service_restart memcached
 
     echo "TROVE_DBPASS=\"${TROVE_DBPASS}\"" >> $SETTINGS
     echo "TROVE_PASS=\"${TROVE_PASS}\"" >> $SETTINGS
@@ -2605,30 +3171,89 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 	aserr=$?
 	maybe_install_packages sahara-api sahara-engine
     fi
+    if [ $OSVERSION -ge $OSMITAKA ]; then
+	sepdashpkg=`apt-cache search --names-only ^python-sahara-dashboard\$ | wc -l`
+	if [ ! "$sepdashpkg" = "0" ]; then
+            # Bug in mitaka package -- postinstall fails to remove this file.
+	    madedir=0
+	    if [ ! -f /var/lib/openstack-dashboard/secret-key/.secret_key_store ]; then
+		if [ ! -d /var/lib/openstack-dashboard/secret-key ]; then
+		    madedir=1
+		    mkdir -p /var/lib/openstack-dashboard/secret-key
+		fi
+		touch /var/lib/openstack-dashboard/secret-key/.secret_key_store
+	    fi
+
+	    maybe_install_packages python-sahara-dashboard
+
+	    if [ $madedir -eq 1 ]; then
+		rm -rf /var/lib/openstack-dashboard/secret-key
+	    fi
+	fi
+    fi
 
     mkdir -p /etc/sahara
     touch /etc/sahara/sahara.conf
     chown -R sahara /etc/sahara
     crudini --set /etc/sahara/sahara.conf \
 	database connection mysql://sahara:${SAHARA_DBPASS}@$CONTROLLER/sahara
+    crudini --set /etc/sahara/sahara.conf DEFAULT \
+	verbose ${VERBOSE_LOGGING}
+    crudini --set /etc/sahara/sahara.conf DEFAULT \
+	debug ${DEBUG_LOGGING}
+    crudini --set /etc/sahara/sahara.conf DEFAULT \
+	auth_strategy keystone
+    crudini --set /etc/sahara/sahara.conf DEFAULT \
+	use_neutron true
+
+    if [ $OSVERSION -lt $OSKILO ]; then
+	crudini --set /etc/sahara/sahara.conf DEFAULT rabbit_host $CONTROLLER
+	crudini --set /etc/sahara/sahara.conf DEFAULT rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/sahara/sahara.conf DEFAULT rabbit_password "${RABBIT_PASS}"
+
+	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
+	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
+	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
+	    identity_uri http://${CONTROLLER}:35357
+	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
+	    admin_tenant_name service
+	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
+	    admin_user sahara
+	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
+	    admin_password "${SAHARA_PASS}"
+    else
+	crudini --set /etc/sahara/sahara.conf oslo_messaging_rabbit \
+	    rabbit_host $CONTROLLER
+	crudini --set /etc/sahara/sahara.conf oslo_messaging_rabbit \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/sahara/sahara.conf oslo_messaging_rabbit \
+	    rabbit_password "${RABBIT_PASS}"
+
+	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
+	    auth_uri http://${CONTROLLER}:5000
+	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
+	    auth_url http://${CONTROLLER}:35357
+	if [ $OSVERSION -ge $OSMITAKA ]; then
+	    crudini --set /etc/sahara/sahara.conf keystone_authtoken \
+		memcached_servers  ${CONTROLLER}:11211
+	fi
+	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
+	    ${AUTH_TYPE_PARAM} password
+	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
+	    ${PROJECT_DOMAIN_PARAM} default
+	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
+	    ${USER_DOMAIN_PARAM} default
+	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
+	    project_name service
+	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
+	    username sahara
+	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
+	    password "${SAHARA_PASS}"
+    fi
+
     # Just slap these in.
-    cat <<EOF >> /etc/sahara/sahara.conf
-[DEFAULT]
-verbose = ${VERBOSE_LOGGING}
-debug = ${DEBUG_LOGGING}
-auth_strategy = keystone
-use_neutron=true
-
-[keystone_authtoken]
-auth_uri = http://$CONTROLLER:5000/${KAPISTR}
-identity_uri = http://$CONTROLLER:35357
-admin_tenant_name = service
-admin_user = sahara
-admin_password = ${SAHARA_PASS}
-
-[ec2authtoken]
-auth_uri = http://${CONTROLLER}:5000/${KAPISTR}
-EOF
+    crudini --set /etc/sahara/sahara.conf ec2authtoken \
+	auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 
     sed -i -e "s/^\\(.*auth_host.*=.*\\)$/#\1/" /etc/sahara/sahara.conf
     sed -i -e "s/^\\(.*auth_port.*=.*\\)$/#\1/" /etc/sahara/sahara.conf
@@ -2658,6 +3283,9 @@ EOF
 	service_restart sahara-engine
 	service_enable sahara-engine
     fi
+
+    service_restart apache2
+    service_restart memcached
 
     echo "SAHARA_DBPASS=\"${SAHARA_DBPASS}\"" >> $SETTINGS
     echo "SAHARA_PASS=\"${SAHARA_PASS}\"" >> $SETTINGS

@@ -58,24 +58,35 @@ if [ -z "$LVM" ] ; then
     fi
 fi
 
+LDEVS=""
 if [ $LVM -eq 0 ] ; then
     dd if=/dev/zero of=/storage/swiftv1 bs=32768 count=131072
     LDEV=`losetup -f`
     losetup $LDEV /storage/swiftv1
+    LDEVS="${LDEV}"
+    dd if=/dev/zero of=/storage/swiftv1-2 bs=32768 count=131072
+    LDEV=`losetup -f`
+    losetup $LDEV /storage/swiftv1-2
+    LDEVS="${LDEVS} ${LDEV}"
 else
     lvcreate -n swiftv1 -L 4G $VGNAME
     LDEV=/dev/${VGNAME}/swiftv1
+    LDEVS="${LDEV}"
+    lvcreate -n swiftv1-2 -L 4G $VGNAME
+    LDEV=/dev/${VGNAME}/swiftv1-2
+    LDEVS="${LDEVS} ${LDEV}"
 fi
 
-mkfs.xfs $LDEV
-
 mkdir -p /storage/mnt/swift
-cat <<EOF >> /etc/fstab
-$LDEV /storage/mnt/swift/swiftv1 xfs noatime,nodiratime,nobarrier,logbufs=8 0 2
+for ldev in $LDEVS ; do
+    base=`basename $ldev`
+    mkfs.xfs $ldev
+    cat <<EOF >> /etc/fstab
+$ldev /storage/mnt/swift/$base xfs noatime,nodiratime,nobarrier,logbufs=8 0 2
 EOF
-
-mkdir -p /storage/mnt/swift/swiftv1
-mount /storage/mnt/swift/swiftv1
+    mkdir -p /storage/mnt/swift/$base
+    mount /storage/mnt/swift/$base
+done
 
 cat <<EOF >> /etc/rsyncd.conf
 uid = swift

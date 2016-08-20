@@ -96,11 +96,11 @@ else
     crudini --set /etc/nova/nova.conf keystone_authtoken \
 	auth_url http://${CONTROLLER}:35357
     crudini --set /etc/nova/nova.conf keystone_authtoken \
-	auth_plugin password
+	${AUTH_TYPE_PARAM} password
     crudini --set /etc/nova/nova.conf keystone_authtoken \
-	project_domain_id default
+	${PROJECT_DOMAIN_PARAM} default
     crudini --set /etc/nova/nova.conf keystone_authtoken \
-	user_domain_id default
+	${USER_DOMAIN_PARAM} default
     crudini --set /etc/nova/nova.conf keystone_authtoken \
 	project_name service
     crudini --set /etc/nova/nova.conf keystone_authtoken \
@@ -119,6 +119,7 @@ if [ $OSVERSION -ge $OSLIBERTY ]; then
 
     crudini --set /etc/nova/nova.conf DEFAULT \
 	network_api_class nova.network.neutronv2.api.API
+    crudini --set /etc/nova/nova.conf DEFAULT use_neutron True
     crudini --set /etc/nova/nova.conf DEFAULT \
 	security_group_api neutron
     crudini --set /etc/nova/nova.conf DEFAULT \

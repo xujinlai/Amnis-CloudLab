@@ -27,6 +27,19 @@ if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
 
+if [ $OSVERSION -ge $OSMITAKA ]; then
+    PROJECT_DOMAIN_PARAM="project_domain_name"
+    USER_DOMAIN_PARAM="user_domain_name"
+else
+    PROJECT_DOMAIN_PARAM="project_domain_id"
+    USER_DOMAIN_PARAM="user_domain_id"
+fi
+if [ $OSVERSION -ge $OSMITAKA ]; then
+    AUTH_TYPE_PARAM="auth_type"
+else
+    AUTH_TYPE_PARAM="auth_plugin"
+fi
+
 maybe_install_packages ceilometer-agent-compute
 
 crudini --set /etc/ceilometer/ceilometer.conf DEFAULT rpc_backend rabbit
@@ -64,33 +77,62 @@ else
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	auth_url http://${CONTROLLER}:35357
+    if [ $OSVERSION -ge $OSMITAKA ]; then
+	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	    memcached_servers ${CONTROLLER}:11211
+    fi
     crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	auth_plugin password
+	${AUTH_TYPE_PARAM} password
     crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	project_domain_id default
+	${PROJECT_DOMAIN_PARAM} default
     crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	user_domain_id default
+	${USER_DOMAIN_PARAM} default
     crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	project_name service
     crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	username ceilometer
     crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	password "$CEILOMETER_PASS}"
+	password "$CEILOMETER_PASS"
+    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	region_name "$REGION"
 fi
 
-crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
-    os_auth_url http://${CONTROLLER}:5000/v2.0
-crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
-    os_username ceilometer
-crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
-    os_tenant_name service
-crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
-    os_password ${CEILOMETER_PASS}
-if [ $OSVERSION -ge $OSKILO ]; then
+if [ $OSVERSION -lt $OSMITAKA ]; then
     crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
-	os_endpoint_type internalURL
+	os_auth_url http://${CONTROLLER}:5000/${KAPISTR}
     crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
-	os_region_name $REGION
+	os_username ceilometer
+    crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	os_tenant_name service
+    crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	os_password ${CEILOMETER_PASS}
+    if [ $OSVERSION -ge $OSKILO ]; then
+	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	    os_endpoint_type internalURL
+	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	    os_region_name $REGION
+    fi
+else
+    crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	${AUTH_TYPE_PARAM} password
+    crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	auth_url http://${CONTROLLER}:5000/${KAPISTR}
+    crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	username ceilometer
+    crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	project_name service
+    crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	password ${CEILOMETER_PASS}
+    if [ $OSVERSION -ge $OSKILO ]; then
+	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	    interface internalURL
+	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	    region_name $REGION
+    fi
+    crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+        ${PROJECT_DOMAIN_PARAM} default
+    crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+        ${USER_DOMAIN_PARAM} default
 fi
 
 crudini --set /etc/ceilometer/ceilometer.conf notification \

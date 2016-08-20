@@ -63,29 +63,8 @@ else
 fi
 
 #
-# Otherwise, first we need openvswitch.
+# Make the configuration for the $EXTERNAL_NETWORK_INTERFACE be static.
 #
-maybe_install_packages openvswitch-common openvswitch-switch
-
-# Make sure it's running
-service_restart openvswitch
-service_restart openvswitch-switch
-service_enable openvswitch
-service_enable openvswitch-switch
-
-#
-# Setup the external network
-#
-ovs-vsctl add-br ${EXTERNAL_NETWORK_BRIDGE}
-ovs-vsctl add-port ${EXTERNAL_NETWORK_BRIDGE} ${EXTERNAL_NETWORK_INTERFACE}
-#ethtool -K $EXTERNAL_NETWORK_INTERFACE gro off
-
-#
-# Now move the $EXTERNAL_NETWORK_INTERFACE and default route config to ${EXTERNAL_NETWORK_BRIDGE}
-#
-ctlnetmask=`ifconfig ${EXTERNAL_NETWORK_INTERFACE} | sed -n -e 's/^.*Mask:\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
-ctlgw=`ip route show default | sed -n -e 's/^default via \([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
-
 DNSDOMAIN=`cat /etc/resolv.conf | grep search | head -1 | awk '{ print $2 }'`
 DNSSERVER=`cat /etc/resolv.conf | grep nameserver | head -1 | awk '{ print $2 }'`
 
@@ -102,24 +81,14 @@ cat <<EOF > /etc/network/interfaces
 auto lo
 iface lo inet loopback
 
-auto ${EXTERNAL_NETWORK_BRIDGE}
-iface ${EXTERNAL_NETWORK_BRIDGE} inet static
+auto ${EXTERNAL_NETWORK_INTERFACE}
+iface ${EXTERNAL_NETWORK_INTERFACE} inet static
     address $ctlip
     netmask $ctlnetmask
     gateway $ctlgw
     dns-search $DNSDOMAIN
     dns-nameservers $DNSSERVER
-
-auto ${EXTERNAL_NETWORK_INTERFACE}
-iface ${EXTERNAL_NETWORK_INTERFACE} inet static
-    address 0.0.0.0
 EOF
-
-ifconfig ${EXTERNAL_NETWORK_INTERFACE} 0 up
-ifconfig ${EXTERNAL_NETWORK_BRIDGE} $ctlip netmask $ctlnetmask up
-route add default gw $ctlgw
-
-service_restart openvswitch-switch
 
 #
 # Add the management network config if necessary (if not, it's already a VPN)
@@ -140,41 +109,24 @@ EOF
 fi
 
 #
-# Make sure we have the integration bridge
-#
-ovs-vsctl add-br ${INTEGRATION_NETWORK_BRIDGE}
-
-#
 # (Maybe) Setup the flat data networks
 #
 for lan in $DATAFLATLANS ; do
     # suck in the vars we'll use to configure this one
     . $OURDIR/info.$lan
 
-    ovs-vsctl add-br ${DATABRIDGE}
-
-    ovs-vsctl add-port ${DATABRIDGE} ${DATADEV}
-    ifconfig ${DATADEV} 0 up
     cat <<EOF >> /etc/network/interfaces
-
-auto ${DATABRIDGE}
-iface ${DATABRIDGE} inet static
-    address $DATAIP
-    netmask $DATANETMASK
 
 auto ${DATADEV}
 iface ${DATADEV} inet static
-    address 0.0.0.0
+    address $DATAIP
+    netmask $DATANETMASK
 EOF
     if [ -n "$DATAVLANDEV" ]; then
 	cat <<EOF >> /etc/network/interfaces
     vlan-raw-device ${DATAVLANDEV}
 EOF
     fi
-
-    ifconfig ${DATABRIDGE} $DATAIP netmask $DATANETMASK up
-    # XXX!
-    #route add -net 10.0.0.0/8 dev ${DATA_NETWORK_BRIDGE}
 done
 
 #
@@ -190,14 +142,6 @@ for lan in $DATAVLANS ; do
 
     ifconfig $DATADEV down
     vconfig rem $DATADEV
-
-    # If the bridge exists, we've already done it (we might have multiplexed
-    # (trunked) more than one vlan across this physical device).
-    ovs-vsctl br-exists ${DATABRIDGE}
-    if [ $? -ne 0 ]; then
-	ovs-vsctl add-br ${DATABRIDGE}
-	ovs-vsctl add-port ${DATABRIDGE} ${DATAVLANDEV}
-    fi
 done
 
 #else
@@ -222,13 +166,6 @@ done
 #
 echo `hostname` > /etc/hostname
 
-service_restart openvswitch-switch
-
-ip route flush cache
-
-# Just wait a bit
-#sleep 8
-
 echo "*** Removing Emulab rc.hostnames and rc.ifconfig boot scripts"
 mv /usr/local/etc/emulab/rc/rc.hostnames /usr/local/etc/emulab/rc/rc.hostnames.NO
 mv /usr/local/etc/emulab/rc/rc.ifconfig /usr/local/etc/emulab/rc/rc.ifconfig.NO
@@ -241,52 +178,11 @@ if [ ! ${HAVE_SYSTEMD} -eq 0 ] ; then
     systemctl disable ifup-wait-emulab-cnet.service
     systemctl mask ifup-wait-emulab-cnet.service
     systemctl stop ifup-wait-emulab-cnet.service
-    #
-    # XXX: fixup a systemd/openvswitch bug
-    # https://bugs.launchpad.net/ubuntu/+source/openvswitch/+bug/1448254
-    #
-    #
-    # Also, if our init is systemd, fixup the openvswitch service to
-    # come up and go down before remote-fs.target .  Somehow,
-    # openvswitch-switch always goes down way, way before the rest of
-    # the network is brought down.  remote-fs.target seems to be one of
-    # the last services to be killed before the network target is
-    # brought down, and if there's an NFS mount, NFS might require
-    # communication with the remote server to umount the mount.  This
-    # affects us because there are Emulab/Cloudlab NFS mounts over the
-    # control net device, and we bridge the control net device into the
-    # br-ex openvswitch bridge.  To complete the story, once the
-    # openvswitch-switch daemon goes down, you have about 30 seconds
-    # before the bridge starts acting really flaky... it appears to go
-    # down and quit forwarding traffic for awhile, then will pop back to
-    # life periodically for 10-second chunks.  So, we hackily "fix" this
-    # by making the openswitch-nonetwork service dependent on
-    # remote-fs.target ... and since that target is one of the last to
-    # go down before the real network is brought down, this seems to
-    # work.  Ugh!  So to fix that, we also add the remote-fs.target
-    # Before dependency to the "patch" listed in the above bug report.
-    #
-    cat <<EOF >/lib/systemd/system/openvswitch-nonetwork.service
-    [Unit]
-Description=Open vSwitch Internal Unit
-PartOf=openvswitch-switch.service
-DefaultDependencies=no
-Wants=network-pre.target openvswitch-switch.service
-Before=network-pre.target remote-fs.target
-After=local-fs.target
 
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-EnvironmentFile=-/etc/default/openvswitch-switch
-ExecStart=/usr/share/openvswitch/scripts/ovs-ctl start \
-          --system-id=random $OPTIONS
-ExecStop=/usr/share/openvswitch/scripts/ovs-ctl stop
-EOF
-
-    systemctl enable openvswitch-switch
     systemctl daemon-reload
 fi
+
+exit 0
 
 #
 # Install a basic ARP reply filter that prevents us from sending ARP replies on

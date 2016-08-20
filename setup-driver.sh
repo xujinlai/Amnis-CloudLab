@@ -48,6 +48,9 @@ if [ "$HOSTNAME" = "$NETWORKMANAGER" ]; then
     for node in $NODES 
     do
 	[ "$node" = "$NETWORKMANAGER" ] && continue
+	if unified ; then
+	    continue
+	fi
 
 	fqdn=`getfqdn $node`
 	$SSH $fqdn mkdir -p $OURDIR
@@ -79,9 +82,15 @@ if [ "$HOSTNAME" = "$NETWORKMANAGER" ]; then
 	echo "*** Using $MGMTLAN as the Management Network"
     fi
 
-    echo "*** Moving Interfaces into OpenVSwitch Bridges"
+    if [ "${ML2PLUGIN}" = "openvswitch" ]; then
+	echo "*** Moving Interfaces into OpenVSwitch Bridges"
 
-    $DIRNAME/setup-ovs.sh 1> $OURDIR/setup-ovs.log 2>&1
+	$DIRNAME/setup-ovs.sh 1> $OURDIR/setup-ovs.log 2>&1
+    else
+	echo "*** Setting up Linux Bridge static network configuration"
+
+	$DIRNAME/setup-linuxbridge.sh 1> $OURDIR/setup-linuxbridge.log 2>&1
+    fi
 
     echo "*** Telling controller to set up OpenStack!"
 
