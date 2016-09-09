@@ -49,6 +49,16 @@ __openstack() {
     done
 }
 
+#
+# We're going to spin off our image downloader/configurator to better
+# parallelize.  So make sure it has the packages it needs.
+#
+maybe_install_packages qemu-utils wget lockfile-progs rpm
+if [ "$ARCH" = "aarch64" ]; then
+    # need growpart
+    maybe_install_packages cloud-guest-utils
+fi
+
 maybe_install_packages pssh
 PSSH='/usr/bin/parallel-ssh -t 0 -O StrictHostKeyChecking=no '
 
@@ -67,6 +77,11 @@ echo "$PFQDN" > /etc/mailname
 sleep 2
 echo "Your OpenStack instance is setting up on `hostname` ." \
     |  mail -s "OpenStack Instance Setting Up" ${SWAPPER_EMAIL} &
+
+#
+# Fire off the image downloader/configurator in the background.
+#
+$DIRNAME/setup-images.sh >> $OURDIR/setup-images.log 2>&1 &
 
 #
 # If we're >= Kilo, we might need the openstack CLI command.
@@ -3452,5 +3467,7 @@ echo "***"
 
 echo "Your OpenStack instance has completed setup!  Browse to http://$CONTROLLER.$EEID.$EPID.${OURDOMAIN}/horizon/auth/login/?next=/horizon/project/instances/ .  ${RANDPASSSTRING}" \
     |  mail -s "OpenStack Instance Finished Setting Up" ${SWAPPER_EMAIL}
+
+touch $OURDIR/controller-done
 
 exit 0

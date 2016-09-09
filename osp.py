@@ -40,12 +40,14 @@ pc.defineParameter("osLinkSpeed", "Experiment Link Speed of all nodes",
                    portal.ParameterType.INTEGER, 0,
                    [(0,"Any"),(1000000,"1Gb/s"),(10000000,"10Gb/s")],
                    longDescription="A specific link speed to use for each node.  All experiment network interfaces will request this speed.")
-
 pc.defineParameter("ml2plugin","ML2 Plugin",
                    portal.ParameterType.STRING,"openvswitch",
                    [("openvswitch","OpenVSwitch"),
                     ("linuxbridge","Linux Bridge")],
                    longDescription="Starting in Liberty and onwards, we support both the OpenVSwitch and LinuxBridge ML2 plugins to create virtual networks in Neutron.  OpenVSwitch remains our default and best-supported option.  Note: you cannot use GRE tunnels with the LinuxBridge driver; you'll need to use VXLAN tunnels instead.  And by default, the profile allocates 1 GRE tunnel -- so you must change that immediately, or you will see an error.")
+pc.defineParameter("extraImageURLs","Extra VM Image URLs",
+                   portal.ParameterType.STRING,"",
+                   longDescription="This parameter allows you to specify a space-separated list of URLs, each of which points to an OpenStack VM image, which we will download and slighty tweak before uploading to Glance in your OpenStack experiment.")
 
 
 pc.defineParameter("ubuntuMirrorHost","Ubuntu Package Mirror Hostname",
@@ -829,6 +831,9 @@ class Parameters(RSpec.Resource):
 
         param = ET.SubElement(el,paramXML)
         param.text = "ML2PLUGIN=%s" % (str(params.ml2plugin))
+
+        param = ET.SubElement(el,paramXML)
+        param.text = "EXTRAIMAGEURLS='%s'" % (str(params.extraImageURLs))
 
         return el
     pass

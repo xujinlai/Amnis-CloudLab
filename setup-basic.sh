@@ -27,15 +27,6 @@ fi
 
 . $OURDIR/admin-openrc.sh
 
-echo "*** Adding Images ..."
-
-ARCH=`uname -m`
-if [ "$ARCH" = "aarch64" ] ; then
-    $DIRNAME/setup-basic-aarch64.sh
-else
-    $DIRNAME/setup-basic-x86_64.sh
-fi
-
 #
 # Setup tunnel-based networks
 #
@@ -249,6 +240,22 @@ if [ $QUOTASOFF -eq 1 ]; then
     openstack quota set --class --volumes -1 admin
     openstack quota set --class --snapshots -1 admin
     openstack quota set --class --volume-type -1 admin
+fi
+
+. $OURDIR/setup-images-lib.sh
+lockfile-create $IMAGESETUPLOCKFILE
+if [ -f $IMAGEUPLOADCMDFILE ]; then
+    echo "*** Adding Images ..."
+    . $OURDIR/admin-openrc.sh
+    . $IMAGEUPLOADCMDFILE
+fi
+lockfile-remove $IMAGESETUPLOCKFILE
+
+ARCH=`uname -m`
+if [ "$ARCH" = "aarch64" ] ; then
+    $DIRNAME/setup-basic-aarch64.sh
+else
+    $DIRNAME/setup-basic-x86_64.sh
 fi
 
 exit 0

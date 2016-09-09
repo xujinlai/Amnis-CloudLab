@@ -74,6 +74,7 @@ COMPUTE_EXTRA_NOVA_DISK_SPACE="1"
 # Support linuxbridge plugin too, but still default to openvswitch.
 ML2PLUGIN="openvswitch"
 MANILADRIVER="generic"
+EXTRAIMAGEURLS=""
 
 #
 # We have an 'adminapi' user that gets a random password.  Then, we have
@@ -1234,5 +1235,84 @@ service_start() {
 	service $service start
     else
 	systemctl start $service
+    fi
+}
+
+GETTER=`which wget`
+if [ -n "$GETTER" ]; then
+    GETTEROUT="$GETTER --remote-encoding=unix -c -O"
+    GETTER="$GETTER --remote-encoding=unix -c -N"
+    GETTERLOGARG="-o"
+else
+    GETTER="/bin/false NO WGET INSTALLED!"
+    GETTEROUT="/bin/false NO WGET INSTALLED!"
+fi
+
+get_url() {
+    if [ -z "$GETTER" ]; then
+	/bin/false
+	return
+    fi
+
+    urls="$1"
+    outfile="$2"
+    if [ -n "$3" ]; then
+	retries=$3
+    else
+	retries=3
+    fi
+    if [ -n "$4" ]; then
+	interval=$4
+    else
+	interval=5
+    fi
+    if [ -n "$5" ]; then
+	force="$5"
+    else
+	force=0
+    fi
+
+    if [ -n "$outfile" -a -f "$outfile" -a $force -ne 0 ]; then
+	rm -f "$outfile"
+    fi
+
+    success=0
+    tmpfile=`mktemp /tmp/wget.log.XXX`
+    for url in $urls ; do
+	tries=$retries
+	while [ $tries -gt 0 ]; do
+	    if [ -n "$outfile" ]; then
+		$GETTEROUT $outfile $GETTERLOGARG $tmpfile "$url"
+	    else
+		$GETTER $GETTERLOGARG $tmpfile "$url"
+	    fi
+	    if [ $? -eq 0 ]; then
+		if [ -z "$outfile" ]; then
+		    # This is the best way to figure out where wget
+		    # saved a file!
+		    outfile=`bash -c "cat $tmpfile | sed -n -e 's/^.*Saving to: '$'\u2018''\([^'$'\u2019'']*\)'$'\u2019''.*$/\1/p'"`
+		    if [ -z "$outfile" ]; then
+			outfile=`bash -c "cat $tmpfile | sed -n -e 's/^.*File '$'\u2018''\([^'$'\u2019'']*\)'$'\u2019'' not modified.*$/\1/p'"`
+		    fi
+		fi
+		success=1
+		break
+	    else
+		sleep $interval
+		tries=`expr $tries - 1`
+	    fi
+	done
+	if [ $success -eq 1 ]; then
+	    break
+	fi
+    done
+
+    rm -f $tmpfile
+
+    if [ $success -eq 1 ]; then
+	echo "$outfile"
+	/bin/true
+    else
+	/bin/false
     fi
 }
