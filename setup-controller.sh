@@ -1430,7 +1430,7 @@ if [ -z "${NEUTRON_COMPUTENODES_DONE}" ]; then
             break
         else
             sleep 2
-            retries=`eval $retries - 1`
+            retries=`expr $retries - 1`
         fi
     done
 
