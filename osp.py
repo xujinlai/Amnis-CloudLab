@@ -30,9 +30,6 @@ pc.defineParameter("release","OpenStack Release",
                    longDescription="We provide OpenStack Mitaka (Ubuntu 16.04); Liberty (Ubuntu 15.10); Kilo (Ubuntu 15.04); or Juno (Ubuntu 14.10).  OpenStack is installed from packages available on these distributions.")
 pc.defineParameter("computeNodeCount", "Number of compute nodes (at Site 1)",
                    portal.ParameterType.INTEGER, 1)
-pc.defineParameter("publicIPCount", "Number of public IP addresses",
-                   portal.ParameterType.INTEGER, 4,
-                   longDescription="Make sure to include both the number of floating IP addresses you plan to need for instances; and also for OpenVSwitch interface IP addresses.  Each OpenStack network this profile creates for you is bridged to the external, public network, so you also need a public IP address for each of those switch interfaces.  So, if you ask for one GRE tunnel network, and one flat data network (the default configuration), you would need two public IPs for switch interfaces, and then you request two additional public IPs that can be bound to instances as floating IPs.  If you ask for more networks, make sure to increase this number appropriately.")
 pc.defineParameter("osNodeType", "Hardware type of all nodes",
                    portal.ParameterType.NODETYPE, "",
                    longDescription="A specific hardware type to use for each node.  Cloudlab clusters all have machines of specific types.  When you set this field to a value that is a specific hardware type, you will only be able to instantiate this profile on clusters with machines of that type.  If unset, when you instantiate the profile, the resulting experiment may have machines of any available type allocated.")
@@ -54,7 +51,7 @@ pc.defineParameter("ubuntuMirrorHost","Ubuntu Package Mirror Hostname",
                    portal.ParameterType.STRING,"",advanced=True,
                    longDescription="A specific Ubuntu package mirror host to use instead of us.archive.ubuntu.com (mirror must have Ubuntu in top-level dir, or you must also edit the mirror path parameter below)")
 pc.defineParameter("ubuntuMirrorPath","Ubuntu Package Mirror Path",
-                   portal.ParameterType.STRING,"",
+                   portal.ParameterType.STRING,"",advanced=True,
                    longDescription="A specific Ubuntu package mirror path to use instead of /ubuntu/ (you must also set a value for the package mirror parameter)")
 pc.defineParameter("doAptUpgrade","Upgrade OpenStack packages and dependencies to the latest versions",
                    portal.ParameterType.BOOLEAN, False,advanced=True,
@@ -68,6 +65,9 @@ pc.defineParameter("doAptUpdate","Update the Apt package cache before installing
 pc.defineParameter("fromScratch","Install OpenStack packages on a bare image",
                    portal.ParameterType.BOOLEAN,False,advanced=True,
                    longDescription="If you do not mind waiting awhile for your experiment and OpenStack instance to be available, you can select this option to start from one of our standard Ubuntu disk images; the profile setup scripts will then install all necessary packages.  NOTE: this option may only be used at x86 cluster (i.e., not the \"Utah Cluster\") for now!  NOTE: this option requires that you select both the Apt update and install package options above!")
+pc.defineParameter("publicIPCount", "Number of public IP addresses",
+                   portal.ParameterType.INTEGER, 4,advanced=True,
+                   longDescription="Make sure to include both the number of floating IP addresses you plan to need for instances; and also for OpenVSwitch interface IP addresses.  Each OpenStack network this profile creates for you is bridged to the external, public network, so you also need a public IP address for each of those switch interfaces.  So, if you ask for one GRE tunnel network, and one flat data network (the default configuration), you would need two public IPs for switch interfaces, and then you request two additional public IPs that can be bound to instances as floating IPs.  If you ask for more networks, make sure to increase this number appropriately.")
 pc.defineParameter("flatDataLanCount","Number of Flat Data Networks",
                    portal.ParameterType.INTEGER,1,advanced=True,
                    longDescription="Create a number of flat OpenStack networks.  If you do not select the Multiplex Flat Networks option below, each of these networks requires a physical network interface.  If you attempt to instantiate this profile on nodes with only 1 experiment interface, and ask for more than one flat network, your profile will not instantiate correctly.  Many CloudLab nodes have only a single experiment interface.")
@@ -522,12 +522,6 @@ else:
     image_tag_cn = 'OSCN'
     image_tag_nm = 'OSNM'
     image_tag_cp = 'OSCP'
-    pass
-
-if params.release == 'mitaka':
-    image_urn = 'emulab.net'
-#    image_project = 'tbres'
-#    image_tag_cn = image_tag_nm = image_tag_cp = 'BETA-3'
     pass
 
 nodes = dict({})
