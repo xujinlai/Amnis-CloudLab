@@ -155,10 +155,10 @@ fixup_mounted_image() {
     echo "*** $_imgfile: setting up sshd ..."
     grep -q '[# ]*PermitRootLogin .*' $MNT/etc/ssh/sshd_config
     if [ $? -eq 0 ]; then
-	sed -i -e 's/^[# ]*PermitRootLogin .*$/PermitRootLogin prohibit-password/' \
+	sed -i -e 's/^[# ]*PermitRootLogin .*$/PermitRootLogin without-password/' \
 	    $MNT/etc/ssh/sshd_config
     else
-	echo "PermitRootLogin prohibit-password" >> $MNT/etc/ssh/sshd_config
+	echo "PermitRootLogin without-password" >> $MNT/etc/ssh/sshd_config
     fi
     grep -q '[# ]*PasswordAuthentication .*' $MNT/etc/ssh/sshd_config
     if [ $? -eq 0 ]; then
