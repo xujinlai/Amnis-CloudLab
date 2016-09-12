@@ -13,6 +13,11 @@ fi
 # Grab our libs
 . "$DIRNAME/setup-lib.sh"
 
+# Copy our source code into $OURDIR for future use:
+echo "*** Copying source code into $OURDIR/bin ..."
+mkdir -p $OURDIR/bin
+rsync -avz /tmp/setup/ $OURDIR/bin/
+
 echo "*** Setting up root ssh pubkey access across all nodes..."
 
 # All nodes need to publish public keys, and acquire others'
