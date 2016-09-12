@@ -89,10 +89,10 @@ fi
 # If we're not in controller setup, or if the controller has already
 # run, do the uploads now.
 #
-if [ -f $OURDIR/controller-done ]; then
-    . $OURDIR/admin-openrc.sh
-    . $IMAGEUPLOADCMDFILE
-fi
+#if [ -f $OURDIR/controller-done ]; then
+#    . $OURDIR/admin-openrc.sh
+#    . $IMAGEUPLOADCMDFILE
+#fi
 
 #
 # Release our lockfile.
