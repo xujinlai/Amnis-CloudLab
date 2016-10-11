@@ -43,15 +43,17 @@ mkdir -p /storage
 if [ -z "$LVM" ] ; then
     LVM=1
     VGNAME="openstack-volumes"
-    MKEXTRAFS_ARGS="-l -v ${VGNAME} -m util -z 1G"
+    MKEXTRAFS_ARGS="-l -v ${VGNAME} -m util -z 1024"
     # On Cloudlab ARM machines, there is no second disk nor extra disk space
     # Well, now there's a new partition layout; try it.
     if [ "$ARCH" = "aarch64" ]; then
+	maybe_install_packages gdisk
 	sgdisk -i 1 /dev/sda
 	if [ $? -eq 0 ] ; then
 	    sgdisk -N 2 /dev/sda
+	    partprobe /dev/sda
 	    if [ $? -eq 0 ] ; then
-		partprobe
+		partprobe /dev/sda
 		# Add the second partition specifically
 		MKEXTRAFS_ARGS="${MKEXTRAFS_ARGS} -s 2"
 	    else
