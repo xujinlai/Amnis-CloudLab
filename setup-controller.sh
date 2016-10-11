@@ -2488,8 +2488,12 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 
     maybe_install_packages ceilometer-api ceilometer-collector \
 	ceilometer-agent-central ceilometer-agent-notification \
-	ceilometer-alarm-evaluator ceilometer-alarm-notifier \
 	python-ceilometerclient python-bson
+
+    if [ $OSVERSION -lt $OSMITAKA ]; then
+	maybe_install_packages ceilometer-alarm-evaluator \
+	    ceilometer-alarm-notifier
+    fi
 
     if [ "${CEILOMETER_USE_MONGODB}" = "1" ]; then
 	crudini --set /etc/ceilometer/ceilometer.conf database \
