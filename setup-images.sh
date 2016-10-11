@@ -28,6 +28,8 @@ if [ "$HOSTNAME" != "$CONTROLLER" ]; then
     exit 0;
 fi
 
+logtstart "images"
+
 if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
@@ -98,5 +100,7 @@ fi
 # Release our lockfile.
 #
 lockfile-remove $IMAGESETUPLOCKFILE
+
+logtend "images"
 
 exit 0

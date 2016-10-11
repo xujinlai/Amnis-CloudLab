@@ -25,6 +25,8 @@ if [ -f $OURDIR/setup-compute-done ]; then
     exit 0
 fi
 
+logtstart "compute"
+
 if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
@@ -191,5 +193,7 @@ service_enable libvirt-bin
 # rm -f /var/lib/nova/nova.sqlite
 
 touch $OURDIR/setup-compute-done
+
+logtend "compute"
 
 exit 0

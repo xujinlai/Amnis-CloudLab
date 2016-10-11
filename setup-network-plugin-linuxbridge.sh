@@ -19,6 +19,8 @@ if [ -f $OURDIR/setup-network-plugin-linuxbridge-done ]; then
     exit 0
 fi
 
+logtstart "network-plugin-linuxbridge"
+
 if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
@@ -219,5 +221,7 @@ else
 fi
 
 touch $OURDIR/setup-network-plugin-linuxbridge-done
+
+logtend "network-plugin-linuxbridge"
 
 exit 0

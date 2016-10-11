@@ -23,6 +23,8 @@ if [ -f $OURDIR/setup-compute-telemetry-done ]; then
     exit 0
 fi
 
+logtstart "compute-telemetry"
+
 if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
@@ -164,5 +166,7 @@ service_restart nova-compute
 service_restart ceilometer-agent-compute
 
 touch $OURDIR/setup-compute-telemetry-done
+
+logtend "compute-telemetry"
 
 exit 0

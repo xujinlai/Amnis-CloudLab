@@ -12,6 +12,7 @@ fi
 
 # Grab our libs
 . "$DIRNAME/setup-lib.sh"
+logtstart "driver"
 
 # Copy our source code into $OURDIR for future use:
 echo "*** Copying source code into $OURDIR/bin ..."
@@ -113,13 +114,17 @@ if [ "$HOSTNAME" = "$CONTROLLER" ]; then
 	sleep 1
     done
 
+    logtend "driver"
+
     echo "*** Building an Openstack!"
 
     exec /bin/sh -c "$DIRNAME/setup-controller.sh 1> $OURDIR/setup-controller.log 2>&1 </dev/null"
 
     exit 1
 elif [ "$HOSTNAME" != "$NETWORKMANAGER" ]; then
+    logtend "driver"
     exit 0;
 fi
 
+logtend "driver"
 exit 0

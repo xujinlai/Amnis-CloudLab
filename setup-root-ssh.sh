@@ -16,6 +16,8 @@ fi
 # Grab our libs
 . "`dirname $0`/setup-lib.sh"
 
+logtstart "root-ssh"
+
 KEYNAME=id_rsa
 
 # Remove it if it exists...
@@ -36,6 +38,7 @@ if [ -s $OURDIR/${KEYNAME} ] ; then
     ps axwww > $OURDIR/ps.txt
     cat $OURDIR/${KEYNAME}.pub >> /root/.ssh/authorized_keys
     chmod 600 /root/.ssh/authorized_keys
+    logtend "root-ssh"
     exit 0
 fi
 
@@ -76,5 +79,7 @@ else
 	fi
     done
 fi
+
+logtend "root-ssh"
 
 exit 0

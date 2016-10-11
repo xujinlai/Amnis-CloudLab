@@ -21,6 +21,8 @@ if [ "$HOSTNAME" != "$CONTROLLER" ]; then
     exit 0;
 fi
 
+logtstart "basic-quotas"
+
 if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
@@ -86,3 +88,5 @@ if [ $QUOTASOFF -eq 1 ]; then
     openstack quota set --class --snapshots -1 admin
     openstack quota set --class --volume-type -1 admin
 fi
+
+logtend "basic-quotas"

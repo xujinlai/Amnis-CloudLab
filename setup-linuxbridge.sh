@@ -24,6 +24,8 @@ if [ "$HOSTNAME" != "$NETWORKMANAGER" ]; then
     exit 0;
 fi
 
+logtstart "linuxbridge"
+
 maybe_install_packages pssh
 PSSH='/usr/bin/parallel-ssh -t 0 -O StrictHostKeyChecking=no '
 PHOSTS=""
@@ -44,5 +46,7 @@ done
 echo "*** Setting up LinuxBridge via pssh: $PHOSTS"
 $PSSH -o $OURDIR/pssh.setup-linuxbridge-node.stdout -e $OURDIR/pssh.setup-linuxbridge-node.stderr \
     $PHOSTS $DIRNAME/setup-linuxbridge-node.sh
+
+logtend "linuxbridge"
 
 exit 0

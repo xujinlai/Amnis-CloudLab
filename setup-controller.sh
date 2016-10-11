@@ -21,6 +21,8 @@ if [ "$HOSTNAME" != "$CONTROLLER" ]; then
     exit 0;
 fi
 
+logtstart "controller"
+
 if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
@@ -103,6 +105,7 @@ fi
 # Install the database
 #
 if [ -z "${DB_ROOT_PASS}" ]; then
+    logtstart "database"
     maybe_install_packages mariadb-server python-mysqldb
     service_stop mysql
     # Change the root password; secure the users/dbs.
@@ -184,12 +187,14 @@ EOF
 	update-rc.d legacy-openvpn-net-waiter enable
 	#update-rc.d mysql enable
     fi
+    logtend "database"
 fi
 
 #
 # Install a message broker
 #
 if [ -z "${RABBIT_PASS}" ]; then
+    logtstart "rabbit"
     maybe_install_packages rabbitmq-server
 
     service_restart rabbitmq-server
@@ -258,6 +263,7 @@ EOF
 
 	systemctl enable openvpn-net-waiter.service
     fi
+    logtend "rabbit"
 fi
 
 #
@@ -273,6 +279,7 @@ fi
 # Always install memcache now.
 #
 if [ -z "${MEMCACHE_DONE}" ]; then
+    logtstart "memcache"
     maybe_install_packages memcached python-memcache
 
     # Ensure memcached also listens on private controller network
@@ -292,12 +299,14 @@ EOF
     service_enable memcached
 
     echo "MEMCACHE_DONE=1" >> $SETTINGS
+    logtend "memcache"
 fi
 
 #
 # Install the Identity Service
 #
 if [ -z "${KEYSTONE_DBPASS}" ]; then
+    logtstart "keystone"
     KEYSTONE_DBPASS=`$PSWDGEN`
     echo "create database keystone" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on keystone.* to 'keystone'@'localhost' identified by '$KEYSTONE_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
@@ -605,6 +614,8 @@ EOF
     echo "ADMIN_API=\"${ADMIN_API}\"" >> $SETTINGS
     echo "ADMIN_API_PASS=\"${ADMIN_API_PASS}\"" >> $SETTINGS
     echo "KEYSTONE_DBPASS=\"${KEYSTONE_DBPASS}\"" >> $SETTINGS
+
+    logtend "keystone"
 fi
 
 #
@@ -708,6 +719,7 @@ fi
 # Install the Image service
 #
 if [ -z "${GLANCE_DBPASS}" ]; then
+    logtstart "glance"
     GLANCE_DBPASS=`$PSWDGEN`
     GLANCE_PASS=`$PSWDGEN`
 
@@ -864,12 +876,15 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 
     echo "GLANCE_DBPASS=\"${GLANCE_DBPASS}\"" >> $SETTINGS
     echo "GLANCE_PASS=\"${GLANCE_PASS}\"" >> $SETTINGS
+
+    logtend "glance"
 fi
 
 #
 # Install the Compute service on the controller
 #
 if [ -z "${NOVA_DBPASS}" ]; then
+    logtstart "nova"
     NOVA_DBPASS=`$PSWDGEN`
     NOVA_PASS=`$PSWDGEN`
 
@@ -1071,6 +1086,7 @@ EOF
 
     echo "NOVA_DBPASS=\"${NOVA_DBPASS}\"" >> $SETTINGS
     echo "NOVA_PASS=\"${NOVA_PASS}\"" >> $SETTINGS
+    logtend "nova"
 fi
 
 #
@@ -1080,6 +1096,7 @@ PHOSTS=""
 mkdir -p $OURDIR/pssh.setup-compute.stdout $OURDIR/pssh.setup-compute.stderr
 
 if [ -z "${NOVA_COMPUTENODES_DONE}" ]; then
+    logtstart "nova-computenodes"
     NOVA_COMPUTENODES_DONE=1
 
     for node in $COMPUTENODES
@@ -1102,12 +1119,14 @@ if [ -z "${NOVA_COMPUTENODES_DONE}" ]; then
     done
 
     echo "NOVA_COMPUTENODES_DONE=\"${NOVA_COMPUTENODES_DONE}\"" >> $SETTINGS
+    logtend "nova-computenodes"
 fi
 
 #
 # Install the Network service on the controller
 #
 if [ -z "${NEUTRON_DBPASS}" ]; then
+    logtstart "neutron"
     NEUTRON_DBPASS=`$PSWDGEN`
     NEUTRON_PASS=`$PSWDGEN`
     NEUTRON_METADATA_SECRET=`$PSWDGEN`
@@ -1364,12 +1383,14 @@ EOF
     echo "NEUTRON_DBPASS=\"${NEUTRON_DBPASS}\"" >> $SETTINGS
     echo "NEUTRON_PASS=\"${NEUTRON_PASS}\"" >> $SETTINGS
     echo "NEUTRON_METADATA_SECRET=\"${NEUTRON_METADATA_SECRET}\"" >> $SETTINGS
+    logtend "neutron"
 fi
 
 #
 # Install the Network service on the networkmanager
 #
 if [ -z "${NEUTRON_NETWORKMANAGER_DONE}" ]; then
+    logtstart "neutron-networkmanager"
     NEUTRON_NETWORKMANAGER_DONE=1
 
     if ! unified ; then
@@ -1388,12 +1409,14 @@ if [ -z "${NEUTRON_NETWORKMANAGER_DONE}" ]; then
     fi
 
     echo "NEUTRON_NETWORKMANAGER_DONE=\"${NEUTRON_NETWORKMANAGER_DONE}\"" >> $SETTINGS
+    logtend "neutron-networkmanager"
 fi
 
 #
 # Install the Network service on the compute nodes
 #
 if [ -z "${NEUTRON_COMPUTENODES_DONE}" ]; then
+    logtstart "neutron-computenodes"
     NEUTRON_COMPUTENODES_DONE=1
 
     PHOSTS=""
@@ -1435,12 +1458,14 @@ if [ -z "${NEUTRON_COMPUTENODES_DONE}" ]; then
     done
 
     echo "NEUTRON_COMPUTENODES_DONE=\"${NEUTRON_COMPUTENODES_DONE}\"" >> $SETTINGS
+    logtend "neutron-computenodes"
 fi
 
 #
 # Configure the networks on the controller
 #
 if [ -z "${NEUTRON_NETWORKS_DONE}" ]; then
+    logtstart "neutron-network-ext-float"
     NEUTRON_NETWORKS_DONE=1
 
     if [ "$OSCODENAME" = "kilo" -o "$OSCODENAME" = "liberty" ]; then
@@ -1473,12 +1498,14 @@ if [ -z "${NEUTRON_NETWORKS_DONE}" ]; then
     done
 
     echo "NEUTRON_NETWORKS_DONE=\"${NEUTRON_NETWORKS_DONE}\"" >> $SETTINGS
+    logtend "neutron-network-ext-float"
 fi
 
 #
 # Install the Dashboard service on the controller
 #
 if [ -z "${DASHBOARD_DONE}" ]; then
+    logtstart "horizon"
     DASHBOARD_DONE=1
 
     maybe_install_packages openstack-dashboard apache2 libapache2-mod-wsgi
@@ -1566,6 +1593,7 @@ EOF
     service_restart memcached
 
     echo "DASHBOARD_DONE=\"${DASHBOARD_DONE}\"" >> $SETTINGS
+    logtend "horizon"
 fi
 
 #
@@ -1573,6 +1601,7 @@ fi
 #
 #if [ 0 -eq 1 -a -z "${CINDER_DBPASS}" ]; then
 if [ -z "${CINDER_DBPASS}" ]; then
+    logtstart "cinder"
     CINDER_DBPASS=`$PSWDGEN`
     CINDER_PASS=`$PSWDGEN`
 
@@ -1738,9 +1767,11 @@ if [ -z "${CINDER_DBPASS}" ]; then
 
     echo "CINDER_DBPASS=\"${CINDER_DBPASS}\"" >> $SETTINGS
     echo "CINDER_PASS=\"${CINDER_PASS}\"" >> $SETTINGS
+    logtend "cinder"
 fi
 
 if [ -z "${STORAGE_HOST_DONE}" ]; then
+    logtstart "cinder-host"
     fqdn=`getfqdn $STORAGEHOST`
 
     if [ "${STORAGEHOST}" = "${CONTROLLER}" ]; then
@@ -1753,12 +1784,14 @@ if [ -z "${STORAGE_HOST_DONE}" ]; then
     fi
 
     echo "STORAGE_HOST_DONE=\"1\"" >> $SETTINGS
+    logtend "cinder-host"
 fi
 
 #
 # Install some shared storage.
 #
 if [ $OSVERSION -ge $OSMITAKA -a -z "${MANILA_DBPASS}" ]; then
+    logtstart "manila"
     MANILA_DBPASS=`$PSWDGEN`
     MANILA_PASS=`$PSWDGEN`
 
@@ -1919,9 +1952,11 @@ EOF
 
     echo "MANILA_DBPASS=\"${MANILA_DBPASS}\"" >> $SETTINGS
     echo "MANILA_PASS=\"${MANILA_PASS}\"" >> $SETTINGS
+    logtend "manila"
 fi
 
 if [ -z "${SHARE_HOST_DONE}" ]; then
+    logtstart "manila-host"
     fqdn=`getfqdn $SHAREHOST`
 
     if [ "${SHAREHOST}" = "${CONTROLLER}" ]; then
@@ -1934,6 +1969,7 @@ if [ -z "${SHARE_HOST_DONE}" ]; then
     fi
 
     echo "SHARE_HOST_DONE=\"1\"" >> $SETTINGS
+    logtend "manila-host"
 fi
 
 #
@@ -1941,6 +1977,7 @@ fi
 #
 #if [ 0 -eq 1 -a -z "${SWIFT_DBPASS}" ]; then
 if [ -z "${SWIFT_PASS}" ]; then
+    logtstart "swift"
     SWIFT_PASS=`$PSWDGEN`
     SWIFT_HASH_PATH_PREFIX=`$PSWDGEN`
     SWIFT_HASH_PATH_SUFFIX=`$PSWDGEN`
@@ -2114,9 +2151,11 @@ if [ -z "${SWIFT_PASS}" ]; then
     echo "SWIFT_PASS=\"${SWIFT_PASS}\"" >> $SETTINGS
     echo "SWIFT_HASH_PATH_PREFIX=\"${SWIFT_HASH_PATH_PREFIX}\"" >> $SETTINGS
     echo "SWIFT_HASH_PATH_SUFFIX=\"${SWIFT_HASH_PATH_SUFFIX}\"" >> $SETTINGS
+    logtend "swift"
 fi
 
 if [ -z "${OBJECT_HOST_DONE}" ]; then
+    logtstart "swift-host"
     fqdn=`getfqdn $OBJECTHOST`
 
     if [ "${OBJECTHOST}" = "${CONTROLLER}" ]; then
@@ -2129,9 +2168,11 @@ if [ -z "${OBJECT_HOST_DONE}" ]; then
     fi
 
     echo "OBJECT_HOST_DONE=\"1\"" >> $SETTINGS
+    logtend "swift-host"
 fi
 
 if [ -z "${OBJECT_RING_DONE}" ]; then
+    logtstart "swift-rings"
     cdir=`pwd`
     cd /etc/swift
 
@@ -2166,12 +2207,14 @@ if [ -z "${OBJECT_RING_DONE}" ]; then
     cd $cdir
 
     echo "OBJECT_RING_DONE=\"1\"" >> $SETTINGS
+    logtend "swift-rings"
 fi
 
 #
 # Get Orchestrated
 #
 if [ -z "${HEAT_DBPASS}" ]; then
+    logtstart "heat"
     HEAT_DBPASS=`$PSWDGEN`
     HEAT_PASS=`$PSWDGEN`
     HEAT_DOMAIN_PASS=`$PSWDGEN`
@@ -2369,12 +2412,14 @@ if [ -z "${HEAT_DBPASS}" ]; then
     echo "HEAT_DBPASS=\"${HEAT_DBPASS}\"" >> $SETTINGS
     echo "HEAT_PASS=\"${HEAT_PASS}\"" >> $SETTINGS
     echo "HEAT_DOMAIN_PASS=\"${HEAT_DOMAIN_PASS}\"" >> $SETTINGS
+    logtend "heat"
 fi
 
 #
 # Get Telemeterized
 #
 if [ -z "${CEILOMETER_DBPASS}" ]; then
+    logtstart "ceilometer"
     CEILOMETER_DBPASS=`$PSWDGEN`
     CEILOMETER_PASS=`$PSWDGEN`
     CEILOMETER_SECRET=`$PSWDGEN`
@@ -2645,12 +2690,14 @@ EOF
     echo "CEILOMETER_DBPASS=\"${CEILOMETER_DBPASS}\"" >> $SETTINGS
     echo "CEILOMETER_PASS=\"${CEILOMETER_PASS}\"" >> $SETTINGS
     echo "CEILOMETER_SECRET=\"${CEILOMETER_SECRET}\"" >> $SETTINGS
+    logtend "ceilometer"
 fi
 
 #
 # Install the Telemetry service on the compute nodes
 #
 if [ -z "${TELEMETRY_COMPUTENODES_DONE}" ]; then
+    logtstart "ceilometer-nodes"
     TELEMETRY_COMPUTENODES_DONE=1
 
     PHOSTS=""
@@ -2678,12 +2725,14 @@ if [ -z "${TELEMETRY_COMPUTENODES_DONE}" ]; then
     done
 
     echo "TELEMETRY_COMPUTENODES_DONE=\"${TELEMETRY_COMPUTENODES_DONE}\"" >> $SETTINGS
+    logtend "ceilometer-nodes"
 fi
 
 #
 # Install the Telemetry service for Glance
 #
 if [ -z "${TELEMETRY_GLANCE_DONE}" ]; then
+    logtstart "ceilometer-glance"
     TELEMETRY_GLANCE_DONE=1
 
     if [ $OSVERSION -ge $OSLIBERTY ]; then
@@ -2728,12 +2777,14 @@ if [ -z "${TELEMETRY_GLANCE_DONE}" ]; then
     service_restart glance-api
 
     echo "TELEMETRY_GLANCE_DONE=\"${TELEMETRY_GLANCE_DONE}\"" >> $SETTINGS
+    logtend "ceilometer-glance"
 fi
 
 #
 # Install the Telemetry service for Cinder
 #
 if [ -z "${TELEMETRY_CINDER_DONE}" ]; then
+    logtstart "ceilometer-cinder"
     TELEMETRY_CINDER_DONE=1
 
     crudini --set /etc/cinder/cinder.conf DEFAULT control_exchange cinder
@@ -2754,12 +2805,14 @@ if [ -z "${TELEMETRY_CINDER_DONE}" ]; then
     fi
 
     echo "TELEMETRY_CINDER_DONE=\"${TELEMETRY_CINDER_DONE}\"" >> $SETTINGS
+    logtend "ceilometer-cinder"
 fi
 
 #
 # Install the Telemetry service for Swift
 #
 if [ -z "${TELEMETRY_SWIFT_DONE}" ]; then
+    logtstart "ceilometer-swift"
     TELEMETRY_SWIFT_DONE=1
 
     chmod g+w /var/log/ceilometer
@@ -2807,12 +2860,14 @@ if [ -z "${TELEMETRY_SWIFT_DONE}" ]; then
     #swift-init proxy-server restart
 
     echo "TELEMETRY_SWIFT_DONE=\"${TELEMETRY_SWIFT_DONE}\"" >> $SETTINGS
+    logtend "ceilometer-swift"
 fi
 
 #
 # Get Us Some Databases!
 #
 if [ -z "${TROVE_DBPASS}" ]; then
+    logtstart "trove"
     TROVE_DBPASS=`$PSWDGEN`
     TROVE_PASS=`$PSWDGEN`
 
@@ -3117,12 +3172,14 @@ EOF
 
     echo "TROVE_DBPASS=\"${TROVE_DBPASS}\"" >> $SETTINGS
     echo "TROVE_PASS=\"${TROVE_PASS}\"" >> $SETTINGS
+    logtend "trove"
 fi
 
 #
 # Get some Data Processors!
 #
 if [ -z "${SAHARA_DBPASS}" ]; then
+    logtstart "sahara"
     SAHARA_DBPASS=`$PSWDGEN`
     SAHARA_PASS=`$PSWDGEN`
 
@@ -3304,12 +3361,14 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 
     echo "SAHARA_DBPASS=\"${SAHARA_DBPASS}\"" >> $SETTINGS
     echo "SAHARA_PASS=\"${SAHARA_PASS}\"" >> $SETTINGS
+    logtend "sahara"
 fi
 
 #
 # (Maybe) Install Ironic
 #
 if [ 0 = 1 -a "$OSCODENAME" = "kilo" -a -n "$BAREMETALNODES" -a -z "${IRONIC_DBPASS}" ]; then
+    logtstart "ironic"
     IRONIC_DBPASS=`$PSWDGEN`
     IRONIC_PASS=`$PSWDGEN`
 
@@ -3370,6 +3429,7 @@ if [ 0 = 1 -a "$OSCODENAME" = "kilo" -a -n "$BAREMETALNODES" -a -z "${IRONIC_DBP
 
     echo "IRONIC_DBPASS=\"${IRONIC_DBPASS}\"" >> $SETTINGS
     echo "IRONIC_PASS=\"${IRONIC_PASS}\"" >> $SETTINGS
+    logtend "ironic"
 fi
 
 #
@@ -3440,6 +3500,7 @@ if [ -e $OURDIR/random_admin_pass ]; then
     RANDPASSSTRING="We generated a random OpenStack admin and instance VM password for you, since one wasn't supplied.  The password is '${ADMIN_PASS}'"
 fi
 
+logtstart "ext"
 EXTDIRS=`find $DIRNAME/ext -maxdepth 1 -type d | grep -v ^\.\$ | grep -v $DIRNAME/ext\$ | xargs`
 if [ ! -z "$EXTDIRS" ]; then
     echo "***"
@@ -3457,6 +3518,7 @@ if [ ! -z "$EXTDIRS" ]; then
 	$DIRNAME/ext/$dirbase/setup.sh 1> $OURDIR/setup-ext-$dirbase.log 2>&1 </dev/null
     done
 fi
+logtend "ext"
 
 echo "***"
 echo "*** Done with OpenStack Setup!"
@@ -3469,5 +3531,7 @@ echo "Your OpenStack instance has completed setup!  Browse to http://$CONTROLLER
     |  mail -s "OpenStack Instance Finished Setting Up" ${SWAPPER_EMAIL}
 
 touch $OURDIR/controller-done
+
+logtend "controller"
 
 exit 0

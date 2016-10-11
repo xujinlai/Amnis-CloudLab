@@ -25,6 +25,8 @@ if [ -f $OURDIR/setup-share-host-done ]; then
     exit 0
 fi
 
+logtstart "share-node"
+
 if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
@@ -276,5 +278,7 @@ service_restart manila-share
 service_enable manila-share
 
 touch $OURDIR/setup-share-host-done
+
+logtstart "share-node"
 
 exit 0

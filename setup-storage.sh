@@ -23,6 +23,8 @@ if [ -f $OURDIR/setup-storage-host-done ]; then
     exit 0
 fi
 
+logtstart "storage"
+
 if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
@@ -172,5 +174,7 @@ echo "LVM=$LVM" >> $LOCALSETTINGS
 echo "VGNAME=${VGNAME}" >> $LOCALSETTINGS
 
 touch $OURDIR/setup-storage-host-done
+
+logtend "storage"
 
 exit 0

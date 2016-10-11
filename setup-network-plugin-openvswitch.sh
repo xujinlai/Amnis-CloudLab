@@ -19,6 +19,8 @@ if [ -f $OURDIR/setup-network-plugin-openvswitch-done ]; then
     exit 0
 fi
 
+logtstart "network-plugin-openvswitch"
+
 if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
@@ -202,5 +204,7 @@ else
 fi
 
 touch $OURDIR/setup-network-plugin-openvswitch-done
+
+logtend "network-plugin-openvswitch"
 
 exit 0

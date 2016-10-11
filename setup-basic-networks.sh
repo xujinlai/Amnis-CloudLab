@@ -21,6 +21,8 @@ if [ "$HOSTNAME" != "$CONTROLLER" ]; then
     exit 0;
 fi
 
+logtstart "basic-networks"
+
 if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
@@ -159,5 +161,7 @@ if [ ${DATAVXLANS} -gt 0 ]; then
 	i=`expr $i + 1`
     done
 fi
+
+logtend "basic-networks"
 
 exit 0

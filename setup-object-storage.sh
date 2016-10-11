@@ -23,6 +23,8 @@ if [ -f $OURDIR/setup-object-host-done ]; then
     exit 0
 fi
 
+logtstart "object-storage"
+
 if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
@@ -336,5 +338,7 @@ else
 fi
 
 touch $OURDIR/setup-object-host-done
+
+logtend "object-storage"
 
 exit 0

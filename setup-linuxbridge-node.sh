@@ -22,6 +22,8 @@ fi
 # Grab our libs
 . "`dirname $0`/setup-lib.sh"
 
+logtstart "linuxbridge-node"
+
 #
 # Figure out which interfaces need to go where.  We already have 
 # $EXTERNAL_NETWORK_INTERFACE from setup-lib.sh , and it and its configuration
@@ -181,6 +183,8 @@ if [ ! ${HAVE_SYSTEMD} -eq 0 ] ; then
 
     systemctl daemon-reload
 fi
+
+logtend "linuxbridge-node"
 
 exit 0
 

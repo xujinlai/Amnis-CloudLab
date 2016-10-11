@@ -23,6 +23,8 @@ if [ -f $OURDIR/setup-compute-network-done ]; then
     exit 0
 fi
 
+logtstart "compute-network"
+
 if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
@@ -74,5 +76,7 @@ else
 fi
 
 touch $OURDIR/setup-compute-network-done
+
+logtend "compute-network"
 
 exit 0

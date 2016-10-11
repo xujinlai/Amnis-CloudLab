@@ -16,6 +16,8 @@ fi
 # Grab our libs
 . "`dirname $0`/setup-lib.sh"
 
+logtstart "vpn-client"
+
 maybe_install_packages openvpn
 
 cp -p $OURDIR/$HOSTNAME.crt $OURDIR/$HOSTNAME.key /etc/openvpn/
@@ -49,5 +51,7 @@ if [ ${HAVE_SYSTEMD} -eq 1 ]; then
 else
     service openvpn restart
 fi
+
+logtend "vpn-client"
 
 exit 0

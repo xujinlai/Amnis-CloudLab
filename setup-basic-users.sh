@@ -21,6 +21,8 @@ if [ "$HOSTNAME" != "$CONTROLLER" ]; then
     exit 0;
 fi
 
+logtstart "basic-users"
+
 if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
@@ -49,5 +51,7 @@ if [ $GENIUSER -eq 1 ] ; then
     echo "*** Importing GENI user keys, for ${ADMIN_API} user..."
     $DIRNAME/setup-user-info.py
 fi
+
+logtend "basic-users"
 
 exit 0

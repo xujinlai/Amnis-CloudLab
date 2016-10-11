@@ -21,6 +21,8 @@ if [ "$HOSTNAME" != "$CONTROLLER" ]; then
     exit 0;
 fi
 
+logtstart "images-x86_64"
+
 if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
@@ -77,3 +79,5 @@ fi
 #
 # NB: do not exit; we are included!
 #
+
+logtend "images-x86_64"

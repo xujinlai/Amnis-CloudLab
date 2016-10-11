@@ -22,6 +22,8 @@ fi
 # Grab our libs
 . "`dirname $0`/setup-lib.sh"
 
+logtstart "ovs-node"
+
 #
 # Figure out which interfaces need to go where.  We already have 
 # $EXTERNAL_NETWORK_INTERFACE from setup-lib.sh , and it and its configuration
@@ -333,5 +335,7 @@ echo "$FLOW" >> $FF
 FLOW="dl_type=0x0806,nw_proto=0x2,arp_spa=172.16.0.0/12,actions=drop"
 ovs-ofctl add-flow br-ex "$FLOW"
 echo "$FLOW" >> $FF
+
+logtend "ovs-node"
 
 exit 0

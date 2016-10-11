@@ -22,6 +22,8 @@ if [ "$HOSTNAME" != "$NETWORKMANAGER" ]; then
     exit 0;
 fi
 
+logtstart "vpn"
+
 if [ ! -f $OURDIR/vpn-server-done ]; then
     maybe_install_packages openvpn easy-rsa
 fi
@@ -208,5 +210,7 @@ done
 
 $PSSH -o $OURDIR/pssh.setup-vpn.stdout -e $OURDIR/pssh.setup-vpn.stderr \
     $PHOSTS $DIRNAME/setup-vpn-client.sh
+
+logtend "vpn"
 
 exit 0

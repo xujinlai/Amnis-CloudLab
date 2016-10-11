@@ -12,6 +12,40 @@ TOPOMAP=$OURDIR/topomap
 BOOTDIR=/var/emulab/boot
 TMCC=/usr/local/etc/emulab/tmcc
 
+# Setup time logging stuff early
+TIMELOGFILE=$OURDIR/setup-time.log
+FIRSTTIME=0
+if [ ! -f $OURDIR/setup-lib-first ]; then
+    touch $OURDIR/setup-lib-first
+    FIRSTTIME=`date +%s`
+fi
+
+logtstart() {
+    area=$1
+    varea=`echo $area | sed -e 's/[^a-zA-Z_0-9]/_/g'`
+    stamp=`date +%s`
+    date=`date`
+    eval "LOGTIMESTART_$varea=$stamp"
+    echo "START $area $stamp $date" >> $TIMELOGFILE
+}
+
+logtend() {
+    area=$1
+    #varea=${area//-/_}
+    varea=`echo $area | sed -e 's/[^a-zA-Z_0-9]/_/g'`
+    stamp=`date +%s`
+    date=`date`
+    eval "tss=\$LOGTIMESTART_$varea"
+    tsres=`expr $stamp - $tss`
+    resmin=`perl -e 'print '"$tsres"' / 60.0 . "\n"'`
+    echo "END $area $stamp $date" >> $TIMELOGFILE
+    echo "TOTAL $area $tsres $resmin" >> $TIMELOGFILE
+}
+
+if [ $FIRSTTIME -ne 0 ]; then
+    logtstart "libfirsttime"
+fi
+
 mkdir -p $OURDIR
 touch $SETTINGS
 touch $LOCALSETTINGS
@@ -1316,3 +1350,8 @@ get_url() {
 	/bin/false
     fi
 }
+
+# Time logging
+if [ $FIRSTTIME -ne 0 ]; then
+    logtend "libfirsttime"
+fi

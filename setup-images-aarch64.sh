@@ -21,6 +21,8 @@ if [ "$HOSTNAME" != "$CONTROLLER" ]; then
     exit 0;
 fi
 
+logtstart "images-aarch64"
+
 if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
@@ -46,3 +48,4 @@ fi
 # NB: do not exit; we are included!
 #
 
+logtend "images-aarch64"

@@ -19,6 +19,8 @@ if [ -f $OURDIR/setup-network-plugin-done ]; then
     exit 0
 fi
 
+logtstart "network-plugin"
+
 if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
@@ -34,8 +36,10 @@ fi
 
 if [ $? -eq 0 ]; then
     touch $OURDIR/setup-network-plugin-done
+    logtend "network-plugin"
     exit 0
 else
     err=$?
+    logtend "network-plugin"
     exit $err
 fi

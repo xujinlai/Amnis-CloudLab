@@ -23,6 +23,8 @@ if [ -f $OURDIR/setup-networkmanager-done ]; then
     exit 0
 fi
 
+logtstart "networkmanager"
+
 if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
@@ -160,5 +162,7 @@ service_restart neutron-metering-agent
 service_enable neutron-metering-agent
 
 touch $OURDIR/setup-networkmanager-done
+
+logtend "networkmanager"
 
 exit 0

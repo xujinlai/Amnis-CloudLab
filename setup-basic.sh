@@ -21,6 +21,8 @@ if [ "$HOSTNAME" != "$CONTROLLER" ]; then
     exit 0;
 fi
 
+logtstart "basic"
+
 if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
@@ -68,5 +70,7 @@ fi
 for pid in "$quotaspid $networkspid $userspid" ; do
     wait $pid
 done
+
+logtend "basic"
 
 exit 0

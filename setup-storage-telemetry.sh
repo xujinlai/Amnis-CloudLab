@@ -23,6 +23,8 @@ if [ -f $OURDIR/setup-storage-telemetry-done ]; then
     exit 0
 fi
 
+logtstart "storage-telemetry"
+
 if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
@@ -36,5 +38,7 @@ service_restart cinder-volume
 service_enable cinder-volume
 
 touch $OURDIR/setup-storage-telemetry-done
+
+logtend "storage-telemetry"
 
 exit 0
