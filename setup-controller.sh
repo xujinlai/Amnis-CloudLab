@@ -2199,6 +2199,8 @@ if [ -z "${OBJECT_RING_DONE}" ]; then
 	add r1z1-${objip}:6000/swiftv1-2 100
     swift-ring-builder object.builder rebalance
 
+    chown -R swift:swift /etc/swift
+
     if [ "${OBJECTHOST}" != "${CONTROLLER}" ]; then
         # Copy the latest settings
 	scp -o StrictHostKeyChecking=no account.ring.gz container.ring.gz object.ring.gz $OBJECTHOST:/etc/swift
