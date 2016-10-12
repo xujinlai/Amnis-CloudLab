@@ -52,11 +52,15 @@ INTEGRATION_NETWORK_BRIDGE="br-int"
 #
 if [ ! -f $OURDIR/ctlnet.vars ]; then
     ctlip="$MYIP"
+    ctlmac=`ip -o link show ${EXTERNAL_NETWORK_INTERFACE} | sed -n -e 's/^.*link\/ether \([0-9a-fA-F:]*\) .*$/\1/p'`
+    ctlstrippedmac=`echo $ctlmac | sed -e 's/://g'`
     ctlnetmask=`ifconfig ${EXTERNAL_NETWORK_INTERFACE} | sed -n -e 's/^.*Mask:\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
     ctlgw=`ip route show default | sed -n -e 's/^default via \([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
     ctlnet=`ip route show dev ${EXTERNAL_NETWORK_INTERFACE} | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\/[0-9]*\) .*$/\1/p'`
 
     echo "ctlip=\"$ctlip\"" > $OURDIR/ctlnet.vars
+    echo "ctlmac=\"$ctlmac\"" >> $OURDIR/ctlnet.vars
+    echo "ctlstrippedmac=\"$ctlstrippedmac\"" >> $OURDIR/ctlnet.vars
     echo "ctlnetmask=\"$ctlnetmask\"" >> $OURDIR/ctlnet.vars
     echo "ctlgw=\"$ctlgw\"" >> $OURDIR/ctlnet.vars
     echo "ctlnet=\"$ctlnet\"" >> $OURDIR/ctlnet.vars
@@ -85,9 +89,6 @@ ovs-vsctl add-port ${EXTERNAL_NETWORK_BRIDGE} ${EXTERNAL_NETWORK_INTERFACE}
 #
 # Now move the $EXTERNAL_NETWORK_INTERFACE and default route config to ${EXTERNAL_NETWORK_BRIDGE}
 #
-ctlnetmask=`ifconfig ${EXTERNAL_NETWORK_INTERFACE} | sed -n -e 's/^.*Mask:\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
-ctlgw=`ip route show default | sed -n -e 's/^default via \([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
-
 DNSDOMAIN=`cat /etc/resolv.conf | grep search | head -1 | awk '{ print $2 }'`
 DNSSERVER=`cat /etc/resolv.conf | grep nameserver | head -1 | awk '{ print $2 }'`
 
