@@ -978,23 +978,36 @@ fi
 # NB: this IP/mask is only valid after setting up the management network IP
 # addresses because they might not be the Emulab ones.
 #
-MGMTIP=`cat /etc/hosts | grep -E "$NODEID$" | head -1 | sed -n -e 's/^\\([0-9]*\\.[0-9]*\\.[0-9]*\\.[0-9]*\\).*$/\\1/p'`
-MGMTNETMASK=`cat $OURDIR/mgmt-netmask`
-if [ -z "$MGMTLAN" ] ; then
-    MGMTMAC=""
-    MGMT_NETWORK_INTERFACE="tun0"
-else
-    cat ${BOOTDIR}/tmcc/ifconfig | grep "IFACETYPE=vlan" | grep "${MGMTLAN}"
-    if [ $? = 0 ]; then
-	MGMTVLAN=1
-	MGMTMAC=`cat ${BOOTDIR}/tmcc/ifconfig | sed -n -e "s/^.* VMAC=\([0-9a-f:\.]*\) .* LAN=${MGMTLAN}.*\$/\1/p"`
-	MGMT_NETWORK_INTERFACE=`/usr/local/etc/emulab/findif -m $MGMTMAC`
-	MGMTVLANDEV=`ip link show ${MGMT_NETWORK_INTERFACE} | sed -n -e "s/^.*${MGMT_NETWORK_INTERFACE}\@\([0-9a-zA-Z_]*\): .*\$/\1/p"`
-    else
+if [ ! -e $OURDIR/info.mgmt ]; then
+    MGMTIP=`grep -E "$NODEID$" $OURDIR/mgmt-hosts | head -1 | sed -n -e 's/^\\([0-9]*\\.[0-9]*\\.[0-9]*\\.[0-9]*\\).*$/\\1/p'`
+    MGMTNETMASK=`cat $OURDIR/mgmt-netmask`
+    if [ -z "$MGMTLAN" ] ; then
 	MGMTVLAN=0
-	MGMTMAC=`cat ${BOOTDIR}/tmcc/ifconfig | sed -n -e "s/.* MAC=\([0-9a-f:\.]*\) .* LAN=${MGMTLAN}/\1/p"`
-	MGMT_NETWORK_INTERFACE=`/usr/local/etc/emulab/findif -m $MGMTMAC`
+	MVMTVLANDEV=
+	MGMTMAC=""
+	MGMT_NETWORK_INTERFACE="tun0"
+    else
+	cat ${BOOTDIR}/tmcc/ifconfig | grep "IFACETYPE=vlan" | grep "${MGMTLAN}"
+	if [ $? = 0 ]; then
+	    MGMTVLAN=1
+	    MGMTMAC=`cat ${BOOTDIR}/tmcc/ifconfig | sed -n -e "s/^.* VMAC=\([0-9a-f:\.]*\) .* LAN=${MGMTLAN}.*\$/\1/p"`
+	    MGMT_NETWORK_INTERFACE=`/usr/local/etc/emulab/findif -m $MGMTMAC`
+	    MGMTVLANDEV=`ip link show ${MGMT_NETWORK_INTERFACE} | sed -n -e "s/^.*${MGMT_NETWORK_INTERFACE}\@\([0-9a-zA-Z_]*\): .*\$/\1/p"`
+	else
+	    MGMTVLAN=0
+	    MGMTMAC=`cat ${BOOTDIR}/tmcc/ifconfig | sed -n -e "s/.* MAC=\([0-9a-f:\.]*\) .* LAN=${MGMTLAN}/\1/p"`
+	    MGMT_NETWORK_INTERFACE=`/usr/local/etc/emulab/findif -m $MGMTMAC`
+	    MGMTVLANDEV=
+	fi
     fi
+    echo "MGMTIP='$MGMTIP'" >> $OURDIR/info.mgmt
+    echo "MGMTNETMASK='$MGMTNETMASK'" >> $OURDIR/info.mgmt
+    echo "MGMTVLAN=$MGMTVLAN" >> $OURDIR/info.mgmt
+    echo "MGMTMAC='$MGMTMAC'" >> $OURDIR/info.mgmt
+    echo "MGMT_NETWORK_INTERFACE='$MGMT_NETWORK_INTERFACE'" >> $OURDIR/info.mgmt
+    echo "MGMTVLANDEV='$MGMTVLANDEV'" >> $OURDIR/info.mgmt
+else
+    . $OURDIR/info.mgmt
 fi
 
 #
