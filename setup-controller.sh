@@ -2680,10 +2680,12 @@ EOF
 
     service_restart ceilometer-collector
     service_enable ceilometer-collector
-    service_restart ceilometer-alarm-evaluator
-    service_enable ceilometer-alarm-evaluator
-    service_restart ceilometer-alarm-notifier
-    service_enable ceilometer-alarm-notifier
+    if [ $OSVERSION -lt $OSMITAKA ]; then
+	service_restart ceilometer-alarm-evaluator
+	service_enable ceilometer-alarm-evaluator
+	service_restart ceilometer-alarm-notifier
+	service_enable ceilometer-alarm-notifier
+    fi
 
     # NB: restart the neutron ceilometer agent too
     if ! unified ; then
