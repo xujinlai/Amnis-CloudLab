@@ -49,23 +49,28 @@ if [ "$HOSTNAME" = "$NETWORKMANAGER" ]; then
     # Get our hosts files setup to point to the new management network.
     # (These were created one-time in setup-lib.sh)
     #
-    cat $OURDIR/mgmt-hosts > /etc/hosts
-    echo "127.0.0.1 localhost" >> /etc/hosts
+    cat $OURDIR/mgmt-hosts > /etc/hosts.tmp
+    cp -p /etc/hosts $OURDIR/hosts.orig
+    cat $OURDIR/hosts.orig >> /etc/hosts.tmp
+    mv /etc/hosts.tmp /etc/hosts
     for node in $NODES 
     do
 	[ "$node" = "$NETWORKMANAGER" ] && continue
-	if unified ; then
-	    continue
-	fi
+	#if unified ; then
+	#    continue
+	#fi
 
 	fqdn=`getfqdn $node`
 	$SSH $fqdn mkdir -p $OURDIR
+	#scp -p -o StrictHostKeyChecking=no \
+	    #$SETTINGS $OURDIR/mgmt-hosts $OURDIR/mgmt-netmask \
+	    #$OURDIR/data-hosts $OURDIR/data-netmask \
+	    #$fqdn:$OURDIR
 	scp -p -o StrictHostKeyChecking=no \
-	    $SETTINGS $OURDIR/mgmt-hosts $OURDIR/mgmt-netmask \
-	    $OURDIR/data-hosts $OURDIR/data-netmask \
-	    $fqdn:$OURDIR
-	$SSH $fqdn cp $OURDIR/mgmt-hosts /etc/hosts
-	$SSH $fqdn 'echo 127.0.0.1 localhost | tee -a /etc/hosts'
+	    $OURDIR/mgmt-hosts $fqdn:$OURDIR
+	# For now, just insert the new hosts in front of the existing ones.
+	# setup-{ovs,linuxbridge}-node.sh may do differently.
+	$SSH $fqdn "cp -p /etc/hosts $OURDIR/hosts.orig ; cat $OURDIR/mgmt-hosts > /etc/hosts.tmp ; cat $OURDIR/hosts.orig >> /etc/hosts.tmp ; mv /etc/hosts.tmp /etc/hosts"
     done
 
     echo "*** Setting up the Management Network"

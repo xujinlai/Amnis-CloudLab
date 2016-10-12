@@ -44,7 +44,9 @@ fi
 #
 echo "*** Copying updated network metadata files to $CONTROLLER and $NEWNODE ..."
 
-cat $OURDIR/mgmt-hosts > /etc/hosts
+cat $OURDIR/mgmt-hosts > /etc/hosts.tmp
+cat $OURDIR/hosts.orig >> /etc/hosts.tmp
+mv /etc/hosts.tmp /etc/hosts
 
 fqdn=`getfqdn $CONTROLLER`
 $SSH $fqdn mkdir -p $OURDIR
@@ -55,7 +57,7 @@ $SCP $SETTINGS \
     $OURDIR/nextsparesubnet $OURDIR/router-ipaddr.* \
     $OURDIR/manifests*.xml $OURDIR/topomap* $OURDIR/fqdn.map \
     $fqdn:$OURDIR
-$SSH $fqdn cp $OURDIR/mgmt-hosts /etc/hosts
+$SSH $fqdn "cat $OURDIR/mgmt-hosts > /etc/hosts.tmp ; cat $OURDIR/hosts.orig >> /etc/hosts.tmp ; mv /etc/hosts.tmp /etc/hosts"
 
 #
 # XXX: also copy the manifests and parameters.  This is because if the
@@ -71,7 +73,7 @@ $SCP $SETTINGS $OURDIR/parameters \
     $OURDIR/nextsparesubnet $OURDIR/router-ipaddr.* \
     $OURDIR/manifests*.xml $OURDIR/topomap* $OURDIR/fqdn.map \
     $fqdn:$OURDIR
-$SSH $fqdn cp $OURDIR/mgmt-hosts /etc/hosts
+$SSH $fqdn "cp -p /etc/hosts $OURDIR/hosts.orig ; cat $OURDIR/mgmt-hosts > /etc/hosts.tmp ; cat $OURDIR/hosts.orig >> /etc/hosts.tmp ; mv /etc/hosts.tmp /etc/hosts"
 
 #
 # Update the management network if necessary
@@ -107,7 +109,7 @@ do
 
     fqdn=`getfqdn $node`
     scp -p -o StrictHostKeyChecking=no $OURDIR/mgmt-hosts $fqdn:$OURDIR
-    $SSH $fqdn cp -p $OURDIR/mgmt-hosts /etc/hosts
+    $SSH $fqdn "cat $OURDIR/mgmt-hosts > /etc/hosts.tmp ; cat $OURDIR/hosts.orig >> /etc/hosts.tmp ; mv /etc/hosts.tmp /etc/hosts"
 done
 
 ##

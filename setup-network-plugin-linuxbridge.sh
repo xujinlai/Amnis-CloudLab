@@ -171,6 +171,7 @@ crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup \
 cat <<EOF >> /etc/neutron/plugins/ml2/linuxbridge_agent.ini
 [linux_bridge]
 ${bridge_mappings}
+${extra_mappings}
 
 [vxlan]
 enable_vxlan = True

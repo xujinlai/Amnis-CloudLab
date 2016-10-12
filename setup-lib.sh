@@ -109,6 +109,7 @@ COMPUTE_EXTRA_NOVA_DISK_SPACE="1"
 ML2PLUGIN="openvswitch"
 MANILADRIVER="generic"
 EXTRAIMAGEURLS=""
+LINUXBRIDGE_STATIC=0
 
 #
 # We have an 'adminapi' user that gets a random password.  Then, we have
@@ -1125,17 +1126,29 @@ if [ ! -f $OURDIR/neutron.vars ]; then
     #
     # Figure out the bridge mappings
     #
-    if [ "${ML2PLUGIN}" = "openvswitch" ]; then
-	bridge_mappings="bridge_mappings=external:br-ex"
-    else
-	bridge_mappings="physical_interface_mappings=external:${EXTERNAL_NETWORK_INTERFACE}"
+    # NB: We can only control the name of the external br-ex bridge,
+    # because only the Neutron linuxbridge driver accepts both a map of
+    # physical networks to physical interfaces; and physical network to
+    # bridge names.  Nova assumes that the bridge it must plug a device
+    # into is named according to the physical network uuid.  Thus, for
+    # the linuxbridge case, we only setup bridge_mappings for
+    # br-ex... modulo a flag.  Hopefully in the future they will see the
+    # sense in allowing static bridge configurations.
+    #
+    bridge_mappings="bridge_mappings=external:br-ex"
+    extra_mappings=""
+    if [ "${ML2PLUGIN}" = "linuxbridge" ]; then
+	extra_mappings="physical_interface_mappings=external:${EXTERNAL_NETWORK_INTERFACE}"
     fi
     for lan in $DATAFLATLANS ; do
 	. $OURDIR/info.${lan}
-	if [ "${ML2PLUGIN}" = "openvswitch" ]; then
-	    bridge_mappings="${bridge_mappings},${lan}:${DATABRIDGE}"
+	if [ "${ML2PLUGIN}" = "linuxbridge" ]; then
+	    extra_mappings="${extra_mappings},${lan}:${DATADEV}"
+	    if [ $LINUXBRIDGE_STATIC -eq 1 ]; then
+		bridge_mappings="${bridge_mappings},${lan}:${DATABRIDGE}"
+	    fi
 	else
-	    bridge_mappings="${bridge_mappings},${lan}:${DATADEV}"
+	    bridge_mappings="${bridge_mappings},${lan}:${DATABRIDGE}"
 	fi
     done
     for lan in $DATAVLANS ; do
@@ -1145,15 +1158,19 @@ if [ ! -f $OURDIR/neutron.vars ]; then
 	if [ $? = 0 ] ; then
 	    continue;
 	else
-	    if [ "${ML2PLUGIN}" = "openvswitch" ]; then
-		bridge_mappings="${bridge_mappings},${DATAVLANDEV}:${DATABRIDGE}"
+	    if [ "${ML2PLUGIN}" = "linuxbridge" ]; then
+		extra_mappings="${extra_mappings},${lan}:${DATADEV}"
+		if [ $LINUXBRIDGE_STATIC -eq 1 ]; then
+		    bridge_mappings="${bridge_mappings},${DATAVLANDEV}:${DATABRIDGE}"
+		fi
 	    else
-		bridge_mappings="${bridge_mappings},${lan}:${DATADEV}"
+		bridge_mappings="${bridge_mappings},${DATAVLANDEV}:${DATABRIDGE}"
 	    fi
 	fi
     done
 
     echo "bridge_mappings=\"${bridge_mappings}\"" >> $OURDIR/neutron.vars
+    echo "extra_mappings=\"${extra_mappings}\"" >> $OURDIR/neutron.vars
 
     #
     # Figure out the network_vlan_ranges

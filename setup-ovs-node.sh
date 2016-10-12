@@ -112,6 +112,8 @@ iface ${EXTERNAL_NETWORK_BRIDGE} inet static
     gateway $ctlgw
     dns-search $DNSDOMAIN
     dns-nameservers $DNSSERVER
+    up echo "${EXTERNAL_NETWORK_BRIDGE}" > /var/run/cnet
+    up echo "${EXTERNAL_NETWORK_BRIDGE}" > /var/emulab/boot/controlif
 
 auto ${EXTERNAL_NETWORK_INTERFACE}
 iface ${EXTERNAL_NETWORK_INTERFACE} inet static
@@ -124,6 +126,14 @@ route add default gw $ctlgw
 
 service_restart openvswitch-switch
 
+# Also restart slothd so it listens on the new control iface.
+echo "${EXTERNAL_NETWORK_BRIDGE}" > /var/run/cnet
+echo "${EXTERNAL_NETWORK_BRIDGE}" > /var/emulab/boot/controlif
+/usr/local/etc/emulab/rc/rc.slothd stop
+pkill slothd
+sleep 1
+/usr/local/etc/emulab/rc/rc.slothd start
+
 #
 # Add the management network config if necessary (if not, it's already a VPN)
 #
@@ -134,6 +144,8 @@ auto ${MGMT_NETWORK_INTERFACE}
 iface ${MGMT_NETWORK_INTERFACE} inet static
     address $MGMTIP
     netmask $MGMTNETMASK
+    up mkdir -p /var/run/emulab
+    up echo "${MGMT_NETWORK_INTERFACE} $MGMTIP $MGMTMAC" > /var/run/emulab/interface-done-$MGMTMAC
 EOF
     if [ -n "$MGMTVLANDEV" ]; then
 	cat <<EOF >> /etc/network/interfaces
@@ -164,6 +176,8 @@ auto ${DATABRIDGE}
 iface ${DATABRIDGE} inet static
     address $DATAIP
     netmask $DATANETMASK
+    up mkdir -p /var/run/emulab
+    up echo "${DATABRIDGE} $DATAIP $DATAMAC" > /var/run/emulab/interface-done-$DATAMAC
 
 auto ${DATADEV}
 iface ${DATADEV} inet static
@@ -201,6 +215,20 @@ for lan in $DATAVLANS ; do
 	ovs-vsctl add-br ${DATABRIDGE}
 	ovs-vsctl add-port ${DATABRIDGE} ${DATAVLANDEV}
     fi
+
+    grep "^auto ${DATAVLANDEV}$" /etc/network/interfaces
+    if [ ! $? -eq 0 ]; then
+	cat <<EOF >> /etc/network/interfaces
+auto ${DATAVLANDEV}
+iface ${DATAVLANDEV} inet static
+    #address 0.0.0.0
+    up mkdir -p /var/run/emulab
+    # Just touch it, don't put iface/inet/mac into it; the vlans atop this
+    # device are being used natively by openstack.  So just let Emulab setup
+    # to not setup any of these vlans.
+    up touch /var/run/emulab/interface-done-$DATAPMAC
+EOF
+    fi
 done
 
 #else
@@ -232,9 +260,29 @@ ip route flush cache
 # Just wait a bit
 #sleep 8
 
-echo "*** Removing Emulab rc.hostnames and rc.ifconfig boot scripts"
-mv /usr/local/etc/emulab/rc/rc.hostnames /usr/local/etc/emulab/rc/rc.hostnames.NO
-mv /usr/local/etc/emulab/rc/rc.ifconfig /usr/local/etc/emulab/rc/rc.ifconfig.NO
+grep -q DYNRUNDIR /etc/emulab/paths.sh
+if [ $? -eq 0 ]; then
+    echo "*** Hooking Emulab rc.hostnames boot script..."
+    mkdir -p $OURDIR/bin
+    touch $OURDIR/bin/rc.hostnames-openstack
+    chmod 755 $OURDIR/bin/rc.hostnames-openstack
+    cat <<EOF >$OURDIR/bin/rc.hostnames-openstack
+#!/bin/sh
+
+cp -p $OURDIR/mgmt-hosts /var/run/emulab/hosts.head
+exit 0
+EOF
+
+    mkdir -p /etc/emulab/run/rcmanifest.d
+    touch /etc/emulab/run/rcmanifest.d/0.openstack-rcmanifest.sh
+    cat <<EOF >> /etc/emulab/run/rcmanifest.d/0.openstack-rcmanifest.sh
+HOOK SERVICE=rc.hostnames ENV=boot WHENCE=every OP=boot POINT=pre FATAL=0 FILE=$OURDIR/bin/rc.hostnames-openstack ARGV="" 
+EOF
+else
+    echo "*** Nullifying Emulab rc.hostnames and rc.ifconfig services!"
+    mv /usr/local/etc/emulab/rc/rc.hostnames /usr/local/etc/emulab/rc/rc.hostnames.NO
+    mv /usr/local/etc/emulab/rc/rc.ifconfig /usr/local/etc/emulab/rc/rc.ifconfig.NO
+fi
 
 if [ ! ${HAVE_SYSTEMD} -eq 0 ] ; then
     # Maybe this is helpful too

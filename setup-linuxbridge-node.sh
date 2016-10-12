@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# This sets up openvswitch networks (on neutron, the external and data
+# This sets up linuxbridge networks (on neutron, the external and data
 # networks).  The networkmanager and compute nodes' physical interfaces
 # have to get moved into br-ex and br-int, respectively -- on the
 # moonshots, that's eth0 and eth1.  The controller is special; it doesn't
@@ -32,9 +32,6 @@ logtstart "linuxbridge-node"
 # new DATAIP iff USE_EXISTING_IPS was set) to br-int
 #
 EXTERNAL_NETWORK_BRIDGE="br-ex"
-#DATA_NETWORK_INTERFACE=`ip addr show | grep "inet $MYIP" | sed -e "s/.*scope global \(.*\)\$/\1/"`
-DATA_NETWORK_BRIDGE="br-data"
-INTEGRATION_NETWORK_BRIDGE="br-int"
 
 #
 # If this is the controller, we don't have to do much network setup; just
@@ -68,6 +65,21 @@ else
     . $OURDIR/ctlnet.vars
 fi
 
+modprobe bridge
+
+#
+# Setup the external network
+#
+brctl addbr ${EXTERNAL_NETWORK_BRIDGE}
+brctl addif ${EXTERNAL_NETWORK_BRIDGE} ${EXTERNAL_NETWORK_INTERFACE}
+
+#
+# Now move the $EXTERNAL_NETWORK_INTERFACE and default route config to ${EXTERNAL_NETWORK_BRIDGE}
+#
+ifconfig ${EXTERNAL_NETWORK_INTERFACE} 0 up
+ifconfig ${EXTERNAL_NETWORK_BRIDGE} $ctlip netmask $ctlnetmask up
+route add default gw $ctlgw
+
 #
 # Make the configuration for the $EXTERNAL_NETWORK_INTERFACE be static.
 #
@@ -89,12 +101,27 @@ iface lo inet loopback
 
 auto ${EXTERNAL_NETWORK_INTERFACE}
 iface ${EXTERNAL_NETWORK_INTERFACE} inet static
+    address 0.0.0.0
+
+auto ${EXTERNAL_NETWORK_BRIDGE}
+iface ${EXTERNAL_NETWORK_BRIDGE} inet static
+    bridge_ports ${EXTERNAL_NETWORK_INTERFACE}
     address $ctlip
     netmask $ctlnetmask
     gateway $ctlgw
     dns-search $DNSDOMAIN
     dns-nameservers $DNSSERVER
+    up echo "${EXTERNAL_NETWORK_BRIDGE}" > /var/run/cnet
+    up echo "${EXTERNAL_NETWORK_BRIDGE}" > /var/emulab/boot/controlif
 EOF
+
+# Also restart slothd so it listens on the new control iface.
+echo "${EXTERNAL_NETWORK_BRIDGE}" > /var/run/cnet
+echo "${EXTERNAL_NETWORK_BRIDGE}" > /var/emulab/boot/controlif
+/usr/local/etc/emulab/rc/rc.slothd stop
+pkill slothd
+sleep 1
+/usr/local/etc/emulab/rc/rc.slothd start
 
 #
 # Add the management network config if necessary (if not, it's already a VPN)
@@ -106,6 +133,8 @@ auto ${MGMT_NETWORK_INTERFACE}
 iface ${MGMT_NETWORK_INTERFACE} inet static
     address $MGMTIP
     netmask $MGMTNETMASK
+    up mkdir -p /var/run/emulab
+    up echo "${MGMT_NETWORK_INTERFACE} $MGMTIP $MGMTMAC" > /var/run/emulab/interface-done-$MGMTMAC
 EOF
     if [ -n "$MGMTVLANDEV" ]; then
 	cat <<EOF >> /etc/network/interfaces
@@ -121,13 +150,40 @@ for lan in $DATAFLATLANS ; do
     # suck in the vars we'll use to configure this one
     . $OURDIR/info.$lan
 
-    cat <<EOF >> /etc/network/interfaces
+    if [ $LINUXBRIDGE_STATIC -eq 1 ]; then
+	brctl addbr ${DATABRIDGE}
+	brctl addif ${DATABRIDGE} ${DATADEV}
+	ifconfig ${DATADEV} 0 up
+	ifconfig ${DATABRIDGE} $DATAIP netmask $DATANETMASK up
+        # XXX!
+        #route add -net 10.0.0.0/8 dev ${DATA_NETWORK_BRIDGE}
+
+	cat <<EOF >> /etc/network/interfaces
+
+auto ${DATADEV}
+iface ${DATADEV} inet static
+    address 0.0.0.0
+
+auto ${DATABRIDGE}
+iface ${DATABRIDGE} inet static
+    bridge_ports ${DATADEV}
+    address $DATAIP
+    netmask $DATANETMASK
+    up mkdir -p /var/run/emulab
+    up echo "${DATABRIDGE} $DATAIP $DATAMAC" > /var/run/emulab/interface-done-$DATAMAC
+EOF
+    else
+	cat <<EOF >> /etc/network/interfaces
 
 auto ${DATADEV}
 iface ${DATADEV} inet static
     address $DATAIP
     netmask $DATANETMASK
+    up mkdir -p /var/run/emulab
+    up echo "${DATADEV} $DATAIP $DATAMAC" > /var/run/emulab/interface-done-$DATAMAC
 EOF
+    fi
+
     if [ -n "$DATAVLANDEV" ]; then
 	cat <<EOF >> /etc/network/interfaces
     vlan-raw-device ${DATAVLANDEV}
@@ -148,6 +204,28 @@ for lan in $DATAVLANS ; do
 
     ifconfig $DATADEV down
     vconfig rem $DATADEV
+
+    if [ $LINUXBRIDGE_STATIC -eq 1 ]; then
+        # If the bridge exists, we've already done it (we might have
+        # multiplexed (trunked) more than one vlan across this physical
+        # device).
+	brctl addbr ${DATABRIDGE}
+	brctl addif ${DATABRIDGE} ${DATAVLANDEV}
+
+	grep "^auto ${DATAVLANDEV}$" /etc/network/interfaces
+	if [ ! $? -eq 0 ]; then
+	    cat <<EOF >> /etc/network/interfaces
+auto ${DATAVLANDEV}
+iface ${DATAVLANDEV} inet static
+    #address 0.0.0.0
+    up mkdir -p /var/run/emulab
+    # Just touch it, don't put iface/inet/mac into it; the vlans atop this
+    # device are being used natively by openstack.  So just let Emulab setup
+    # to not setup any of these vlans.
+    up touch /var/run/emulab/interface-done-$DATAPMAC
+EOF
+	fi
+    fi
 done
 
 #else
@@ -167,14 +245,37 @@ done
 #    fi
 #fi
 
+# Flush the routing cache
+ip route flush cache
+
 #
 # Set the hostname for later after reboot!
 #
 echo `hostname` > /etc/hostname
 
-echo "*** Removing Emulab rc.hostnames and rc.ifconfig boot scripts"
-mv /usr/local/etc/emulab/rc/rc.hostnames /usr/local/etc/emulab/rc/rc.hostnames.NO
-mv /usr/local/etc/emulab/rc/rc.ifconfig /usr/local/etc/emulab/rc/rc.ifconfig.NO
+grep -q DYNRUNDIR /etc/emulab/paths.sh
+if [ $? -eq 0 ]; then
+    echo "*** Hooking Emulab rc.hostnames boot script..."
+    mkdir -p $OURDIR/bin
+    touch $OURDIR/bin/rc.hostnames-openstack
+    chmod 755 $OURDIR/bin/rc.hostnames-openstack
+    cat <<EOF >$OURDIR/bin/rc.hostnames-openstack
+#!/bin/sh
+
+cp -p $OURDIR/mgmt-hosts /var/run/emulab/hosts.head
+exit 0
+EOF
+
+    mkdir -p /etc/emulab/run/rcmanifest.d
+    touch /etc/emulab/run/rcmanifest.d/0.openstack-rcmanifest.sh
+    cat <<EOF >> /etc/emulab/run/rcmanifest.d/0.openstack-rcmanifest.sh
+HOOK SERVICE=rc.hostnames ENV=boot WHENCE=every OP=boot POINT=pre FATAL=0 FILE=$OURDIR/bin/rc.hostnames-openstack ARGV="" 
+EOF
+else
+    echo "*** Nullifying Emulab rc.hostnames and rc.ifconfig services!"
+    mv /usr/local/etc/emulab/rc/rc.hostnames /usr/local/etc/emulab/rc/rc.hostnames.NO
+    mv /usr/local/etc/emulab/rc/rc.ifconfig /usr/local/etc/emulab/rc/rc.ifconfig.NO
+fi
 
 if [ ! ${HAVE_SYSTEMD} -eq 0 ] ; then
     # Maybe this is helpful too
