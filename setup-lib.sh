@@ -908,13 +908,13 @@ fi
 if [ ${DATATUNNELS} -gt 0 ]; then
     i=0
     while [ $i -lt ${DATATUNNELS} ]; do
-	LAN="tun${i}"
-	subnet=${NEXTSPARESUBNET}
-
-	if [ -f $OURDIR/ipinfo.$LAN ]; then
+	if [ -f "$OURDIR/ipinfo.tun${i}" ]; then
 	    i=`expr $i + 1`
 	    continue
 	fi
+
+	LAN="tun${i}"
+	subnet=${NEXTSPARESUBNET}
 
 	echo "LAN='$LAN'" >> $OURDIR/ipinfo.$LAN
 	echo "ALLOCATION_POOL='start=10.${subnet}.1.1,end=10.${subnet}.254.254'" >> $OURDIR/ipinfo.$LAN
@@ -932,12 +932,12 @@ fi
 # Setup IP configuration for vlan networks
 #
 for lan in $DATAVLANS ; do
-    LAN="$lan"
-    subnet=${NEXTSPARESUBNET}
-
-    if [ -f $OURDIR/ipinfo.$LAN ]; then
+    if [ -f $OURDIR/ipinfo.$lan ]; then
 	continue
     fi
+
+    LAN="$lan"
+    subnet=${NEXTSPARESUBNET}
 
     echo "LAN='$LAN'" >> $OURDIR/ipinfo.$LAN
     echo "ALLOCATION_POOL='start=10.${subnet}.1.1,end=10.${subnet}.254.254'" >> $OURDIR/ipinfo.$LAN
@@ -954,13 +954,13 @@ echo "${NEXTSPARESUBNET}" > $OURDIR/nextsparesubnet
 if [ ${DATAVXLANS} -gt 0 ]; then
     i=0
     while [ $i -lt ${DATAVXLANS} ]; do
-	LAN="vxlan${i}"
-	subnet=${NEXTSPARESUBNET}
-
-	if [ -f $OURDIR/ipinfo.$LAN ]; then
+	if [ -f "$OURDIR/ipinfo.vxlan${i}" ]; then
 	    i=`expr $i + 1`
 	    continue
 	fi
+
+	LAN="vxlan${i}"
+	subnet=${NEXTSPARESUBNET}
 
 	echo "LAN='$LAN'" >> $OURDIR/ipinfo.$LAN
 	echo "ALLOCATION_POOL='start=10.${subnet}.1.1,end=10.${subnet}.254.254'" >> $OURDIR/ipinfo.$LAN
@@ -1028,12 +1028,14 @@ for lan in $DATAFLATLANS $DATAOTHERLANS ; do
 	DATADEV=`/usr/local/etc/emulab/findif -m $DATAMAC`
 	DATAVLANDEV=`ip link show ${DATADEV} | sed -n -e "s/^.*${DATADEV}\@\([0-9a-zA-Z_]*\): .*\$/\1/p"`
 	DATAVLANTAG=`cat ${BOOTDIR}/tmcc/ifconfig | sed -n -e "s/^.* LAN=${lan} VTAG=\([0-9]*\).*\$/\1/p"`
+	DATAPMAC=`cat ${BOOTDIR}/tmcc/ifconfig | sed -n -e "s/^.* PMAC=\([0-9a-f:\.]*\) .* LAN=${lan}.*\$/\1/p"`
     else
 	DATAVLAN=0
 	DATAVLANDEV=""
 	DATAVLANTAG=0
 	DATAMAC=`cat ${BOOTDIR}/tmcc/ifconfig | sed -n -e "s/^.* MAC=\([0-9a-f:\.]*\) .* LAN=${lan}.*$/\1/p"`
 	DATADEV=`/usr/local/etc/emulab/findif -m $DATAMAC`
+	DATAPMAC=
     fi
 
     echo "DATABRIDGE=br-${lan}" >> $OURDIR/info.$lan
@@ -1043,6 +1045,7 @@ for lan in $DATAFLATLANS $DATAOTHERLANS ; do
     echo "DATAVLANTAG=${DATAVLANTAG}" >> $OURDIR/info.$lan
     echo "DATAVLANDEV=${DATAVLANDEV}" >> $OURDIR/info.$lan
     echo "DATAMAC=${DATAMAC}" >> $OURDIR/info.$lan
+    echo "DATAPMAC=${DATAPMAC}" >> $OURDIR/info.$lan
     echo "DATADEV=${DATADEV}" >> $OURDIR/info.$lan
 done
 
