@@ -52,7 +52,7 @@ touch $LOCALSETTINGS
 cd $OURDIR
 
 #LOCKFILE="lockfile -1 -r -1 "
-LOCKFILE="lockfile-create --retry-count 65535 "
+LOCKFILE="lockfile-create --retry 65535 "
 RMLOCKFILE="lockfile-remove "
 PSWDGEN="openssl rand -hex 10"
 SSH="ssh -o StrictHostKeyChecking=no"
