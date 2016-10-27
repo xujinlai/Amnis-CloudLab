@@ -1061,6 +1061,16 @@ EOF
 	crudini --set /etc/nova/nova.conf serial_console enabled true
     fi
 
+    if [ $OSVERSION -ge $OSLIBERTY ]; then
+	# Doc bug: these are supposed to be not just a large amount;
+	# they should be set to the same number as api_workers, and that
+	# defaults to the number of CPUs in the system.
+	# This can manifest under heavy load as a bug.
+	ncpus=`cat /proc/cpuinfo | grep -i 'processor.*:' | wc -l`
+	crudini --set /etc/nova/nova.conf api_database max_overflow $ncpus
+	crudini --set /etc/nova/nova.conf api_database max_pool_size $ncpus
+    fi
+
     if [ $OSVERSION -ge $OSMITAKA ]; then
 	su -s /bin/sh -c "nova-manage api_db sync" nova
     fi
@@ -1285,6 +1295,16 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 
     crudini --set /etc/neutron/neutron.conf DEFAULT \
 	notification_driver messagingv2
+
+    if [ $OSVERSION -ge $OSLIBERTY ]; then
+	# Doc bug: these are supposed to be not just a large amount;
+	# they should be set to the same number as api_workers, and that
+	# defaults to the number of CPUs in the system.
+	# This can manifest under heavy load as a bug.
+	ncpus=`cat /proc/cpuinfo | grep -i 'processor.*:' | wc -l`
+	crudini --set /etc/neutron/neutron.conf database max_overflow $ncpus
+	crudini --set /etc/neutron/neutron.conf database max_pool_size $ncpus
+    fi
 
     crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
 	type_drivers ${network_types}
