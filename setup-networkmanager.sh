@@ -103,7 +103,7 @@ pkill dnsmasq
 # Setup the Metadata agent.
 if [ $OSVERSION -lt $OSKILO ]; then
     crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
-	auth_url http://$CONTROLLER:5000/v2.0/
+	auth_url http://$CONTROLLER:5000/v2.0
     crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
 	auth_region $REGION
     crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
@@ -116,7 +116,7 @@ else
     crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
-	auth_url http://${CONTROLLER}:35357
+	auth_url http://${CONTROLLER}:35357/v2.0
     crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
 	auth_region $REGION
     crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
@@ -131,6 +131,12 @@ else
 	username neutron
     crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
 	password "${NEUTRON_PASS}"
+    crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+	admin_tenant_name service
+    crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+	admin_user neutron
+    crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+	admin_password "${NEUTRON_PASS}"
 fi
 crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
     nova_metadata_ip ${CONTROLLER}
