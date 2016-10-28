@@ -329,6 +329,14 @@ ebtables -A OUTPUT -p 0x0806 --arp-opcode 2 --arp-ip-src ${OURNET} -j DROP
 ebtables -A FORWARD -p 0x0806 --arp-opcode 2 --arp-ip-src 172.16.0.0/12 -j DROP
 ebtables -A OUTPUT -p 0x0806 --arp-opcode 2 --arp-ip-src 172.16.0.0/12 -j DROP
 
+# Setup the service to actually save/restore
+cat <<EOF > /etc/default/ebtables
+EBTABLES_MODULES_UNLOAD="yes"
+EBTABLES_LOAD_ON_START="yes"
+EBTABLES_SAVE_ON_STOP="yes"
+EBTABLES_SAVE_ON_RESTART="yes"
+EOF
+
 #
 # NB: but we can't use ebtables to block locally-generated ARP, apparently?
 # So use arptables for that!
@@ -356,6 +364,14 @@ arptables -A OUTPUT --opcode 2 -s ${OURNET} -j DROP
 
 # Also, drop Emulab vnode control network addr ARP replies on br-ex!
 arptables -A OUTPUT --opcode 2 -s 172.16.0.0/12 -j DROP
+
+# Setup the service to actually save/restore
+cat <<EOF > /etc/default/arptables
+ARPTABLES_MODULES_UNLOAD="yes"
+ARPTABLES_LOAD_ON_START="yes"
+ARPTABLES_SAVE_ON_STOP="yes"
+ARPTABLES_SAVE_ON_RESTART="yes"
+EOF
 
 logtend "linuxbridge-node"
 
