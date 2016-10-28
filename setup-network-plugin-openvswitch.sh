@@ -177,7 +177,11 @@ echo "$MYIP    $NFQDN $PFQDN" >> /etc/hosts
 # Patch the neutron openvswitch agent to try to stop inadvertent spoofing on
 # the public emulab/cloudlab control net, sigh.
 #
-patch -d / -p0 < $DIRNAME/etc/neutron-${OSCODENAME}-openvswitch-remove-all-flows-except-system-flows.patch
+if [ $OSVERSION -le $OSLIBERTY ]; then
+    patch -d / -p0 < $DIRNAME/etc/neutron-${OSCODENAME}-openvswitch-remove-all-flows-except-system-flows.patch
+else
+    patch -d / -p0 < $DIRNAME/etc/neutron-${OSCODENAME}-ovs-reserved-cookies.patch
+fi
 
 #
 # https://git.openstack.org/cgit/openstack/neutron/commit/?id=51f6b2e1c9c2f5f5106b9ae8316e57750f09d7c9
@@ -201,6 +205,28 @@ if [ $OSVERSION -lt $OSMITAKA ]; then
 else
     service_restart neutron-openvswitch-agent
     service_enable neutron-openvswitch-agent
+fi
+
+if [ $OSVERSION -gt $OSLIBERTY ]; then
+    # If we are using the reserved cookies patch, we have to figure out
+    # what our cookie is, read it, and then edit all the anti-spoofing
+    # flows to have our reserved cookie -- and then re-insert them all.
+    # We don't know what our per-host reserved cookie is until the
+    # patched ovs code creates one on the first startup after patch.
+    echo "*** Re-adding OVS anti-spoofing flows with reserved cookie..."
+    i=30
+    while [ ! -f /var/lib/neutron/ovs-default-flows.reserved_cookie -a $i -gt 0 ]; do
+	sleep 1
+	i=`expr $i - 1`
+    done
+    if [ -f /var/lib/neutron/ovs-default-flows.reserved_cookie -a -f /etc/neutron/ovs-default-flows/br-ex ]; then
+	cookie=`cat /var/lib/neutron/ovs-default-flows.reserved_cookie`
+	for fl in `cat /etc/neutron/ovs-default-flows/br-ex`; do
+	    echo "cookie=$cookie,$fl" >> /etc/neutron/ovs-default-flows/br-ex.tmp
+	    ovs-ofctl add-flow br-ex "cookie=$cookie,$fl"
+	done
+	mv /etc/neutron/ovs-default-flows/br-ex.tmp /etc/neutron/ovs-default-flows/br-ex
+    fi
 fi
 
 touch $OURDIR/setup-network-plugin-openvswitch-done
