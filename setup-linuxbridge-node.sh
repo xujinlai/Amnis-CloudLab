@@ -311,9 +311,11 @@ service_enable ebtables
 service_restart ebtables
 
 ebtables -A FORWARD -p 0x0806 --arp-opcode 2 --arp-ip-src ${ctlip} -j ACCEPT
+ebtables -A OUTPUT -p 0x0806 --arp-opcode 2 --arp-ip-src ${ctlip} -j ACCEPT
 
 for addr in $PUBLICADDRS ; do
     ebtables -A FORWARD -p 0x0806 --arp-opcode 2 --arp-ip-src ${addr} -j ACCEPT
+    ebtables -A OUTPUT -p 0x0806 --arp-opcode 2 --arp-ip-src ${addr} -j ACCEPT
 done
 
 # Allow any inbound ARP replies on the control network.
@@ -321,9 +323,39 @@ ebtables -A FORWARD -p 0x0806 --arp-opcode 2 --arp-ip-src ${OURNET} --in-interfa
 
 # Drop any other control network addr ARP replies on the br-ex switch.
 ebtables -A FORWARD -p 0x0806 --arp-opcode 2 --arp-ip-src ${OURNET} -j DROP
+ebtables -A OUTPUT -p 0x0806 --arp-opcode 2 --arp-ip-src ${OURNET} -j DROP
 
 # Also, drop Emulab vnode control network addr ARP replies on br-ex!
 ebtables -A FORWARD -p 0x0806 --arp-opcode 2 --arp-ip-src 172.16.0.0/12 -j DROP
+ebtables -A OUTPUT -p 0x0806 --arp-opcode 2 --arp-ip-src 172.16.0.0/12 -j DROP
+
+#
+# NB: but we can't use ebtables to block locally-generated ARP, apparently?
+# So use arptables for that!
+#
+maybe_install_packages arptables
+# But there is no save/restore service; so add one
+if [ ! -f /etc/init.d/arptables ]; then
+    cp $DIRNAME/etc/arptables-initscript /etc/init.d/arptables
+    chmod 755 /etc/init.d/arptables
+fi
+if [ ! ${HAVE_SYSTEMD} -eq 0 ] ; then
+    systemctl daemon-reload
+fi
+service_enable arptables
+service_restart arptables
+
+arptables -A OUTPUT --opcode 2 -s ${ctlip} -j ACCEPT
+
+for addr in $PUBLICADDRS ; do
+    arptables -A OUTPUT --opcode 2 -s ${addr} -j ACCEPT
+done
+
+# Drop any other control network addr ARP replies on the br-ex switch.
+arptables -A OUTPUT --opcode 2 -s ${OURNET} -j DROP
+
+# Also, drop Emulab vnode control network addr ARP replies on br-ex!
+arptables -A OUTPUT --opcode 2 -s 172.16.0.0/12 -j DROP
 
 logtend "linuxbridge-node"
 
