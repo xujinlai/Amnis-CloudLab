@@ -289,10 +289,6 @@ if [ ! ${HAVE_SYSTEMD} -eq 0 ] ; then
     systemctl daemon-reload
 fi
 
-logtend "linuxbridge-node"
-
-exit 0
-
 #
 # Install a basic ARP reply filter that prevents us from sending ARP replies on
 # the control net for anything we're not allowed to use (i.e., we can reply for
@@ -307,36 +303,28 @@ OURNET=`ip addr show br-ex | sed -n -e 's/.*inet \([0-9\.\/]*\) .*/\1/p'`
 OURPORT=`ovs-ofctl show br-ex | sed -n -e "s/[ \t]*\([0-9]*\)(${EXTERNAL_NETWORK_INTERFACE}.*\$/\1/p"`
 
 #
-# Ok, make the anti-ARP spoofing rules live, and also place them in the right
-# place to be picked up by our neutron openvswitch agent so that when it
-# remove_all_flows() it also installs our "system" defaults.
+# Ok, make the anti-ARP spoofing rules live, and ensure they get
+# saved/loaded across reboot.
 #
-mkdir -p /etc/neutron/ovs-default-flows
-FF=/etc/neutron/ovs-default-flows/br-ex
-touch ${FF}
+maybe_install_packages ebtables
+service_enable ebtables
+service_restart ebtables
 
-FLOW="dl_type=0x0806,nw_proto=0x2,arp_spa=${ctlip},actions=NORMAL"
-ovs-ofctl add-flow br-ex "$FLOW"
-echo "$FLOW" >> $FF
+ebtables -A FORWARD -p 0x0806 --arp-opcode 2 --arp-ip-src ${ctlip} -j ACCEPT
 
 for addr in $PUBLICADDRS ; do
-    FLOW="dl_type=0x0806,nw_proto=0x2,arp_spa=${addr},actions=NORMAL"
-    ovs-ofctl add-flow br-ex "$FLOW"
-    echo "$FLOW" >> $FF
+    ebtables -A FORWARD -p 0x0806 --arp-opcode 2 --arp-ip-src ${addr} -j ACCEPT
 done
+
 # Allow any inbound ARP replies on the control network.
-FLOW="dl_type=0x0806,nw_proto=0x2,arp_spa=${OURNET},in_port=${OURPORT},actions=NORMAL"
-ovs-ofctl add-flow br-ex "$FLOW"
-echo "$FLOW" >> $FF
+ebtables -A FORWARD -p 0x0806 --arp-opcode 2 --arp-ip-src ${OURNET} --in-interface ${EXTERNAL_NETWORK_INTERFACE} -j ACCEPT
 
 # Drop any other control network addr ARP replies on the br-ex switch.
-FLOW="dl_type=0x0806,nw_proto=0x2,arp_spa=${OURNET},actions=drop"
-ovs-ofctl add-flow br-ex "$FLOW"
-echo "$FLOW" >> $FF
+ebtables -A FORWARD -p 0x0806 --arp-opcode 2 --arp-ip-src ${OURNET} -j DROP
 
 # Also, drop Emulab vnode control network addr ARP replies on br-ex!
-FLOW="dl_type=0x0806,nw_proto=0x2,arp_spa=172.16.0.0/12,actions=drop"
-ovs-ofctl add-flow br-ex "$FLOW"
-echo "$FLOW" >> $FF
+ebtables -A FORWARD -p 0x0806 --arp-opcode 2 --arp-ip-src 172.16.0.0/12 -j DROP
+
+logtend "linuxbridge-node"
 
 exit 0
