@@ -1367,6 +1367,10 @@ EOF
 	    admin_username neutron
 	crudini --set /etc/nova/nova.conf neutron \
 	    admin_password ${NEUTRON_PASS}
+	crudini --set /etc/nova/nova.conf neutron \
+	    username neutron
+	crudini --set /etc/nova/nova.conf neutron \
+	    password ${NEUTRON_PASS}
     else
 	crudini --set /etc/nova/nova.conf neutron \
 	    ${PROJECT_DOMAIN_PARAM} default
