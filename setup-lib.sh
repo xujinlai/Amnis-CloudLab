@@ -174,6 +174,14 @@ if [ $GENIUSER -eq 1 ]; then
     dpkg -s python-m2crypto >/dev/null 2>&1
     if [ ! $? -eq 0 ]; then
 	apt-get install python-m2crypto
+	# Keep trying again with updated cache forever;
+	# we must have this package.
+	success=$?
+	while [ ! $success -eq 0 ]; do
+	    apt-get update
+	    apt-get install python-m2crypto
+	    success=$?
+	done
     fi
 
     if [ ! -e $OURDIR/geni.key ]; then
