@@ -165,8 +165,6 @@ crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vxlan \
     vni_ranges 3000:4000
 #crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vxlan \
 #    vxlan_group 224.0.0.1
-crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup \
-    enable_ipset True
 
 cat <<EOF >> /etc/neutron/plugins/ml2/linuxbridge_agent.ini
 [linux_bridge]
@@ -183,8 +181,18 @@ prevent_arp_spoofing = True
 EOF
 crudini --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini securitygroup \
     enable_security_group True
+crudini --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini securitygroup \
+    enable_ipset True
 if [ -n "$fwdriver" ]; then
     crudini --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini securitygroup \
+	firewall_driver $fwdriver
+fi
+crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup \
+    enable_security_group True
+crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup \
+    enable_ipset True
+if [ -n "$fwdriver" ]; then
+    crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup \
 	firewall_driver $fwdriver
 fi
 
