@@ -6,10 +6,22 @@ import geni.rspec.igext as IG
 from lxml import etree as ET
 import crypt
 import random
+import os.path
+import sys
 
-# Don't want this as a param yet
-TBURL = "http://www.emulab.net/downloads/openstack-setup-v33.tar.gz"
-TBCMD = "sudo mkdir -p /root/setup && sudo -H /tmp/setup/setup-driver.sh 2>&1 | sudo tee /root/setup/setup-driver.log"
+#
+# Check to see if we are a git-backed profile.
+#
+dirname = os.path.dirname(sys.argv[0])
+if dirname is '':
+    dirname = '.'
+if os.path.exists("%s/.git" % (dirname,)):
+    TBURL = None
+    TBCMD = "sudo mkdir -p /root/setup && sudo -H /local/repository/setup-driver.sh 2>&1 | sudo tee /root/setup/setup-driver.log"
+else:
+    TBURL = "http://www.emulab.net/downloads/openstack-setup-v33.tar.gz"
+    TBCMD = "sudo mkdir -p /root/setup && sudo -H /tmp/setup/setup-driver.sh 2>&1 | sudo tee /root/setup/setup-driver.log"
+    pass
 
 #
 # Create our in-memory model of the RSpec -- the resources we're going to request
@@ -557,7 +569,8 @@ if mgmtlan:
                                            get_netmask(mgmtlan.client_id)))
         pass
     pass
-controller.addService(RSpec.Install(url=TBURL, path="/tmp"))
+if TBURL is not None:
+    controller.addService(RSpec.Install(url=TBURL, path="/tmp"))
 controller.addService(RSpec.Execute(shell="sh",command=TBCMD))
 
 if params.controllerHost != params.networkManagerHost:
@@ -591,7 +604,8 @@ if params.controllerHost != params.networkManagerHost:
                                   get_netmask(mgmtlan.client_id)))
             pass
         pass
-    networkManager.addService(RSpec.Install(url=TBURL, path="/tmp"))
+    if TBURL is not None:
+        networkManager.addService(RSpec.Install(url=TBURL, path="/tmp"))
     networkManager.addService(RSpec.Execute(shell="sh",command=TBCMD))
     pass
 
@@ -643,7 +657,8 @@ for (siteNumber,cpnameList) in computeNodeNamesBySite.iteritems():
                                                    get_netmask(mgmtlan.client_id)))
                 pass
             pass
-        cpnode.addService(RSpec.Install(url=TBURL, path="/tmp"))
+        if TBURL is not None:
+            cpnode.addService(RSpec.Install(url=TBURL, path="/tmp"))
         cpnode.addService(RSpec.Execute(shell="sh",command=TBCMD))
         computeNodeList += cpname + ' '
         pass

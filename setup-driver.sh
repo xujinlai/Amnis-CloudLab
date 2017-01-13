@@ -17,7 +17,7 @@ logtstart "driver"
 # Copy our source code into $OURDIR for future use:
 echo "*** Copying source code into $OURDIR/bin ..."
 mkdir -p $OURDIR/bin
-rsync -avz /tmp/setup/ $OURDIR/bin/
+rsync -avz $DIRNAME/ $OURDIR/bin/
 
 echo "*** Setting up root ssh pubkey access across all nodes..."
 
