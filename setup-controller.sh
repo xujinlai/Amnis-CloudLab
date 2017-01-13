@@ -345,7 +345,7 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
 	    crudini --set /etc/keystone/keystone.conf token driver \
 		'keystone.token.persistence.backends.sql.Token'
 	fi
-    elif [ $OSVERSION -ge $OSLIBERTY ]; then
+    elif [ $OSVERSION -le $OSMITAKA ]; then
 	crudini --set /etc/keystone/keystone.conf token provider 'uuid'
 	crudini --set /etc/keystone/keystone.conf revoke driver 'sql'
 	if [ $KEYSTONEUSEMEMCACHE -eq 1 ]; then
@@ -362,16 +362,22 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
 	    crudini --set /etc/keystone/keystone.conf token driver 'memcache'
 	    crudini --set /etc/keystone/keystone.conf memcache servers \
 		'localhost:11211'
+	else
+	    crudini --set /etc/keystone/keystone.conf token driver 'sql'
 	fi
-
-	keystone-manage fernet_setup --keystone-user keystone \
-	    --keystone-group keystone
     fi
 
     crudini --set /etc/keystone/keystone.conf DEFAULT verbose ${VERBOSE_LOGGING}
     crudini --set /etc/keystone/keystone.conf DEFAULT debug ${DEBUG_LOGGING}
 
     su -s /bin/sh -c "/usr/bin/keystone-manage db_sync" keystone
+
+    if [ $OSVERSION -ge $OSNEWTON ]; then
+	keystone-manage fernet_setup --keystone-user keystone \
+	    --keystone-group keystone
+	keystone-manage credential_setup --keystone-user keystone \
+	    --keystone-group keystone
+    fi
 
     if [ $OSVERSION -eq $OSKILO -a $KEYSTONEUSEWSGI -eq 1 ]; then
 	cat <<EOF >/etc/apache2/sites-available/wsgi-keystone.conf
@@ -419,7 +425,8 @@ EOF
 	cp -p /var/www/cgi-bin/keystone/admin /var/www/cgi-bin/keystone/main 
 	chown -R keystone:keystone /var/www/cgi-bin/keystone
 	chmod 755 /var/www/cgi-bin/keystone/*
-    elif [ $OSVERSION -ge $OSLIBERTY -a $KEYSTONEUSEWSGI -eq 1 ]; then
+    elif [ $OSVERSION -ge $OSLIBERTY -a $KEYSTONEUSEWSGI -eq 1 \
+	   -a $OSVERSION -lt $OSNEWTON ]; then
 	cat <<EOF >/etc/apache2/sites-available/wsgi-keystone.conf
 Listen 5000
 Listen 35357
@@ -659,6 +666,10 @@ if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
 else
     echo "export OS_IDENTITY_API_VERSION=2.0" >> $OURDIR/admin-openrc-newcli.sh
 fi
+if [ $OSVERSION -ge $OSNEWTON ]; then
+    echo "export OS_IMAGE_API_VERSION=2" >> $OURDIR/admin-openrc-newcli.sh
+fi
+
 if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
     if [ $OSVERSION -lt $OSMITAKA ]; then
 	echo "OS_PROJECT_DOMAIN_ID=\"default\"" > $OURDIR/admin-openrc-newcli.py
@@ -677,6 +688,9 @@ if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
     echo "OS_IDENTITY_API_VERSION=3" >> $OURDIR/admin-openrc-newcli.py
 else
     echo "OS_IDENTITY_API_VERSION=2.0" >> $OURDIR/admin-openrc-newcli.py
+fi
+if [ $OSVERSION -ge $OSNEWTON ]; then
+    echo "OS_IMAGE_API_VERSION=2" >> $OURDIR/admin-openrc-newcli.py
 fi
 
 #
@@ -814,6 +828,9 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	crudini --set /etc/glance/glance-api.conf glance_store \
 	    filesystem_store_datadir /var/lib/glance/images/
 	crudini --set /etc/glance/glance-api.conf DEFAULT notification_driver noop
+	if [ $OSVERSION -ge $OSNEWTON ]; then
+	    crudini --set /etc/glance/glance-api.conf glance_store stores file,http
+	fi
     fi
 
     crudini --set /etc/glance/glance-registry.conf database \
@@ -920,17 +937,17 @@ if [ -z "${NOVA_DBPASS}" ]; then
 
 	if [ $KEYSTONEAPIVERSION -lt 3 ]; then
 	    __openstack endpoint create \
-		--publicurl http://$CONTROLLER:8774/v2/%\(tenant_id\)s \
-		--internalurl http://$CONTROLLER:8774/v2/%\(tenant_id\)s \
-		--adminurl http://$CONTROLLER:8774/v2/%\(tenant_id\)s \
+		--publicurl http://$CONTROLLER:8774/${NAPISTR}/%\(tenant_id\)s \
+		--internalurl http://$CONTROLLER:8774/${NAPISTR}/%\(tenant_id\)s \
+		--adminurl http://$CONTROLLER:8774/${NAPISTR}/%\(tenant_id\)s \
 		--region $REGION compute
 	else
 	    __openstack endpoint create --region $REGION \
-		compute public http://${CONTROLLER}:8774/v2/%\(tenant_id\)s
+		compute public http://${CONTROLLER}:8774/${NAPISTR}/%\(tenant_id\)s
 	    __openstack endpoint create --region $REGION \
-		compute internal http://${CONTROLLER}:8774/v2/%\(tenant_id\)s
+		compute internal http://${CONTROLLER}:8774/${NAPISTR}/%\(tenant_id\)s
 	    __openstack endpoint create --region $REGION \
-		compute admin http://${CONTROLLER}:8774/v2/%\(tenant_id\)s
+		compute admin http://${CONTROLLER}:8774/${NAPISTR}/%\(tenant_id\)s
 	fi
     fi
 
@@ -1093,6 +1110,30 @@ EOF
     service_enable nova-serialproxy
 
     rm -f /var/lib/nova/nova.sqlite
+
+    #
+    # Ensure that the default flavors exist.  They seem not to on Newton...
+    #
+    /usr/bin/openstack flavor show m1.tiny 2>&1 >/dev/null
+    if [ ! $? -eq 0 ]; then
+	__openstack flavor create m1.tiny --id 1 --ram 512 --disk 1 --vcpus 1 --public
+    fi
+    /usr/bin/openstack flavor show m1.small 2>&1 >/dev/null
+    if [ ! $? -eq 0 ]; then
+	__openstack flavor create m1.small --id 2 --ram 2048 --disk 20 --vcpus 1 --public
+    fi
+    /usr/bin/openstack flavor show m1.medium 2>&1 >/dev/null
+    if [ ! $? -eq 0 ]; then
+	__openstack flavor create m1.medium --id 3 --ram 4096 --disk 40 --vcpus 2 --public
+    fi
+    /usr/bin/openstack flavor show m1.large 2>&1 >/dev/null
+    if [ ! $? -eq 0 ]; then
+	__openstack flavor create m1.large --id 4 --ram 8192 --disk 80 --vcpus 4 --public
+    fi
+    /usr/bin/openstack flavor show m1.xlarge 2>&1 >/dev/null
+    if [ ! $? -eq 0 ]; then
+	__openstack flavor create m1.xlarge --id 5 --ram 16384 --disk 160 --vcpus 8 --public
+    fi
 
     echo "NOVA_DBPASS=\"${NOVA_DBPASS}\"" >> $SETTINGS
     echo "NOVA_PASS=\"${NOVA_PASS}\"" >> $SETTINGS
@@ -1263,7 +1304,7 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
     crudini --set /etc/neutron/neutron.conf DEFAULT \
 	notify_nova_on_port_data_changes True
     crudini --set /etc/neutron/neutron.conf DEFAULT \
-	nova_url http://$CONTROLLER:8774/v2
+	nova_url http://$CONTROLLER:8774/${NAPISTR}
 
     if [ $OSVERSION -eq $OSJUNO ]; then
 	service_tenant_id=`keystone tenant-get service | grep id | cut -d '|' -f 3`
@@ -1610,6 +1651,18 @@ EOF
 OPENSTACK_KEYSTONE_DEFAULT_DOMAIN = 'default'
 EOF
 	fi
+    fi
+
+    #
+    # On some versions, we have special patches to customize horizon.
+    # For instance, on Newton, we don't want volume creation to be the
+    # default.
+    #
+    if [ $OSVERSION -eq $OSNEWTON ]; then
+	patch -p0 -d / < $DIRNAME/etc/horizon-${OSCODENAME}-no-default-volcreate.patch
+	# Rebuild after patching javascripts.
+	/usr/share/openstack-dashboard/manage.py collectstatic \
+	    && /usr/share/openstack-dashboard/manage.py compress
     fi
 
     service_restart apache2
@@ -1969,6 +2022,13 @@ EOF
 	else
 	    echo "Error: python-manila-ui does not appear to have templates, but you have requested not to update our Apt cache, so we can't download the source pagckage."
 	fi
+    fi
+
+    #
+    # Ugh, more Manila bugs
+    #
+    if [ $OSVERSION -eq $OSNEWTON -a -f $DIRNAME/etc/manila-${OSCODENAME}-noset.patch ]; then
+	patch -p0 -d / < $DIRNAME/etc/manila-${OSCODENAME}-noset.patch
     fi
 
     service_restart apache2
@@ -2465,7 +2525,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	MDONE=1
 	while [ $MDONE -ne 0 ]; do 
 	    sleep 1
-	    mongo --host ${CONTROLLER} --eval "db = db.getSiblingDB(\"ceilometer\"); db.addUser({user: \"ceilometer\", pwd: \"${CEILOMETER_DBPASS}\", roles: [ \"readWrite\", \"dbAdmin\" ]})"
+	    mongo --host ${MGMTIP} --eval "db = db.getSiblingDB(\"ceilometer\"); db.addUser({user: \"ceilometer\", pwd: \"${CEILOMETER_DBPASS}\", roles: [ \"readWrite\", \"dbAdmin\" ]})"
 	    MDONE=$?
 	done
     else
@@ -2521,7 +2581,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 
     if [ "${CEILOMETER_USE_MONGODB}" = "1" ]; then
 	crudini --set /etc/ceilometer/ceilometer.conf database \
-	    connection "mongodb://ceilometer:${CEILOMETER_DBPASS}@$CONTROLLER:27017/ceilometer" 
+	    connection "mongodb://ceilometer:${CEILOMETER_DBPASS}@${MGMTIP}:27017/ceilometer" 
     else
 	crudini --set /etc/ceilometer/ceilometer.conf database \
 	    connection "mysql://ceilometer:${CEILOMETER_DBPASS}@$CONTROLLER/ceilometer?charset=utf8"
@@ -2996,7 +3056,7 @@ if [ -z "${TROVE_DBPASS}" ]; then
     crudini --set /etc/trove/trove.conf DEFAULT \
 	trove_auth_url http://${CONTROLLER}:5000/${KAPISTR}
     crudini --set /etc/trove/trove.conf DEFAULT \
-	nova_compute_url http://${CONTROLLER}:8774/v2
+	nova_compute_url http://${CONTROLLER}:8774/${NAPISTR}
     crudini --set /etc/trove/trove.conf DEFAULT \
 	cinder_url http://${CONTROLLER}:8776/v1
     crudini --set /etc/trove/trove.conf DEFAULT \
@@ -3036,7 +3096,7 @@ if [ -z "${TROVE_DBPASS}" ]; then
     crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
 	trove_auth_url http://${CONTROLLER}:5000/${KAPISTR}
     crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
-	nova_compute_url http://${CONTROLLER}:8774/v2
+	nova_compute_url http://${CONTROLLER}:8774/${NAPISTR}
     crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
 	cinder_url http://${CONTROLLER}:8776/v1
     crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
@@ -3076,7 +3136,7 @@ if [ -z "${TROVE_DBPASS}" ]; then
     crudini --set /etc/trove/trove-conductor.conf DEFAULT \
 	trove_auth_url http://${CONTROLLER}:5000/${KAPISTR}
     crudini --set /etc/trove/trove-conductor.conf DEFAULT \
-	nova_compute_url http://${CONTROLLER}:8774/v2
+	nova_compute_url http://${CONTROLLER}:8774/${NAPISTR}
     crudini --set /etc/trove/trove-conductor.conf DEFAULT \
 	cinder_url http://${CONTROLLER}:8776/v1
     crudini --set /etc/trove/trove-conductor.conf DEFAULT \

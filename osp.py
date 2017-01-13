@@ -27,8 +27,8 @@ pc = portal.Context()
 # Define *many* parameters; see the help docs in geni-lib to learn how to modify.
 #
 pc.defineParameter("release","OpenStack Release",
-                   portal.ParameterType.STRING,"mitaka",[("mitaka","Mitaka"),("liberty","Liberty"),("kilo","Kilo (deprecated)"),("juno","Juno (deprecated)")],
-                   longDescription="We provide OpenStack Mitaka (Ubuntu 16.04); Liberty (Ubuntu 15.10); Kilo (Ubuntu 15.04); or Juno (Ubuntu 14.10).  OpenStack is installed from packages available on these distributions.")
+                   portal.ParameterType.STRING,"newton",[("newton","Newton"),("mitaka","Mitaka"),("liberty","Liberty"),("kilo","Kilo (deprecated)"),("juno","Juno (deprecated)")],
+                   longDescription="We provide OpenStack Newton, Mitaka (Ubuntu 16.04); Liberty (Ubuntu 15.10); Kilo (Ubuntu 15.04); or Juno (Ubuntu 14.10).  OpenStack is installed from packages available on these distributions.")
 pc.defineParameter("computeNodeCount", "Number of compute nodes (at Site 1)",
                    portal.ParameterType.INTEGER, 1)
 pc.defineParameter("osNodeType", "Hardware Type",
@@ -835,6 +835,9 @@ class Parameters(RSpec.Resource):
 
         param = ET.SubElement(el,paramXML)
         param.text = "EXTRAIMAGEURLS='%s'" % (str(params.extraImageURLs))
+
+        param = ET.SubElement(el,paramXML)
+        param.text = "OSRELEASE='%s'" % (str(params.release))
 
         return el
     pass

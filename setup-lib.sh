@@ -86,7 +86,7 @@ DO_APT_UPDATE=1
 UBUNTUMIRRORHOST=""
 UBUNTUMIRRORPATH=""
 ENABLE_NEW_SERIAL_SUPPORT=0
-DO_UBUNTU_CLOUDARCHIVE=1
+DO_UBUNTU_CLOUDARCHIVE=0
 BUILD_AARCH64_FROM_CORE=0
 DISABLE_SECURITY_GROUPS=0
 DEFAULT_SECGROUP_ENABLE_SSH_ICMP=1
@@ -110,6 +110,8 @@ ML2PLUGIN="openvswitch"
 MANILADRIVER="generic"
 EXTRAIMAGEURLS=""
 LINUXBRIDGE_STATIC=0
+# The input OpenStack release, if any, from profile params.
+OSRELEASE=""
 
 #
 # We have an 'adminapi' user that gets a random password.  Then, we have
@@ -296,24 +298,45 @@ OSJUNO=10
 OSKILO=11
 OSLIBERTY=12
 OSMITAKA=13
+OSNEWTON=14
 
 . /etc/lsb-release
-if [ ${DISTRIB_CODENAME} = "wily" ]; then
+#
+# Allow a specific release to trump the image defaults, maybe.
+#
+if [ ! "x$OSRELEASE" = "x" ]; then
+    OSCODENAME="$OSRELEASE"
+    if [ $OSCODENAME = "juno" ]; then OSVERSION=$OSJUNO ; fi
+    if [ $OSCODENAME = "kilo" ]; then OSVERSION=$OSKILO ; fi
+    if [ $OSCODENAME = "liberty" ]; then OSVERSION=$OSLIBERTY ; fi
+    if [ $OSCODENAME = "mitaka" ]; then OSVERSION=$OSMITAKA ; fi
+    if [ $OSCODENAME = "newton" ]; then OSVERSION=$OSNEWTON ; fi
+
+    #
+    # We only use cloudarchive for LTS images!
+    #
+    echo "$DISTRIB_DESCRIPTION" | grep -qi LTS
+    if [ $? -eq 0 ]; then
+	DO_UBUNTU_CLOUDARCHIVE=1
+    fi
+elif [ ${DISTRIB_CODENAME} = "wily" ]; then
     OSCODENAME="liberty"
     OSVERSION=$OSLIBERTY
-    REGION="RegionOne"
 elif [ ${DISTRIB_CODENAME} = "vivid" ]; then
     OSCODENAME="kilo"
     OSVERSION=$OSKILO
-    REGION="RegionOne"
 elif [ ${DISTRIB_CODENAME} = "xenial" ]; then
     OSCODENAME="mitaka"
     OSVERSION=$OSMITAKA
-    REGION="RegionOne"
 else
     OSCODENAME="juno"
     OSVERSION=$OSJUNO
+fi
+
+if [ $OSVERSION -eq $OSJUNO ]; then
     REGION="regionOne"
+else
+    REGION="RegionOne"
 fi
 
 #
@@ -332,6 +355,14 @@ else
     # Otherwise, use version 2 by default (or choice)
     KEYSTONEAPIVERSION=2
     KAPISTR='v2.0'
+fi
+
+#
+# Figure out Nova API string.
+#
+NAPISTR="v2"
+if [ $OSVERSION -ge $OSNEWTON ]; then
+    NAPISTR="v2.1"
 fi
 
 #
@@ -637,14 +668,18 @@ maybe_install_packages() {
     fi
 }
 
-if [ ! -f /etc/apt/sources.list.d/cloudarchive-${OSCODENAME}.list \
-    -a ! -f $OURDIR/cloudarchive-added \
-    -a "${DO_UBUNTU_CLOUDARCHIVE}" = "1" ]; then
-    if [ "${DISTRIB_CODENAME}" = "trusty" ] ; then
-	$APTGETINSTALL install -y ubuntu-cloud-keyring
-	echo "deb http://ubuntu-cloud.archive.canonical.com/ubuntu" "${DISTRIB_CODENAME}-updates/${OSCODENAME} main" > /etc/apt/sources.list.d/cloudarchive-${OSCODENAME}.list
+if [ ! -f $OURDIR/cloudarchive-added -a "${DO_UBUNTU_CLOUDARCHIVE}" = "1" ]; then
+    #if [ "${DISTRIB_CODENAME}" = "trusty" ] ; then
+    #	$APTGETINSTALL install -y ubuntu-cloud-keyring
+    #	echo "deb http://ubuntu-cloud.archive.canonical.com/ubuntu" "${DISTRIB_CODENAME}-updates/${OSCODENAME} main" > /etc/apt/sources.list.d/cloudarchive-${OSCODENAME}.list
+    #	apt-get update
+    #elif [ "${DISTRIB_CODENAME}" = "xenial" ] ; then
+	maybe_install_packages software-properties-common
+	# Disable unattended upgrades!
+	rm -fv /etc/apt/apt.conf.d/*unattended-upgrades
+	add-apt-repository -y cloud-archive:$OSRELEASE
 	apt-get update
-    fi
+    #fi
 
     touch $OURDIR/cloudarchive-added
 fi

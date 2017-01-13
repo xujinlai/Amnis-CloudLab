@@ -66,7 +66,11 @@ fi
 crudini --set /etc/nova/nova.conf DEFAULT rpc_backend rabbit
 crudini --set /etc/nova/nova.conf DEFAULT auth_strategy keystone
 crudini --set /etc/nova/nova.conf DEFAULT my_ip ${MGMTIP}
-crudini --set /etc/nova/nova.conf glance host $CONTROLLER
+if [ $OSVERSION -lt $OSNEWTON ]; then
+    crudini --set /etc/nova/nova.conf glance host $CONTROLLER
+else
+    crudini --set /etc/nova/nova.conf glance api_servers http://$CONTROLLER:9292
+fi
 crudini --set /etc/nova/nova.conf DEFAULT verbose ${VERBOSE_LOGGING}
 crudini --set /etc/nova/nova.conf DEFAULT debug ${DEBUG_LOGGING}
 
@@ -109,6 +113,11 @@ else
 	username nova
     crudini --set /etc/nova/nova.conf keystone_authtoken \
 	password "${NOVA_PASS}"
+
+    if [ $OSVERSION -ge $OSMITAKA ]; then
+	crudini --set /etc/nova/nova.conf keystone_authtoken \
+	    memcached_servers ${CONTROLLER}:11211
+    fi
 fi
 
 if [ $OSVERSION -ge $OSKILO ]; then
@@ -138,8 +147,18 @@ fi
 cname=`getfqdn $CONTROLLER`
 crudini --set /etc/nova/nova.conf $VNCSECTION vncserver_listen ${MGMTIP}
 crudini --set /etc/nova/nova.conf $VNCSECTION vncserver_proxyclient_address ${MGMTIP}
-crudini --set /etc/nova/nova.conf $VNCSECTION \
-    novncproxy_base_url "http://${cname}:6080/vnc_auto.html"
+#
+# https://bugs.launchpad.net/nova/+bug/1635131
+#
+if [ $OSVERSION -eq $OSNEWTON ]; then
+    chost=`host $cname | sed -E -n -e 's/^(.* has address )(.*)$/\\2/p'`
+    crudini --set /etc/nova/nova.conf $VNCSECTION \
+	novncproxy_base_url "http://${chost}:6080/vnc_auto.html"
+else
+    crudini --set /etc/nova/nova.conf $VNCSECTION \
+	novncproxy_base_url "http://${cname}:6080/vnc_auto.html"
+fi
+
 #
 # Change vnc_enabled = True for x86 -- but for aarch64, there is
 # no video device, for KVM mode, anyway, it seems.
