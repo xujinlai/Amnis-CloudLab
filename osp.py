@@ -9,19 +9,8 @@ import random
 import os.path
 import sys
 
-#
-# Check to see if we are a git-backed profile.
-#
-dirname = os.path.dirname(sys.argv[0])
-if dirname is '':
-    dirname = '.'
-if os.path.exists("%s/.git" % (dirname,)):
-    TBURL = None
-    TBCMD = "sudo mkdir -p /root/setup && sudo -H /local/repository/setup-driver.sh 2>&1 | sudo tee /root/setup/setup-driver.log"
-else:
-    TBURL = "http://www.emulab.net/downloads/openstack-setup-v33.tar.gz"
-    TBCMD = "sudo mkdir -p /root/setup && sudo -H /tmp/setup/setup-driver.sh 2>&1 | sudo tee /root/setup/setup-driver.log"
-    pass
+TBURL = "http://www.emulab.net/downloads/openstack-setup-v33.tar.gz"
+TBCMD = "sudo mkdir -p /root/setup && (if [ -d /local/repository ]; then sudo -H /local/repository/setup-driver.sh 2>&1 | sudo tee /root/setup/setup-driver.log; else sudo -H /tmp/setup/setup-driver.sh 2>&1 | sudo tee /root/setup/setup-driver.log)"
 
 #
 # Create our in-memory model of the RSpec -- the resources we're going to request
