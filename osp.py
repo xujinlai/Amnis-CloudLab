@@ -105,6 +105,25 @@ pc.defineParameter("blockstoreMountNode", "Remote Block Store Mount Node",
 pc.defineParameter("blockstoreMountPoint", "Remote Block Store Mount Point",
                    portal.ParameterType.STRING, "/dataset",advanced=True,
                    longDescription="The mount point at which you want your remote block store mounted.  Be careful where you mount it -- something might already be there (i.e., /storage is already taken).  Note also that this option requires a network interface, because it creates a link between the dataset and the node where the dataset is available.  Thus, just as for creating extra LANs, you might need to select the Multiplex Flat Networks option, which will also multiplex the blockstore link here.")
+pc.defineParameter("blockstoreReadOnly", "Mount Remote Block Store Read-only",
+                   portal.ParameterType.BOOLEAN, True,advanced=True,
+                   longDescription="Mount the remote block store in read-only mode.")
+
+pc.defineParameter("localBlockstoreURN", "Local Block Store URN",
+                   portal.ParameterType.STRING, "",advanced=True,
+                   longDescription="The URN of an image-backed dataset that already exists that you want loaded into the node you specified (defaults to the ctl node).  The block store must exist at the cluster at which you instantiate the profile!")
+pc.defineParameter("localBlockstoreMountNode", "Local Block Store Mount Node",
+                   portal.ParameterType.STRING, "ctl",advanced=True,
+                   longDescription="The node on which you want your local block store mounted; defaults to the controller node.")
+pc.defineParameter("localBlockstoreMountPoint", "Local Block Store Mount Point",
+                   portal.ParameterType.STRING, "/image-dataset",advanced=True,
+                   longDescription="The mount point at which you want your local block store mounted.  Be careful where you mount it -- something might already be there (i.e., /storage is already taken).")
+pc.defineParameter("localBlockstoreSize", "Local Block Store Size",
+                   portal.ParameterType.INTEGER, 0,advanced=True,
+                   longDescription="The necessary space to reserve for your local block store (you should set this to at least the minimum amount of space your image-backed dataset will require).")
+pc.defineParameter("localBlockstoreReadOnly", "Mount Local Block Store Read-only",
+                   portal.ParameterType.BOOLEAN, True,advanced=True,
+                   longDescription="Mount the local block store in read-only mode.")
 
 pc.defineParameter("ipAllocationStrategy","IP Addressing",
                    portal.ParameterType.STRING,"script",[("cloudlab","CloudLab"),("script","This Script")],
@@ -677,6 +696,7 @@ if params.blockstoreURN != "":
     bsintf = bsnode.interface
     bsnode.dataset = params.blockstoreURN
     #bsnode.size = params.N
+    bsnode.readonly = params.blockstoreReadOnly
     
     bslink = RSpec.Link("bslink")
     bslink.addInterface(myintf)
@@ -684,6 +704,38 @@ if params.blockstoreURN != "":
     # Special blockstore attributes for this link.
     bslink.best_effort = True
     bslink.vlan_tagging = True
+    pass
+
+#
+# Add the local blockstore, if requested.
+#
+lbsnode = None
+if params.localBlockstoreURN != "":
+    if not nodes.has_key(params.localBlockstoreMountNode):
+        #
+        # This is a very late time to generate a warning, but that's ok!
+        #
+        perr = portal.ParameterError("The node on which you mount your local block store must exist, and does not!",
+                                     ['localBlockstoreMountNode'])
+        pc.reportError(perr)
+        pc.verifyParameters()
+        pass
+    if params.localBlockstoreSize is None or params.localBlockstoreSize <= 0 \
+      or str(params.localBlockstoreSize) == "":
+        #
+        # This is a very late time to generate a warning, but that's ok!
+        #
+        perr = portal.ParameterError("You must specify a size (> 0) for your local block store!",
+                                     ['localBlockstoreSize'])
+        pc.reportError(perr)
+        pc.verifyParameters()
+        pass
+
+    lbsn = nodes[params.localBlockstoreMountNode]
+    lbsnode = lbsn.Blockstore("lbsnode",params.localBlockstoreMountPoint)
+    lbsnode.dataset = params.localBlockstoreURN
+    lbsnode.size = str(params.localBlockstoreSize)
+    lbsnode.readonly = params.localBlockstoreReadOnly
     pass
 
 for nname in nodes.keys():
