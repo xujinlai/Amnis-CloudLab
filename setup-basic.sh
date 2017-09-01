@@ -50,13 +50,13 @@ if [ ${DEFAULT_SECGROUP_ENABLE_SSH_ICMP} -eq 1 ]; then
 fi
 
 . $DIRNAME/setup-images-lib.sh
-lockfile-create $IMAGESETUPLOCKFILE
+$LOCKFILE $IMAGESETUPLOCKFILE
 if [ -f $IMAGEUPLOADCMDFILE ]; then
     echo "*** Adding Images ..."
     . $OURDIR/admin-openrc.sh
     . $IMAGEUPLOADCMDFILE
 fi
-lockfile-remove $IMAGESETUPLOCKFILE
+$RMLOCKFILE $IMAGESETUPLOCKFILE
 
 ARCH=`uname -m`
 if [ "$ARCH" = "aarch64" ] ; then

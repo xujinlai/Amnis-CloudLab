@@ -37,7 +37,7 @@ fi
 #
 # Take our lockfile.
 #
-lockfile-create $IMAGESETUPLOCKFILE
+$LOCKFILE $IMAGESETUPLOCKFILE
 
 #
 # Create and truncate our upload commands.
@@ -99,7 +99,7 @@ fi
 #
 # Release our lockfile.
 #
-lockfile-remove $IMAGESETUPLOCKFILE
+$RMLOCKFILE $IMAGESETUPLOCKFILE
 
 logtend "images"
 

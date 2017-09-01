@@ -54,7 +54,7 @@ fi
 # Take our lockfile.
 #
 echo "*** Getting image lock..."
-lockfile-create $IMAGESETUPLOCKFILE
+$LOCKFILE $IMAGESETUPLOCKFILE
 echo "*** Got image lock, continuing..."
 
 cwd=`pwd`
@@ -91,7 +91,7 @@ fi
 # Release our lockfile.
 #
 echo "*** Releasing image lock..."
-lockfile-remove $IMAGESETUPLOCKFILE
+$RMLOCKFILE $IMAGESETUPLOCKFILE
 echo "*** Released image lock."
 
 exit 0
