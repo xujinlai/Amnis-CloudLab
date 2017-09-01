@@ -753,7 +753,7 @@ if bslink:
 #
 # Grab a few public IP addresses.
 #
-apool = IG.AddressPool("nm",params.publicIPCount)
+apool = IG.AddressPool(params.networkManagerHost,params.publicIPCount)
 rspec.addResource(apool)
 
 class EmulabEncrypt(RSpec.Resource):

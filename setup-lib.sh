@@ -370,7 +370,7 @@ else
 fi
 
 if [ $GENIUSER -eq 1 ]; then
-    PUBLICADDRS=`cat $OURDIR/manifests.0.xml | perl -e 'while (<STDIN>) { while ($_ =~ m/\<emulab:ipv4 address="([\d.]+)\" netmask=\"([\d\.]+)\"/g) { print "$1\n"; } }' | xargs`
+    PUBLICADDRS=`cat $OURDIR/manifests.*.xml | perl -e '$found = 0; while (<STDIN>) { if ($_ =~ /\<[\d\w:]*routable_pool [^\>\<]*\/>/) { print STDERR "DEBUG: found empty pool: $_\n"; next; } if ($_ =~ /\<[\d\w:]*routable_pool [^\>]*client_id=['"'"'"]'$NETWORKMANAGER'['"'"'"]/) { $found = 1; print STDERR "DEBUG: found: $_\n" } if ($found) { while ($_ =~ m/\<emulab:ipv4 address="([\d.]+)\" netmask=\"([\d\.]+)\"/g) { print "$1\n"; } } if ($found && $_ =~ /routable_pool\>/) { print STDERR "DEBUG: end found: $_\n"; $found = 0; } }' | xargs`
     PUBLICCOUNT=0
     for ip in $PUBLICADDRS ; do
 	PUBLICCOUNT=`expr $PUBLICCOUNT + 1`
