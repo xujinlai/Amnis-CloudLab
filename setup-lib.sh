@@ -134,7 +134,7 @@ SWAPPER=`cat $BOOTDIR/swapper`
 ##
 if [ "x$UPDATING" = "x" ]; then
     UPDATING=0
-else
+elif [ ! $UPDATING -eq 0 ]; then
     $LOCKFILE $OURDIR/UPDATING
 fi
 # We might store any new nodes here
