@@ -34,6 +34,8 @@ if [ -f $SETTINGS ]; then
     . $SETTINGS
 fi
 
+. $DIRNAME/setup-images-lib.sh
+
 #
 # Take our lockfile.
 #
@@ -52,7 +54,6 @@ cd $IMAGEDIR
 # Setup the per-arch default images (and let them override our default
 # *_image functions if they wish).
 #
-. $DIRNAME/setup-images-lib.sh
 if [ "$ARCH" = "aarch64" ] ; then
     . $DIRNAME/setup-images-aarch64.sh
 else
