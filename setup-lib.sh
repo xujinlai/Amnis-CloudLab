@@ -388,7 +388,16 @@ if [ ! -f $TOPOMAP -o $UPDATING -ne 0 ]; then
     if [ -f $TOPOMAP ]; then
 	cp -p $TOPOMAP $TOPOMAP.old
     fi
-    $TMCC topomap | gunzip > $TOPOMAP
+
+    # First try via manifest; fall back to tmcc if necessary (although
+    # that will break multisite exps with >1 second cluster node(s)).
+    python2 $DIRNAME/manifest-to-topomap.py $OURDIR/manifests.0.xml > $TOPOMAP
+    if [ ! $? -eq 0 ]; then
+	echo "ERROR: could not extract topomap from manifest; aborting to tmcc"
+	rm -f $TOPOMAP
+	$TMCC topomap | gunzip > $TOPOMAP
+    fi
+
     # Filter out blockstore nodes
     cat $TOPOMAP | grep -v '^bsnode,' > $TOPOMAP.no.bsnode
     mv $TOPOMAP.no.bsnode $TOPOMAP
