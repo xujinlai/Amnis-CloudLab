@@ -2375,9 +2375,14 @@ if [ -z "${HEAT_DBPASS}" ]; then
 	fi
     fi
 
-    if [ $OSVERSION -ge $OSLIBERTY ]; then
+    if [ $OSVERSION -gt $OSMITAKA ]; then
 	crudini --set /etc/heat/heat.conf trustee \
 	    ${AUTH_TYPE_PARAM} password
+    else
+	crudini --set /etc/heat/heat.conf trustee \
+	    auth_plugin password
+    fi
+    if [ $OSVERSION -ge $OSLIBERTY ]; then
 	crudini --set /etc/heat/heat.conf trustee \
 	    auth_url http://${CONTROLLER}:35357
 	crudini --set /etc/heat/heat.conf trustee \
