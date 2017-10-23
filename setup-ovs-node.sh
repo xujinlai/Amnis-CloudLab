@@ -372,6 +372,20 @@ mkdir -p /etc/neutron/ovs-default-flows
 FF=/etc/neutron/ovs-default-flows/br-ex
 touch ${FF}
 
+#
+# Huge hack.  Somewhere in Mitaka, something starts removing the first
+# flow rule from the table (and that is the rule allowing our control
+# net iface ARP replies to go out!).  So, put a simple rule at the head
+# of the line that simply allows ARP replies from the local control net
+# default gateway to arrive on our control net iface.  This rule is of
+# course eclipsed by the "Allow any inbound ARP replies on the control
+# network" rule below -- thus it is safe to allow this arbitrary process
+# to delete.
+#
+FLOW="dl_type=0x0806,nw_proto=0x2,arp_spa=${ctlgw},in_port=${OURPORT},actions=NORMAL"
+ovs-ofctl add-flow br-ex "$FLOW"
+echo "$FLOW" >> $FF
+
 FLOW="dl_type=0x0806,nw_proto=0x2,arp_spa=${ctlip},actions=NORMAL"
 ovs-ofctl add-flow br-ex "$FLOW"
 echo "$FLOW" >> $FF
