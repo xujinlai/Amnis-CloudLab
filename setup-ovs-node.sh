@@ -93,6 +93,16 @@ DNSDOMAIN=`cat /etc/resolv.conf | grep search | head -1 | awk '{ print $2 }'`
 DNSSERVER=`cat /etc/resolv.conf | grep nameserver | head -1 | awk '{ print $2 }'`
 
 #
+# If we're Mitaka or greater, we have to always re-add our anti-ARP
+# spoofing flows on each boot.  See setup-network-plugin-openvswitch.sh
+# and the bottom of this script.
+#
+readdflows=""
+if [ $OSVERSION -gt $OSLIBERTY ] ; then
+    readdflows='up for line in `cat /etc/neutron/ovs-default-flows/br-ex`; do ovs-ofctl add-flow br-ex $line ; done'
+fi
+
+#
 # We need to blow away the Emulab config -- no more dhcp
 # This would definitely break experiment modify, of course
 #
@@ -114,6 +124,7 @@ iface ${EXTERNAL_NETWORK_BRIDGE} inet static
     dns-nameservers $DNSSERVER
     up echo "${EXTERNAL_NETWORK_BRIDGE}" > /var/run/cnet
     up echo "${EXTERNAL_NETWORK_BRIDGE}" > /var/emulab/boot/controlif
+$readdflows
 
 auto ${EXTERNAL_NETWORK_INTERFACE}
 iface ${EXTERNAL_NETWORK_INTERFACE} inet static
