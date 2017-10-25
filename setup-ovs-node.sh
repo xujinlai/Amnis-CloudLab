@@ -289,9 +289,13 @@ if [ $? -eq 0 ]; then
 #!/bin/sh
 
 cp -p $OURDIR/mgmt-hosts /var/run/emulab/hosts.head
+
+# Some services (neutron-ovs-cleanup) might lookup the hostname prior to
+# network being up.
+echo $ctlip $hostname >> /var/run/emulab/hosts.head
+
 exit 0
 EOF
-
     mkdir -p /etc/emulab/run/rcmanifest.d
     touch /etc/emulab/run/rcmanifest.d/0.openstack-rcmanifest.sh
     cat <<EOF >> /etc/emulab/run/rcmanifest.d/0.openstack-rcmanifest.sh
