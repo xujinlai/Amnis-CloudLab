@@ -50,6 +50,9 @@ if [ "$HOSTNAME" = "$NETWORKMANAGER" ]; then
     # (These were created one-time in setup-lib.sh)
     #
     cat $OURDIR/mgmt-hosts > /etc/hosts.tmp
+    # Some services assume they can resolve the hostname prior to network being
+    # up (i.e. neutron-ovs-cleanup; see setup-ovs-node.sh).
+    echo $MYIP `hostname` >> /etc/hosts.tmp
     cp -p /etc/hosts $OURDIR/hosts.orig
     cat $OURDIR/hosts.orig >> /etc/hosts.tmp
     mv /etc/hosts.tmp /etc/hosts

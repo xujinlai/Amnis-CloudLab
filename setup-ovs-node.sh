@@ -262,7 +262,8 @@ done
 #
 # Set the hostname for later after reboot!
 #
-echo `hostname` > /etc/hostname
+hostname=`hostname`
+echo $hostname > /etc/hostname
 
 service_restart openvswitch-switch
 
@@ -270,6 +271,13 @@ ip route flush cache
 
 # Just wait a bit
 #sleep 8
+
+# Some services (neutron-ovs-cleanup) might lookup the hostname prior to
+# network being up.  We have to handle this here once at startup; then
+# again later in the rc.hostnames hook below.
+echo $ctlip $hostname >> /tmp/hosts.tmp
+cat /etc/hosts >> /tmp/hosts.tmp
+mv /tmp/hosts.tmp /etc/hosts
 
 grep -q DYNRUNDIR /etc/emulab/paths.sh
 if [ $? -eq 0 ]; then
