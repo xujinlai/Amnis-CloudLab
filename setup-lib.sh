@@ -136,7 +136,7 @@ SWAPPER=`cat $BOOTDIR/swapper`
 ##
 if [ "x$UPDATING" = "x" ]; then
     UPDATING=0
-else
+elif [ ! $UPDATING -eq 0 ]; then
     $LOCKFILE $OURDIR/UPDATING
 fi
 # We might store any new nodes here
@@ -401,7 +401,7 @@ else
 fi
 
 if [ $GENIUSER -eq 1 ]; then
-    PUBLICADDRS=`cat $OURDIR/manifests.0.xml | perl -e 'while (<STDIN>) { while ($_ =~ m/\<emulab:ipv4 address="([\d.]+)\" netmask=\"([\d\.]+)\"/g) { print "$1\n"; } }' | xargs`
+    PUBLICADDRS=`cat $OURDIR/manifests.*.xml | perl -e '$found = 0; while (<STDIN>) { if ($_ =~ /\<[\d\w:]*routable_pool [^\>\<]*\/>/) { print STDERR "DEBUG: found empty pool: $_\n"; next; } if ($_ =~ /\<[\d\w:]*routable_pool [^\>]*client_id=['"'"'"]'$NETWORKMANAGER'['"'"'"]/) { $found = 1; print STDERR "DEBUG: found: $_\n" } if ($found) { while ($_ =~ m/\<emulab:ipv4 address="([\d.]+)\" netmask=\"([\d\.]+)\"/g) { print "$1\n"; } } if ($found && $_ =~ /routable_pool\>/) { print STDERR "DEBUG: end found: $_\n"; $found = 0; } }' | xargs`
     PUBLICCOUNT=0
     for ip in $PUBLICADDRS ; do
 	PUBLICCOUNT=`expr $PUBLICCOUNT + 1`
@@ -419,7 +419,16 @@ if [ ! -f $TOPOMAP -o $UPDATING -ne 0 ]; then
     if [ -f $TOPOMAP ]; then
 	cp -p $TOPOMAP $TOPOMAP.old
     fi
-    $TMCC topomap | gunzip > $TOPOMAP
+
+    # First try via manifest; fall back to tmcc if necessary (although
+    # that will break multisite exps with >1 second cluster node(s)).
+    python2 $DIRNAME/manifest-to-topomap.py $OURDIR/manifests.0.xml > $TOPOMAP
+    if [ ! $? -eq 0 ]; then
+	echo "ERROR: could not extract topomap from manifest; aborting to tmcc"
+	rm -f $TOPOMAP
+	$TMCC topomap | gunzip > $TOPOMAP
+    fi
+
     # Filter out blockstore nodes
     cat $TOPOMAP | grep -v '^bsnode,' > $TOPOMAP.no.bsnode
     mv $TOPOMAP.no.bsnode $TOPOMAP

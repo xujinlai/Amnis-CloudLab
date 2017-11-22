@@ -203,6 +203,14 @@ if [ ${OSCODENAME} = "juno" ]; then
     patch -d / -p0 < $DIRNAME/etc/nova-juno-root-device-name.patch
 fi
 
+#
+# Somewhere libvirt-guests.service defaulted to suspending the guests.  Fix that.
+#
+if [ -f /etc/default/libvirt-guests ]; then
+    echo ON_SHUTDOWN=shutdown >> /etc/default/libvirt-guests
+    service_restart libvirt-guests
+fi
+
 service_restart nova-compute
 service_enable nova-compute
 service_restart libvirt-bin

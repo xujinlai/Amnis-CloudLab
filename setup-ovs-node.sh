@@ -93,6 +93,16 @@ DNSDOMAIN=`cat /etc/resolv.conf | grep search | head -1 | awk '{ print $2 }'`
 DNSSERVER=`cat /etc/resolv.conf | grep nameserver | head -1 | awk '{ print $2 }'`
 
 #
+# If we're Mitaka or greater, we have to always re-add our anti-ARP
+# spoofing flows on each boot.  See setup-network-plugin-openvswitch.sh
+# and the bottom of this script.
+#
+readdflows=""
+if [ $OSVERSION -gt $OSLIBERTY ] ; then
+    readdflows='up for line in `cat /etc/neutron/ovs-default-flows/br-ex`; do ovs-ofctl add-flow br-ex $line ; done'
+fi
+
+#
 # We need to blow away the Emulab config -- no more dhcp
 # This would definitely break experiment modify, of course
 #
@@ -114,6 +124,7 @@ iface ${EXTERNAL_NETWORK_BRIDGE} inet static
     dns-nameservers $DNSSERVER
     up echo "${EXTERNAL_NETWORK_BRIDGE}" > /var/run/cnet
     up echo "${EXTERNAL_NETWORK_BRIDGE}" > /var/emulab/boot/controlif
+$readdflows
 
 auto ${EXTERNAL_NETWORK_INTERFACE}
 iface ${EXTERNAL_NETWORK_INTERFACE} inet static
@@ -251,7 +262,8 @@ done
 #
 # Set the hostname for later after reboot!
 #
-echo `hostname` > /etc/hostname
+hostname=`hostname`
+echo $hostname > /etc/hostname
 
 service_restart openvswitch-switch
 
@@ -259,6 +271,13 @@ ip route flush cache
 
 # Just wait a bit
 #sleep 8
+
+# Some services (neutron-ovs-cleanup) might lookup the hostname prior to
+# network being up.  We have to handle this here once at startup; then
+# again later in the rc.hostnames hook below.
+echo $ctlip $hostname >> /tmp/hosts.tmp
+cat /etc/hosts >> /tmp/hosts.tmp
+mv /tmp/hosts.tmp /etc/hosts
 
 grep -q DYNRUNDIR /etc/emulab/paths.sh
 if [ $? -eq 0 ]; then
@@ -270,12 +289,17 @@ if [ $? -eq 0 ]; then
 #!/bin/sh
 
 cp -p $OURDIR/mgmt-hosts /var/run/emulab/hosts.head
+
+# Some services (neutron-ovs-cleanup) might lookup the hostname prior to
+# network being up.
+echo $ctlip $hostname >> /var/run/emulab/hosts.head
+
 exit 0
 EOF
 
-    mkdir -p /etc/emulab/run/rcmanifest.d
-    touch /etc/emulab/run/rcmanifest.d/0.openstack-rcmanifest.sh
-    cat <<EOF >> /etc/emulab/run/rcmanifest.d/0.openstack-rcmanifest.sh
+    mkdir -p /usr/local/etc/emulab/run/rcmanifest.d
+    touch /usr/local/etc/emulab/run/rcmanifest.d/0.openstack-rcmanifest
+    cat <<EOF >> /usr/local/etc/emulab/run/rcmanifest.d/0.openstack-rcmanifest
 HOOK SERVICE=rc.hostnames ENV=boot WHENCE=every OP=boot POINT=pre FATAL=0 FILE=$OURDIR/bin/rc.hostnames-openstack ARGV="" 
 EOF
 else
@@ -360,6 +384,20 @@ OURPORT=`ovs-ofctl show br-ex | sed -n -e "s/[ \t]*\([0-9]*\)(${EXTERNAL_NETWORK
 mkdir -p /etc/neutron/ovs-default-flows
 FF=/etc/neutron/ovs-default-flows/br-ex
 touch ${FF}
+
+#
+# Huge hack.  Somewhere in Mitaka, something starts removing the first
+# flow rule from the table (and that is the rule allowing our control
+# net iface ARP replies to go out!).  So, put a simple rule at the head
+# of the line that simply allows ARP replies from the local control net
+# default gateway to arrive on our control net iface.  This rule is of
+# course eclipsed by the "Allow any inbound ARP replies on the control
+# network" rule below -- thus it is safe to allow this arbitrary process
+# to delete.
+#
+FLOW="dl_type=0x0806,nw_proto=0x2,arp_spa=${ctlgw},in_port=${OURPORT},actions=NORMAL"
+ovs-ofctl add-flow br-ex "$FLOW"
+echo "$FLOW" >> $FF
 
 FLOW="dl_type=0x0806,nw_proto=0x2,arp_spa=${ctlip},actions=NORMAL"
 ovs-ofctl add-flow br-ex "$FLOW"

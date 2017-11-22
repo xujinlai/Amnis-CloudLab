@@ -2375,6 +2375,7 @@ if [ -z "${HEAT_DBPASS}" ]; then
 	    __openstack role add --domain heat --user heat_domain_admin admin
 	    # Do this for admin, not demo, for now
 	    __openstack role add --project admin --user admin heat_stack_owner
+	    __openstack role add --project admin --user adminapi heat_stack_owner
 	fi
     fi
 
@@ -2435,9 +2436,14 @@ if [ -z "${HEAT_DBPASS}" ]; then
 	fi
     fi
 
-    if [ $OSVERSION -ge $OSLIBERTY ]; then
+    if [ $OSVERSION -gt $OSMITAKA ]; then
 	crudini --set /etc/heat/heat.conf trustee \
 	    ${AUTH_TYPE_PARAM} password
+    else
+	crudini --set /etc/heat/heat.conf trustee \
+	    auth_plugin password
+    fi
+    if [ $OSVERSION -ge $OSLIBERTY ]; then
 	crudini --set /etc/heat/heat.conf trustee \
 	    auth_url http://${CONTROLLER}:35357
 	crudini --set /etc/heat/heat.conf trustee \
@@ -2470,7 +2476,7 @@ if [ -z "${HEAT_DBPASS}" ]; then
 	crudini --set /etc/heat/heat.conf DEFAULT \
 	    stack_domain_admin_password $HEAT_DOMAIN_PASS
 	crudini --set /etc/heat/heat.conf DEFAULT \
-	    stack_user_domain_name heat_user_domain
+	    stack_user_domain_name heat
     fi
 
     crudini --del /etc/heat/heat.conf DEFAULT auth_host
