@@ -87,10 +87,10 @@ if [ $LVM -eq 0 ] ; then
     vgcreate $VGNAME /dev/loop0
 fi
 
-maybe_install_packages cinder-volume python-mysqldb
+maybe_install_packages cinder-volume $DBDPACKAGE
 
 crudini --set /etc/cinder/cinder.conf \
-    database connection "mysql://cinder:$CINDER_DBPASS@$CONTROLLER/cinder"
+    database connection "${DBDSTRING}://cinder:$CINDER_DBPASS@$CONTROLLER/cinder"
 
 crudini --del /etc/cinder/cinder.conf keystone_authtoken auth_host
 crudini --del /etc/cinder/cinder.conf keystone_authtoken auth_port
@@ -144,6 +144,10 @@ else
 fi
 
 crudini --set /etc/cinder/cinder.conf DEFAULT glance_host ${CONTROLLER}
+if [ $OSVERSION -ge $OSMITAKA ]; then
+    crudini --set /etc/cinder/cinder.conf \
+	glance api_servers http://${CONTROLLER}:9292
+fi
 
 if [ $OSVERSION -eq $OSKILO ]; then
     crudini --set /etc/cinder/cinder.conf oslo_concurrency \

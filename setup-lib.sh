@@ -361,7 +361,7 @@ fi
 # Figure out Nova API string.
 #
 NAPISTR="v2"
-if [ $OSVERSION -ge $OSNEWTON ]; then
+if [ $OSVERSION -ge $OSMITAKA ]; then
     NAPISTR="v2.1"
 fi
 
@@ -393,6 +393,16 @@ else
     AUTH_TYPE_PARAM="auth_plugin"
 fi
 
+#
+# Set the database package name and driver string.
+#
+if [ $OSVERSION -ge $OSNEWTON ]; then
+    DBDPACKAGE="python-pymysql"
+    DBDSTRING="mysql+pymysql"
+else
+    DBDPACKAGE="python-mysqldb"
+    DBDSTRING="mysql"
+fi
 
 if [ $GENIUSER -eq 1 ]; then
     SWAPPER_EMAIL=`geni-get slice_email`

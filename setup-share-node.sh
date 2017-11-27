@@ -39,10 +39,10 @@ fi
 #
 $DIRNAME/setup-network-plugin.sh
 
-maybe_install_packages manila-share python-pymysql
+maybe_install_packages manila-share $DBDPACKAGE
 
 crudini --set /etc/manila/manila.conf \
-    database connection "mysql://manila:$MANILA_DBPASS@$CONTROLLER/manila"
+    database connection "${DBDSTRING}://manila:$MANILA_DBPASS@$CONTROLLER/manila"
 
 crudini --del /etc/manila/manila.conf keystone_authtoken auth_host
 crudini --del /etc/manila/manila.conf keystone_authtoken auth_port

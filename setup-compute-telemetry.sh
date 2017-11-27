@@ -79,7 +79,7 @@ else
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	auth_url http://${CONTROLLER}:35357
-    if [ $OSVERSION -ge $OSMITAKA ]; then
+    if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
 	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	    memcached_servers ${CONTROLLER}:11211
     fi

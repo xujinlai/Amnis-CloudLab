@@ -51,7 +51,6 @@ crudini --del /etc/neutron/neutron.conf keystone_authtoken auth_host
 crudini --del /etc/neutron/neutron.conf keystone_authtoken auth_port
 crudini --del /etc/neutron/neutron.conf keystone_authtoken auth_protocol
 
-crudini --set /etc/neutron/neutron.conf DEFAULT rpc_backend rabbit
 crudini --set /etc/neutron/neutron.conf DEFAULT auth_strategy keystone
 crudini --set /etc/neutron/neutron.conf DEFAULT verbose ${VERBOSE_LOGGING}
 crudini --set /etc/neutron/neutron.conf DEFAULT debug ${DEBUG_LOGGING}
@@ -61,10 +60,23 @@ crudini --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips True
 crudini --set /etc/neutron/neutron.conf DEFAULT notification_driver messagingv2
 
 if [ $OSVERSION -lt $OSKILO ]; then
+    crudini --set /etc/neutron/neutron.conf DEFAULT rpc_backend rabbit
     crudini --set /etc/neutron/neutron.conf DEFAULT rabbit_host $CONTROLLER
     crudini --set /etc/neutron/neutron.conf DEFAULT rabbit_userid ${RABBIT_USER}
     crudini --set /etc/neutron/neutron.conf DEFAULT rabbit_password "${RABBIT_PASS}"
+elif [ $OSVERSION -lt $OSNEWTON ]; then
+    crudini --set /etc/neutron/neutron.conf DEFAULT rpc_backend rabbit
+    crudini --set /etc/neutron/neutron.conf oslo_messaging_rabbit \
+	rabbit_host $CONTROLLER
+    crudini --set /etc/neutron/neutron.conf oslo_messaging_rabbit \
+	rabbit_userid ${RABBIT_USER}
+    crudini --set /etc/neutron/neutron.conf oslo_messaging_rabbit \
+	rabbit_password "${RABBIT_PASS}"
+else
+    crudini --set /etc/neutron/neutron.conf DEFAULT transport_url $RABBIT_URL
+fi
 
+if [ $OSVERSION -lt $OSKILO ]; then
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000/${KAPISTR}
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
@@ -76,21 +88,10 @@ if [ $OSVERSION -lt $OSKILO ]; then
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	admin_password "${NEUTRON_PASS}"
 else
-    crudini --set /etc/neutron/neutron.conf oslo_messaging_rabbit \
-	rabbit_host $CONTROLLER
-    crudini --set /etc/neutron/neutron.conf oslo_messaging_rabbit \
-	rabbit_userid ${RABBIT_USER}
-    crudini --set /etc/neutron/neutron.conf oslo_messaging_rabbit \
-	rabbit_password "${RABBIT_PASS}"
-
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	auth_url http://${CONTROLLER}:35357
-    if [ $OSVERSION -ge $OSMITAKA ]; then
-	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
-	    memcached_servers ${CONTROLLER}:11211
-    fi
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	${AUTH_TYPE_PARAM} password
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
@@ -103,6 +104,10 @@ else
 	username neutron
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	password "${NEUTRON_PASS}"
+fi
+if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
+    crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	memcached_servers ${CONTROLLER}:11211
 fi
 
 crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
