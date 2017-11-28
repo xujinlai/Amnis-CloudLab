@@ -541,8 +541,11 @@ elif params.release == "kilo":
     image_os = 'UBUNTU15-04-64'
 elif params.release == 'liberty':
     image_os = 'UBUNTU15-10-64'
+elif params.release == 'mitaka':
+    image_os = 'UBUNTU16-64'
 else:
     image_os = 'UBUNTU16-64'
+    params.fromScratch = True
     pass
 
 if params.fromScratch:
