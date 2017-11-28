@@ -87,26 +87,38 @@ if [ $LVM -eq 0 ] ; then
     vgcreate $VGNAME /dev/loop0
 fi
 
-maybe_install_packages cinder-volume python-mysqldb
+maybe_install_packages cinder-volume $DBDPACKAGE
 
 crudini --set /etc/cinder/cinder.conf \
-    database connection "mysql://cinder:$CINDER_DBPASS@$CONTROLLER/cinder"
+    database connection "${DBDSTRING}://cinder:$CINDER_DBPASS@$CONTROLLER/cinder"
 
 crudini --del /etc/cinder/cinder.conf keystone_authtoken auth_host
 crudini --del /etc/cinder/cinder.conf keystone_authtoken auth_port
 crudini --del /etc/cinder/cinder.conf keystone_authtoken auth_protocol
 
-crudini --set /etc/cinder/cinder.conf DEFAULT rpc_backend rabbit
 crudini --set /etc/cinder/cinder.conf DEFAULT auth_strategy keystone
 crudini --set /etc/cinder/cinder.conf DEFAULT verbose ${VERBOSE_LOGGING}
 crudini --set /etc/cinder/cinder.conf DEFAULT debug ${DEBUG_LOGGING}
 crudini --set /etc/cinder/cinder.conf DEFAULT my_ip ${MGMTIP}
 
 if [ $OSVERSION -lt $OSKILO ]; then
+    crudini --set /etc/cinder/cinder.conf DEFAULT rpc_backend rabbit
     crudini --set /etc/cinder/cinder.conf DEFAULT rabbit_host $CONTROLLER
     crudini --set /etc/cinder/cinder.conf DEFAULT rabbit_userid ${RABBIT_USER}
     crudini --set /etc/cinder/cinder.conf DEFAULT rabbit_password "${RABBIT_PASS}"
+elif [ $OSVERSION -lt $OSNEWTON ]; then
+    crudini --set /etc/cinder/cinder.conf DEFAULT rpc_backend rabbit
+    crudini --set /etc/cinder/cinder.conf oslo_messaging_rabbit \
+	rabbit_host $CONTROLLER
+    crudini --set /etc/cinder/cinder.conf oslo_messaging_rabbit \
+	rabbit_userid ${RABBIT_USER}
+    crudini --set /etc/cinder/cinder.conf oslo_messaging_rabbit \
+	rabbit_password "${RABBIT_PASS}"
+else
+    crudini --set /etc/cinder/cinder.conf DEFAULT transport_url $RABBIT_URL
+fi
 
+if [ $OSVERSION -lt $OSKILO ]; then
     crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000/${KAPISTR}
     crudini --set /etc/cinder/cinder.conf keystone_authtoken \
@@ -118,13 +130,6 @@ if [ $OSVERSION -lt $OSKILO ]; then
     crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	admin_password "${CINDER_PASS}"
 else
-    crudini --set /etc/cinder/cinder.conf oslo_messaging_rabbit \
-	rabbit_host $CONTROLLER
-    crudini --set /etc/cinder/cinder.conf oslo_messaging_rabbit \
-	rabbit_userid ${RABBIT_USER}
-    crudini --set /etc/cinder/cinder.conf oslo_messaging_rabbit \
-	rabbit_password "${RABBIT_PASS}"
-
     crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/cinder/cinder.conf keystone_authtoken \
@@ -144,6 +149,10 @@ else
 fi
 
 crudini --set /etc/cinder/cinder.conf DEFAULT glance_host ${CONTROLLER}
+if [ $OSVERSION -ge $OSMITAKA ]; then
+    crudini --set /etc/cinder/cinder.conf \
+	glance api_servers http://${CONTROLLER}:9292
+fi
 
 if [ $OSVERSION -eq $OSKILO ]; then
     crudini --set /etc/cinder/cinder.conf oslo_concurrency \

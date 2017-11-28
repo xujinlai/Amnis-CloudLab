@@ -96,7 +96,7 @@ fi
 # This is a nasty bug in oslo_service; see 
 # https://review.openstack.org/#/c/256267/
 #
-if [ $OSVERSION -ge $OSKILO ]; then
+if [ $OSVERSION -ge $OSKILO -a $OSVERSION -lt $OSNEWTON ]; then
     maybe_install_packages python-oslo.service
     patch -d / -p0 < $DIRNAME/etc/oslo_service-liberty-sig-MAINLOOP.patch
 fi
@@ -106,7 +106,7 @@ fi
 #
 if [ -z "${DB_ROOT_PASS}" ]; then
     logtstart "database"
-    maybe_install_packages mariadb-server python-mysqldb
+    maybe_install_packages mariadb-server $DBDPACKAGE
     service_stop mysql
     # Change the root password; secure the users/dbs.
     mysqld_safe --skip-grant-tables --skip-networking &
@@ -205,7 +205,8 @@ if [ -z "${RABBIT_PASS}" ]; then
 	rabbitmqctl start_app
     done
 
-    cat <<EOF > /etc/rabbitmq/rabbitmq.config
+    if [ $OSVERSION -lt $OSNEWTON ]; then
+	cat <<EOF > /etc/rabbitmq/rabbitmq.config
 [
  {rabbit,
   [
@@ -214,6 +215,7 @@ if [ -z "${RABBIT_PASS}" ]; then
 ]
 .
 EOF
+    fi
 
     if [ ${OSCODENAME} = "juno" ]; then
 	RABBIT_USER="guest"
@@ -222,6 +224,7 @@ EOF
 	rabbitmqctl add_vhost /
     fi
     RABBIT_PASS=`$PSWDGEN`
+    RABBIT_URL="rabbit://${RABBIT_USER}:${RABBIT_PASS}@${CONTROLLER}"
     rabbitmqctl change_password $RABBIT_USER $RABBIT_PASS
     if [ ! $? -eq 0 ]; then
 	rabbitmqctl add_user ${RABBIT_USER} ${RABBIT_PASS}
@@ -230,6 +233,7 @@ EOF
     # Save the passwd
     echo "RABBIT_USER=\"${RABBIT_USER}\"" >> $SETTINGS
     echo "RABBIT_PASS=\"${RABBIT_PASS}\"" >> $SETTINGS
+    echo "RABBIT_URL=\"${RABBIT_URL}\"" >> $SETTINGS
 
     rabbitmqctl stop_app
     service_restart rabbitmq-server
@@ -322,7 +326,7 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
 
     crudini --set /etc/keystone/keystone.conf DEFAULT admin_token "$ADMIN_TOKEN"
     crudini --set /etc/keystone/keystone.conf database connection \
-	"mysql://keystone:${KEYSTONE_DBPASS}@$CONTROLLER/keystone"
+	"${DBDSTRING}://keystone:${KEYSTONE_DBPASS}@$CONTROLLER/keystone"
 
     crudini --set /etc/keystone/keystone.conf token expiration ${TOKENTIMEOUT}
 
@@ -345,7 +349,7 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
 	    crudini --set /etc/keystone/keystone.conf token driver \
 		'keystone.token.persistence.backends.sql.Token'
 	fi
-    elif [ $OSVERSION -ge $OSLIBERTY ]; then
+    elif [ $OSVERSION -le $OSMITAKA ]; then
 	crudini --set /etc/keystone/keystone.conf token provider 'uuid'
 	crudini --set /etc/keystone/keystone.conf revoke driver 'sql'
 	if [ $KEYSTONEUSEMEMCACHE -eq 1 ]; then
@@ -362,16 +366,22 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
 	    crudini --set /etc/keystone/keystone.conf token driver 'memcache'
 	    crudini --set /etc/keystone/keystone.conf memcache servers \
 		'localhost:11211'
+	else
+	    crudini --set /etc/keystone/keystone.conf token driver 'sql'
 	fi
-
-	keystone-manage fernet_setup --keystone-user keystone \
-	    --keystone-group keystone
     fi
 
     crudini --set /etc/keystone/keystone.conf DEFAULT verbose ${VERBOSE_LOGGING}
     crudini --set /etc/keystone/keystone.conf DEFAULT debug ${DEBUG_LOGGING}
 
     su -s /bin/sh -c "/usr/bin/keystone-manage db_sync" keystone
+
+    if [ $OSVERSION -ge $OSNEWTON ]; then
+	keystone-manage fernet_setup --keystone-user keystone \
+	    --keystone-group keystone
+	keystone-manage credential_setup --keystone-user keystone \
+	    --keystone-group keystone
+    fi
 
     if [ $OSVERSION -eq $OSKILO -a $KEYSTONEUSEWSGI -eq 1 ]; then
 	cat <<EOF >/etc/apache2/sites-available/wsgi-keystone.conf
@@ -419,7 +429,8 @@ EOF
 	cp -p /var/www/cgi-bin/keystone/admin /var/www/cgi-bin/keystone/main 
 	chown -R keystone:keystone /var/www/cgi-bin/keystone
 	chmod 755 /var/www/cgi-bin/keystone/*
-    elif [ $OSVERSION -ge $OSLIBERTY -a $KEYSTONEUSEWSGI -eq 1 ]; then
+    elif [ $OSVERSION -ge $OSLIBERTY -a $KEYSTONEUSEWSGI -eq 1 \
+	   -a $OSVERSION -lt $OSNEWTON ]; then
 	cat <<EOF >/etc/apache2/sites-available/wsgi-keystone.conf
 Listen 5000
 Listen 35357
@@ -659,6 +670,10 @@ if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
 else
     echo "export OS_IDENTITY_API_VERSION=2.0" >> $OURDIR/admin-openrc-newcli.sh
 fi
+if [ $OSVERSION -ge $OSNEWTON ]; then
+    echo "export OS_IMAGE_API_VERSION=2" >> $OURDIR/admin-openrc-newcli.sh
+fi
+
 if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
     if [ $OSVERSION -lt $OSMITAKA ]; then
 	echo "OS_PROJECT_DOMAIN_ID=\"default\"" > $OURDIR/admin-openrc-newcli.py
@@ -677,6 +692,9 @@ if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
     echo "OS_IDENTITY_API_VERSION=3" >> $OURDIR/admin-openrc-newcli.py
 else
     echo "OS_IDENTITY_API_VERSION=2.0" >> $OURDIR/admin-openrc-newcli.py
+fi
+if [ $OSVERSION -ge $OSNEWTON ]; then
+    echo "OS_IMAGE_API_VERSION=2" >> $OURDIR/admin-openrc-newcli.py
 fi
 
 #
@@ -764,18 +782,13 @@ if [ -z "${GLANCE_DBPASS}" ]; then
     maybe_install_packages glance python-glanceclient
 
     crudini --set /etc/glance/glance-api.conf database connection \
-	"mysql://glance:${GLANCE_DBPASS}@$CONTROLLER/glance"
-    #crudini --set /etc/glance/glance-api.conf DEFAULT rpc_backend rabbit
+	"${DBDSTRING}://glance:${GLANCE_DBPASS}@$CONTROLLER/glance"
     crudini --set /etc/glance/glance-api.conf DEFAULT auth_strategy keystone
     crudini --set /etc/glance/glance-api.conf DEFAULT verbose ${VERBOSE_LOGGING}
     crudini --set /etc/glance/glance-api.conf DEFAULT debug ${DEBUG_LOGGING}
     crudini --set /etc/glance/glance-api.conf paste_deploy flavor keystone
 
     if [ $OSVERSION -eq $OSJUNO ]; then
-	#crudini --set /etc/glance/glance-api.conf DEFAULT rabbit_host $CONTROLLER
-	#crudini --set /etc/glance/glance-api.conf DEFAULT rabbit_userid ${RABBIT_USER}
-	#crudini --set /etc/glance/glance-api.conf DEFAULT rabbit_password "${RABBIT_PASS}"
-
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
@@ -787,13 +800,6 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
 	    admin_password "${GLANCE_PASS}"
     else
-	#crudini --set /etc/glance/glance-api.conf oslo_messaging_rabbit \
-	#    rabbit_host $CONTROLLER
-	#crudini --set /etc/glance/glance-api.conf oslo_messaging_rabbit \
-	#    rabbit_userid ${RABBIT_USER}
-	#crudini --set /etc/glance/glance-api.conf oslo_messaging_rabbit \
-	#    rabbit_password "${RABBIT_PASS}"
-
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
@@ -814,21 +820,23 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	crudini --set /etc/glance/glance-api.conf glance_store \
 	    filesystem_store_datadir /var/lib/glance/images/
 	crudini --set /etc/glance/glance-api.conf DEFAULT notification_driver noop
+	if [ $OSVERSION -ge $OSNEWTON ]; then
+	    crudini --set /etc/glance/glance-api.conf glance_store stores file,http
+	fi
+    fi
+    if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
+	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
+	    memcached_servers ${CONTROLLER}:11211
     fi
 
     crudini --set /etc/glance/glance-registry.conf database \
-	connection "mysql://glance:${GLANCE_DBPASS}@$CONTROLLER/glance"
-    #crudini --set /etc/glance/glance-registry.conf DEFAULT rpc_backend rabbit
+	connection "${DBDSTRING}://glance:${GLANCE_DBPASS}@$CONTROLLER/glance"
     crudini --set /etc/glance/glance-registry.conf DEFAULT auth_strategy keystone
     crudini --set /etc/glance/glance-registry.conf DEFAULT verbose ${VERBOSE_LOGGING}
     crudini --set /etc/glance/glance-registry.conf DEFAULT debug ${DEBUG_LOGGING}
     crudini --set /etc/glance/glance-registry.conf paste_deploy flavor keystone
 
     if [ $OSVERSION -eq $OSJUNO ]; then
-	#crudini --set /etc/glance/glance-registry.conf DEFAULT rabbit_host $CONTROLLER
-	#crudini --set /etc/glance/glance-registry.conf DEFAULT rabbit_userid ${RABBIT_USER}
-	#crudini --set /etc/glance/glance-registry.conf DEFAULT rabbit_password "${RABBIT_PASS}"
-
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
@@ -840,13 +848,6 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
 	    admin_password "${GLANCE_PASS}"
     else
-	#crudini --set /etc/glance/glance-registry.conf oslo_messaging_rabbit \
-	#    rabbit_host $CONTROLLER
-	#crudini --set /etc/glance/glance-registry.conf oslo_messaging_rabbit \
-	#    rabbit_userid ${RABBIT_USER}
-	#crudini --set /etc/glance/glance-registry.conf oslo_messaging_rabbit \
-	#    rabbit_password "${RABBIT_PASS}"
-
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
@@ -864,6 +865,10 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
 	    password "${GLANCE_PASS}"
 	crudini --set /etc/glance/glance-registry.conf DEFAULT notification_driver noop
+    fi
+    if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
+	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	    memcached_servers ${CONTROLLER}:11211
     fi
 
     su -s /bin/sh -c "/usr/bin/glance-manage db_sync" glance
@@ -920,17 +925,17 @@ if [ -z "${NOVA_DBPASS}" ]; then
 
 	if [ $KEYSTONEAPIVERSION -lt 3 ]; then
 	    __openstack endpoint create \
-		--publicurl http://$CONTROLLER:8774/v2/%\(tenant_id\)s \
-		--internalurl http://$CONTROLLER:8774/v2/%\(tenant_id\)s \
-		--adminurl http://$CONTROLLER:8774/v2/%\(tenant_id\)s \
+		--publicurl http://$CONTROLLER:8774/${NAPISTR}/%\(tenant_id\)s \
+		--internalurl http://$CONTROLLER:8774/${NAPISTR}/%\(tenant_id\)s \
+		--adminurl http://$CONTROLLER:8774/${NAPISTR}/%\(tenant_id\)s \
 		--region $REGION compute
 	else
 	    __openstack endpoint create --region $REGION \
-		compute public http://${CONTROLLER}:8774/v2/%\(tenant_id\)s
+		compute public http://${CONTROLLER}:8774/${NAPISTR}/%\(tenant_id\)s
 	    __openstack endpoint create --region $REGION \
-		compute internal http://${CONTROLLER}:8774/v2/%\(tenant_id\)s
+		compute internal http://${CONTROLLER}:8774/${NAPISTR}/%\(tenant_id\)s
 	    __openstack endpoint create --region $REGION \
-		compute admin http://${CONTROLLER}:8774/v2/%\(tenant_id\)s
+		compute admin http://${CONTROLLER}:8774/${NAPISTR}/%\(tenant_id\)s
 	fi
     fi
 
@@ -958,12 +963,11 @@ EOF
     fi
 
     crudini --set /etc/nova/nova.conf database connection \
-	"mysql://nova:$NOVA_DBPASS@$CONTROLLER/nova"
+	"${DBDSTRING}://nova:$NOVA_DBPASS@$CONTROLLER/nova"
     if [ $OSVERSION -ge $OSMITAKA ]; then
 	crudini --set /etc/nova/nova.conf api_database connection \
-	    "mysql://nova:$NOVA_DBPASS@$CONTROLLER/nova_api"
+	    "${DBDSTRING}://nova:$NOVA_DBPASS@$CONTROLLER/nova_api"
     fi
-    crudini --set /etc/nova/nova.conf DEFAULT rpc_backend rabbit
     crudini --set /etc/nova/nova.conf DEFAULT auth_strategy keystone
     crudini --set /etc/nova/nova.conf DEFAULT my_ip ${MGMTIP}
     if [ $OSVERSION -lt $OSMITAKA ]; then
@@ -976,10 +980,23 @@ EOF
     crudini --set /etc/nova/nova.conf DEFAULT debug ${DEBUG_LOGGING}
 
     if [ $OSVERSION -lt $OSKILO ]; then
+	crudini --set /etc/nova/nova.conf DEFAULT rpc_backend rabbit
 	crudini --set /etc/nova/nova.conf DEFAULT rabbit_host $CONTROLLER
 	crudini --set /etc/nova/nova.conf DEFAULT rabbit_userid ${RABBIT_USER}
 	crudini --set /etc/nova/nova.conf DEFAULT rabbit_password "${RABBIT_PASS}"
+    elif [ $OSVERSION -lt $OSNEWTON ]; then
+	crudini --set /etc/nova/nova.conf DEFAULT rpc_backend rabbit
+	crudini --set /etc/nova/nova.conf oslo_messaging_rabbit \
+	    rabbit_host $CONTROLLER
+	crudini --set /etc/nova/nova.conf oslo_messaging_rabbit \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/nova/nova.conf oslo_messaging_rabbit \
+	    rabbit_password "${RABBIT_PASS}"
+    else
+	crudini --set /etc/nova/nova.conf DEFAULT transport_url $RABBIT_URL
+    fi
 
+    if [ $OSVERSION -lt $OSKILO ]; then
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
@@ -991,13 +1008,6 @@ EOF
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
 	    admin_password "${NOVA_PASS}"
     else
-	crudini --set /etc/nova/nova.conf oslo_messaging_rabbit \
-	    rabbit_host $CONTROLLER
-	crudini --set /etc/nova/nova.conf oslo_messaging_rabbit \
-	    rabbit_userid ${RABBIT_USER}
-	crudini --set /etc/nova/nova.conf oslo_messaging_rabbit \
-	    rabbit_password "${RABBIT_PASS}"
-
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
@@ -1014,17 +1024,17 @@ EOF
 	    username nova
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
 	    password "${NOVA_PASS}"
+    fi
 
-	if [ $OSVERSION -ge $OSMITAKA ]; then
-	    crudini --set /etc/nova/nova.conf keystone_authtoken \
-		memcached_servers ${CONTROLLER}:11211
-	fi
+    if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
+	crudini --set /etc/nova/nova.conf keystone_authtoken \
+	    memcached_servers ${CONTROLLER}:11211
+    fi
 
-	if [ $OSVERSION -ge $OSMITAKA ]; then
-	    crudini --set /etc/nova/nova.conf DEFAULT use_neutron True
-	    crudini --set /etc/nova/nova.conf \
-		DEFAULT firewall_driver nova.virt.firewall.NoopFirewallDriver
-	fi
+    if [ $OSVERSION -ge $OSMITAKA ]; then
+	crudini --set /etc/nova/nova.conf DEFAULT use_neutron True
+	crudini --set /etc/nova/nova.conf \
+	    DEFAULT firewall_driver nova.virt.firewall.NoopFirewallDriver
     fi
 
     if [ $OSVERSION -lt $OSLIBERTY ]; then
@@ -1093,6 +1103,30 @@ EOF
     service_enable nova-serialproxy
 
     rm -f /var/lib/nova/nova.sqlite
+
+    #
+    # Ensure that the default flavors exist.  They seem not to on Newton...
+    #
+    /usr/bin/openstack flavor show m1.tiny 2>&1 >/dev/null
+    if [ ! $? -eq 0 ]; then
+	__openstack flavor create m1.tiny --id 1 --ram 512 --disk 1 --vcpus 1 --public
+    fi
+    /usr/bin/openstack flavor show m1.small 2>&1 >/dev/null
+    if [ ! $? -eq 0 ]; then
+	__openstack flavor create m1.small --id 2 --ram 2048 --disk 20 --vcpus 1 --public
+    fi
+    /usr/bin/openstack flavor show m1.medium 2>&1 >/dev/null
+    if [ ! $? -eq 0 ]; then
+	__openstack flavor create m1.medium --id 3 --ram 4096 --disk 40 --vcpus 2 --public
+    fi
+    /usr/bin/openstack flavor show m1.large 2>&1 >/dev/null
+    if [ ! $? -eq 0 ]; then
+	__openstack flavor create m1.large --id 4 --ram 8192 --disk 80 --vcpus 4 --public
+    fi
+    /usr/bin/openstack flavor show m1.xlarge 2>&1 >/dev/null
+    if [ ! $? -eq 0 ]; then
+	__openstack flavor create m1.xlarge --id 5 --ram 16384 --disk 160 --vcpus 8 --public
+    fi
 
     echo "NOVA_DBPASS=\"${NOVA_DBPASS}\"" >> $SETTINGS
     echo "NOVA_PASS=\"${NOVA_PASS}\"" >> $SETTINGS
@@ -1194,13 +1228,12 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
     #fi
 
     crudini --set /etc/neutron/neutron.conf \
-	database connection "mysql://neutron:$NEUTRON_DBPASS@$CONTROLLER/neutron"
+	database connection "${DBDSTRING}://neutron:$NEUTRON_DBPASS@$CONTROLLER/neutron"
 
     crudini --del /etc/neutron/neutron.conf keystone_authtoken auth_host
     crudini --del /etc/neutron/neutron.conf keystone_authtoken auth_port
     crudini --del /etc/neutron/neutron.conf keystone_authtoken auth_protocol
 
-    crudini --set /etc/neutron/neutron.conf DEFAULT rpc_backend rabbit
     crudini --set /etc/neutron/neutron.conf DEFAULT auth_strategy keystone
     crudini --set /etc/neutron/neutron.conf DEFAULT verbose ${VERBOSE_LOGGING}
     crudini --set /etc/neutron/neutron.conf DEFAULT debug ${DEBUG_LOGGING}
@@ -1213,10 +1246,23 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
     fi
 
     if [ $OSVERSION -lt $OSKILO ]; then
+	crudini --set /etc/neutron/neutron.conf DEFAULT rpc_backend rabbit
 	crudini --set /etc/neutron/neutron.conf DEFAULT rabbit_host $CONTROLLER
 	crudini --set /etc/neutron/neutron.conf DEFAULT rabbit_userid ${RABBIT_USER}
 	crudini --set /etc/neutron/neutron.conf DEFAULT rabbit_password "${RABBIT_PASS}"
+    elif [ $OSVERSION -lt $OSNEWTON ]; then
+	crudini --set /etc/neutron/neutron.conf DEFAULT rpc_backend rabbit
+	crudini --set /etc/neutron/neutron.conf oslo_messaging_rabbit \
+	    rabbit_host $CONTROLLER
+	crudini --set /etc/neutron/neutron.conf oslo_messaging_rabbit \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/neutron/neutron.conf oslo_messaging_rabbit \
+	    rabbit_password "${RABBIT_PASS}"
+    else
+	crudini --set /etc/neutron/neutron.conf DEFAULT transport_url $RABBIT_URL
+    fi
 
+    if [ $OSVERSION -lt $OSKILO ]; then
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
@@ -1228,13 +1274,6 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	    admin_password "${NEUTRON_PASS}"
     else
-	crudini --set /etc/neutron/neutron.conf oslo_messaging_rabbit \
-	    rabbit_host $CONTROLLER
-	crudini --set /etc/neutron/neutron.conf oslo_messaging_rabbit \
-	    rabbit_userid ${RABBIT_USER}
-	crudini --set /etc/neutron/neutron.conf oslo_messaging_rabbit \
-	    rabbit_password "${RABBIT_PASS}"
-
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
@@ -1251,11 +1290,10 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	    username neutron
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	    password "${NEUTRON_PASS}"
-
-	if [ $OSVERSION -ge $OSMITAKA ]; then
-	    crudini --set /etc/neutron/neutron.conf keystone_authtoken \
-		memcached_servers ${CONTROLLER}:11211
-	fi
+    fi
+    if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
+	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
+	    memcached_servers ${CONTROLLER}:11211
     fi
 
     crudini --set /etc/neutron/neutron.conf DEFAULT \
@@ -1263,7 +1301,7 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
     crudini --set /etc/neutron/neutron.conf DEFAULT \
 	notify_nova_on_port_data_changes True
     crudini --set /etc/neutron/neutron.conf DEFAULT \
-	nova_url http://$CONTROLLER:8774/v2
+	nova_url http://$CONTROLLER:8774/${NAPISTR}
 
     if [ $OSVERSION -eq $OSJUNO ]; then
 	service_tenant_id=`keystone tenant-get service | grep id | cut -d '|' -f 3`
@@ -1286,11 +1324,10 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	crudini --set /etc/neutron/neutron.conf nova project_name service
 	crudini --set /etc/neutron/neutron.conf nova username nova
 	crudini --set /etc/neutron/neutron.conf nova password ${NOVA_PASS}
-
-	if [ $OSVERSION -ge $OSMITAKA ]; then
-	    crudini --set /etc/neutron/neutron.conf nova \
-		memcached_servers ${CONTROLLER}:11211
-	fi
+    fi
+    if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
+	crudini --set /etc/neutron/neutron.conf nova \
+	    memcached_servers ${CONTROLLER}:11211
     fi
 
     crudini --set /etc/neutron/neutron.conf DEFAULT \
@@ -1385,11 +1422,10 @@ EOF
 	crudini --set /etc/nova/nova.conf neutron \
 	    password ${NEUTRON_PASS}
 	crudini --set /etc/nova/nova.conf neutron region_name $REGION
-
-	if [ $OSVERSION -ge $OSMITAKA ]; then
-	    crudini --set /etc/nova/nova.conf neutron \
-		memcached_servers ${CONTROLLER}:11211
-	fi
+    fi
+    if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
+	crudini --set /etc/nova/nova.conf neutron \
+	    memcached_servers ${CONTROLLER}:11211
     fi
     crudini --set /etc/nova/nova.conf neutron \
 	service_metadata_proxy True
@@ -1521,6 +1557,21 @@ if [ -z "${NEUTRON_NETWORKS_DONE}" ]; then
 	    | mysql --password=${DB_ROOT_PASS} neutron
     done
 
+    # Support newer pluggable ipamallocationpools, too.
+    if [ $OSVERSION -ge $OSNEWTON ]; then
+	IPAMSID=`echo "select id from ipamsubnets where neutron_subnet_id='$SID'" | mysql -N --password=$NEUTRON_DBPASS neutron`
+	if [ -z "$IPAMSID" ]; then
+	    echo "WARNING: could not find ipamsubnetid from ipamsubnets post-Newton!"
+	else
+	    echo "delete from ipamallocationpools where subnet_id='$IPAMSID'" \
+		| mysql --password=${DB_ROOT_PASS} neutron
+	    for ip in $PUBLICADDRS ; do
+		echo "insert into ipamallocationpools values (UUID(),'$IPAMSID','$ip','$ip')" \
+		    | mysql --password=${DB_ROOT_PASS} neutron
+	    done
+	fi
+    fi
+
     echo "NEUTRON_NETWORKS_DONE=\"${NEUTRON_NETWORKS_DONE}\"" >> $SETTINGS
     logtend "neutron-network-ext-float"
 fi
@@ -1575,6 +1626,7 @@ EOF
     fi
 
     if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
+	IDVERS=3
 	grep OPENSTACK_KEYSTONE_URL /etc/openstack-dashboard/local_settings.py
 	if [ $? -eq 0 ]; then
 	    sed -i -e "s|^.*OPENSTACK_KEYSTONE_URL.*=.*\$|OPENSTACK_KEYSTONE_URL = \"http://%s:5000/v3\" % OPENSTACK_HOST|" \
@@ -1584,14 +1636,6 @@ EOF
 OPENSTACK_KEYSTONE_URL = "http://%s:5000/v3" % OPENSTACK_HOST
 EOF
 	fi
-	# Just slap this in :(.
-#XXX "image": 2,
-	cat <<EOF >> /etc/openstack-dashboard/local_settings.py
-OPENSTACK_API_VERSIONS = {
-    "identity": 3,
-    "volume": 2,
-}
-EOF
 	grep OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT /etc/openstack-dashboard/local_settings.py
 	if [ $? -eq 0 ]; then
 	    sed -i -e "s|^.*OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT.*=.*\$|OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = True|" \
@@ -1610,6 +1654,33 @@ EOF
 OPENSTACK_KEYSTONE_DEFAULT_DOMAIN = 'default'
 EOF
 	fi
+    else
+	IDVERS=2
+    fi
+    # Just slap this in :(.
+    if [ $OSVERSION -ge $OSMITAKA ]; then
+	IMAGEVERS='"image": 2,'
+    else
+	IMAGEVERS=""
+    fi
+    cat <<EOF >> /etc/openstack-dashboard/local_settings.py
+OPENSTACK_API_VERSIONS = {
+    "identity": $IDVERS,
+    "volume": 2,
+    $IMAGEVERS
+}
+EOF
+
+    #
+    # On some versions, we have special patches to customize horizon.
+    # For instance, on Newton, we don't want volume creation to be the
+    # default.
+    #
+    if [ $OSVERSION -eq $OSNEWTON ]; then
+	patch -p0 -d / < $DIRNAME/etc/horizon-${OSCODENAME}-no-default-volcreate.patch
+	# Rebuild after patching javascripts.
+	/usr/share/openstack-dashboard/manage.py collectstatic --noinput \
+	    && /usr/share/openstack-dashboard/manage.py compress
     fi
 
     service_restart apache2
@@ -1705,23 +1776,35 @@ if [ -z "${CINDER_DBPASS}" ]; then
     maybe_install_packages cinder-api cinder-scheduler python-cinderclient
 
     crudini --set /etc/cinder/cinder.conf \
-	database connection "mysql://cinder:$CINDER_DBPASS@$CONTROLLER/cinder"
+	database connection "${DBDSTRING}://cinder:$CINDER_DBPASS@$CONTROLLER/cinder"
 
     crudini --del /etc/cinder/cinder.conf keystone_authtoken auth_host
     crudini --del /etc/cinder/cinder.conf keystone_authtoken auth_port
     crudini --del /etc/cinder/cinder.conf keystone_authtoken auth_protocol
 
-    crudini --set /etc/cinder/cinder.conf DEFAULT rpc_backend rabbit
     crudini --set /etc/cinder/cinder.conf DEFAULT auth_strategy keystone
     crudini --set /etc/cinder/cinder.conf DEFAULT verbose ${VERBOSE_LOGGING}
     crudini --set /etc/cinder/cinder.conf DEFAULT debug ${DEBUG_LOGGING}
     crudini --set /etc/cinder/cinder.conf DEFAULT my_ip ${MGMTIP}
 
     if [ $OSVERSION -lt $OSKILO ]; then
+	crudini --set /etc/cinder/cinder.conf DEFAULT rpc_backend rabbit
 	crudini --set /etc/cinder/cinder.conf DEFAULT rabbit_host $CONTROLLER
 	crudini --set /etc/cinder/cinder.conf DEFAULT rabbit_userid ${RABBIT_USER}
 	crudini --set /etc/cinder/cinder.conf DEFAULT rabbit_password "${RABBIT_PASS}"
+    elif [ $OSVERSION -lt $OSNEWTON ]; then
+	crudini --set /etc/cinder/cinder.conf DEFAULT rpc_backend rabbit
+	crudini --set /etc/cinder/cinder.conf oslo_messaging_rabbit \
+	    rabbit_host $CONTROLLER
+	crudini --set /etc/cinder/cinder.conf oslo_messaging_rabbit \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/cinder/cinder.conf oslo_messaging_rabbit \
+	    rabbit_password "${RABBIT_PASS}"
+    else
+	crudini --set /etc/cinder/cinder.conf DEFAULT transport_url $RABBIT_URL
+    fi
 
+    if [ $OSVERSION -lt $OSKILO ]; then
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
@@ -1733,13 +1816,6 @@ if [ -z "${CINDER_DBPASS}" ]; then
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	    admin_password "${CINDER_PASS}"
     else
-	crudini --set /etc/cinder/cinder.conf oslo_messaging_rabbit \
-	    rabbit_host $CONTROLLER
-	crudini --set /etc/cinder/cinder.conf oslo_messaging_rabbit \
-	    rabbit_userid ${RABBIT_USER}
-	crudini --set /etc/cinder/cinder.conf oslo_messaging_rabbit \
-	    rabbit_password "${RABBIT_PASS}"
-
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
@@ -1756,11 +1832,10 @@ if [ -z "${CINDER_DBPASS}" ]; then
 	    username cinder
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	    password "${CINDER_PASS}"
-
-	if [ $OSVERSION -ge $OSMITAKA ]; then
-	    crudini --set /etc/cinder/cinder.conf keystone_authtoken \
-		memcached_servers ${CONTROLLER}:11211
-	fi
+    fi
+    if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
+	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
+	    memcached_servers ${CONTROLLER}:11211
     fi
 
     crudini --set /etc/cinder/cinder.conf DEFAULT glance_host ${CONTROLLER}
@@ -1862,13 +1937,12 @@ if [ $OSVERSION -ge $OSMITAKA -a -z "${MANILA_DBPASS}" ]; then
     maybe_install_packages manila-api manila-scheduler python-manilaclient
 
     crudini --set /etc/manila/manila.conf \
-	database connection "mysql://manila:$MANILA_DBPASS@$CONTROLLER/manila"
+	database connection "${DBDSTRING}://manila:$MANILA_DBPASS@$CONTROLLER/manila"
 
     crudini --del /etc/manila/manila.conf keystone_authtoken auth_host
     crudini --del /etc/manila/manila.conf keystone_authtoken auth_port
     crudini --del /etc/manila/manila.conf keystone_authtoken auth_protocol
 
-    crudini --set /etc/manila/manila.conf DEFAULT rpc_backend rabbit
     crudini --set /etc/manila/manila.conf DEFAULT auth_strategy keystone
     crudini --set /etc/manila/manila.conf DEFAULT verbose ${VERBOSE_LOGGING}
     crudini --set /etc/manila/manila.conf DEFAULT debug ${DEBUG_LOGGING}
@@ -1878,12 +1952,17 @@ if [ $OSVERSION -ge $OSMITAKA -a -z "${MANILA_DBPASS}" ]; then
     crudini --set /etc/manila/manila.conf DEFAULT \
 	rootwrap_config /etc/manila/rootwrap.conf
 
-    crudini --set /etc/manila/manila.conf oslo_messaging_rabbit \
-	rabbit_host $CONTROLLER
-    crudini --set /etc/manila/manila.conf oslo_messaging_rabbit \
-	rabbit_userid ${RABBIT_USER}
-    crudini --set /etc/manila/manila.conf oslo_messaging_rabbit \
-	rabbit_password "${RABBIT_PASS}"
+    if [ $OSVERSION -lt $OSNEWTON ]; then
+	crudini --set /etc/manila/manila.conf DEFAULT rpc_backend rabbit
+	crudini --set /etc/manila/manila.conf oslo_messaging_rabbit \
+	    rabbit_host $CONTROLLER
+	crudini --set /etc/manila/manila.conf oslo_messaging_rabbit \
+   	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/manila/manila.conf oslo_messaging_rabbit \
+	    rabbit_password "${RABBIT_PASS}"
+    else
+	crudini --set /etc/manila/manila.conf DEFAULT transport_url $RABBIT_URL
+    fi
 
     crudini --set /etc/manila/manila.conf keystone_authtoken \
 	memcached_servers ${CONTROLLER}:11211
@@ -1969,6 +2048,13 @@ EOF
 	else
 	    echo "Error: python-manila-ui does not appear to have templates, but you have requested not to update our Apt cache, so we can't download the source pagckage."
 	fi
+    fi
+
+    #
+    # Ugh, more Manila bugs
+    #
+    if [ $OSVERSION -eq $OSNEWTON -a -f $DIRNAME/etc/manila-${OSCODENAME}-noset.patch ]; then
+	patch -p0 -d / < $DIRNAME/etc/manila-${OSCODENAME}-noset.patch
     fi
 
     service_restart apache2
@@ -2106,10 +2192,6 @@ if [ -z "${SWIFT_PASS}" ]; then
 	    filter:authtoken auth_uri "http://${CONTROLLER}:5000"
 	crudini --set /etc/swift/proxy-server.conf \
 	    filter:authtoken auth_url "http://${CONTROLLER}:35357"
-	if [ $OSVERSION -ge $OSMITAKA ]; then
-	    crudini --set /etc/swift/proxy-server.conf \
-		memcached_servers ${CONTROLLER}:11211
-	fi
 	crudini --set /etc/swift/proxy-server.conf \
 	    filter:authtoken ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/swift/proxy-server.conf \
@@ -2122,6 +2204,10 @@ if [ -z "${SWIFT_PASS}" ]; then
 	    filter:authtoken username swift
 	crudini --set /etc/swift/proxy-server.conf \
 	    filter:authtoken password "${SWIFT_PASS}"
+    fi
+    if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
+	crudini --set /etc/swift/proxy-server.conf \
+	    memcached_servers ${CONTROLLER}:11211
     fi
     crudini --set /etc/swift/proxy-server.conf \
 	filter:authtoken delay_auth_decision true
@@ -2322,8 +2408,7 @@ if [ -z "${HEAT_DBPASS}" ]; then
     maybe_install_packages heat-api heat-api-cfn heat-engine python-heatclient
 
     crudini --set /etc/heat/heat.conf database \
-	connection "mysql://heat:${HEAT_DBPASS}@$CONTROLLER/heat"
-    crudini --set /etc/heat/heat.conf DEFAULT rpc_backend rabbit
+	connection "${DBDSTRING}://heat:${HEAT_DBPASS}@$CONTROLLER/heat"
     crudini --set /etc/heat/heat.conf DEFAULT auth_strategy keystone
     crudini --set /etc/heat/heat.conf DEFAULT my_ip ${MGMTIP}
     crudini --set /etc/heat/heat.conf glance host $CONTROLLER
@@ -2331,10 +2416,23 @@ if [ -z "${HEAT_DBPASS}" ]; then
     crudini --set /etc/heat/heat.conf DEFAULT debug ${DEBUG_LOGGING}
 
     if [ $OSVERSION -lt $OSKILO ]; then
+	crudini --set /etc/heat/heat.conf DEFAULT rpc_backend rabbit
 	crudini --set /etc/heat/heat.conf DEFAULT rabbit_host $CONTROLLER
 	crudini --set /etc/heat/heat.conf DEFAULT rabbit_userid ${RABBIT_USER}
 	crudini --set /etc/heat/heat.conf DEFAULT rabbit_password "${RABBIT_PASS}"
+    elif [ $OSVERSION -lt $OSNEWTON ]; then
+	crudini --set /etc/heat/heat.conf DEFAULT rpc_backend rabbit
+	crudini --set /etc/heat/heat.conf oslo_messaging_rabbit \
+	    rabbit_host $CONTROLLER
+	crudini --set /etc/heat/heat.conf oslo_messaging_rabbit \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/heat/heat.conf oslo_messaging_rabbit \
+	    rabbit_password "${RABBIT_PASS}"
+    else
+	crudini --set /etc/heat/heat.conf DEFAULT transport_url $RABBIT_URL
+    fi
 
+    if [ $OSVERSION -lt $OSKILO ]; then
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
@@ -2346,13 +2444,6 @@ if [ -z "${HEAT_DBPASS}" ]; then
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
 	    admin_password "${HEAT_PASS}"
     else
-	crudini --set /etc/heat/heat.conf oslo_messaging_rabbit \
-	    rabbit_host $CONTROLLER
-	crudini --set /etc/heat/heat.conf oslo_messaging_rabbit \
-	    rabbit_userid ${RABBIT_USER}
-	crudini --set /etc/heat/heat.conf oslo_messaging_rabbit \
-	    rabbit_password "${RABBIT_PASS}"
-
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
@@ -2369,11 +2460,10 @@ if [ -z "${HEAT_DBPASS}" ]; then
 	    username heat
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
 	    password "${HEAT_PASS}"
-
-	if [ $OSVERSION -ge $OSMITAKA ]; then
-	    crudini --set /etc/heat/heat.conf keystone_authtoken \
-		memcached_servers ${CONTROLLER}:11211
-	fi
+    fi
+    if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
+	crudini --set /etc/heat/heat.conf keystone_authtoken \
+	    memcached_servers ${CONTROLLER}:11211
     fi
 
     if [ $OSVERSION -gt $OSMITAKA ]; then
@@ -2471,7 +2561,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	MDONE=1
 	while [ $MDONE -ne 0 ]; do 
 	    sleep 1
-	    mongo --host ${CONTROLLER} --eval "db = db.getSiblingDB(\"ceilometer\"); db.addUser({user: \"ceilometer\", pwd: \"${CEILOMETER_DBPASS}\", roles: [ \"readWrite\", \"dbAdmin\" ]})"
+	    mongo --host ${MGMTIP} --eval "db = db.getSiblingDB(\"ceilometer\"); db.addUser({user: \"ceilometer\", pwd: \"${CEILOMETER_DBPASS}\", roles: [ \"readWrite\", \"dbAdmin\" ]})"
 	    MDONE=$?
 	done
     else
@@ -2527,13 +2617,12 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 
     if [ "${CEILOMETER_USE_MONGODB}" = "1" ]; then
 	crudini --set /etc/ceilometer/ceilometer.conf database \
-	    connection "mongodb://ceilometer:${CEILOMETER_DBPASS}@$CONTROLLER:27017/ceilometer" 
+	    connection "mongodb://ceilometer:${CEILOMETER_DBPASS}@${MGMTIP}:27017/ceilometer" 
     else
 	crudini --set /etc/ceilometer/ceilometer.conf database \
-	    connection "mysql://ceilometer:${CEILOMETER_DBPASS}@$CONTROLLER/ceilometer?charset=utf8"
+	    connection "${DBDSTRING}://ceilometer:${CEILOMETER_DBPASS}@$CONTROLLER/ceilometer?charset=utf8"
     fi
 
-    crudini --set /etc/ceilometer/ceilometer.conf DEFAULT rpc_backend rabbit
     crudini --set /etc/ceilometer/ceilometer.conf DEFAULT auth_strategy keystone
     crudini --set /etc/ceilometer/ceilometer.conf glance host $CONTROLLER
     crudini --set /etc/ceilometer/ceilometer.conf DEFAULT verbose ${VERBOSE_LOGGING}
@@ -2542,10 +2631,23 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	log_dir /var/log/ceilometer
 
     if [ $OSVERSION -lt $OSKILO ]; then
+	crudini --set /etc/ceilometer/ceilometer.conf DEFAULT rpc_backend rabbit
 	crudini --set /etc/ceilometer/ceilometer.conf DEFAULT rabbit_host $CONTROLLER
 	crudini --set /etc/ceilometer/ceilometer.conf DEFAULT rabbit_userid ${RABBIT_USER}
 	crudini --set /etc/ceilometer/ceilometer.conf DEFAULT rabbit_password "${RABBIT_PASS}"
+    elif [ $OSVERSION -lt $OSNEWTON ]; then
+	crudini --set /etc/ceilometer/ceilometer.conf DEFAULT rpc_backend rabbit
+	crudini --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit \
+	    rabbit_host $CONTROLLER
+	crudini --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit \
+	    rabbit_password "${RABBIT_PASS}"
+    else
+	crudini --set /etc/ceilometer/ceilometer.conf DEFAULT transport_url $RABBIT_URL
+    fi
 
+    if [ $OSVERSION -lt $OSKILO ]; then
 	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
@@ -2557,21 +2659,10 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	    admin_password "${CEILOMETER_PASS}"
     else
-	crudini --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit \
-	    rabbit_host $CONTROLLER
-	crudini --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit \
-	    rabbit_userid ${RABBIT_USER}
-	crudini --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit \
-	    rabbit_password "${RABBIT_PASS}"
-
 	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:35357
-	if [ $OSVERSION -ge $OSMITAKA ]; then
-	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-		memcached_servers  ${CONTROLLER}:11211
-	fi
 	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
@@ -2584,6 +2675,10 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    username ceilometer
 	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	    password "${CEILOMETER_PASS}"
+    fi
+    if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
+	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	    memcached_servers  ${CONTROLLER}:11211
     fi
 
     if [ $OSVERSION -lt $OSMITAKA ]; then
@@ -2620,11 +2715,10 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    interface internalURL
 	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
 	    region_name $REGION
-
-	if [ $OSVERSION -ge $OSMITAKA ]; then
-	    crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
-		memcached_servers ${CONTROLLER}:11211
-	fi
+    fi
+    if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
+	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
+	    memcached_servers ${CONTROLLER}:11211
     fi
 
     crudini --set /etc/ceilometer/ceilometer.conf notification \
@@ -2986,32 +3080,35 @@ if [ -z "${TROVE_DBPASS}" ]; then
     crudini --set /etc/trove/trove.conf DEFAULT debug ${DEBUG_LOGGING}
     crudini --set /etc/trove/trove.conf DEFAULT log_dir /var/log/trove
     crudini --set /etc/ceilometer/ceilometer.conf DEFAULT bind_host ${MGMTIP}
-    crudini --set /etc/trove/trove.conf DEFAULT rpc_backend rabbit
     if [ $OSVERSION -lt $OSLIBERTY ]; then
+	crudini --set /etc/trove/trove.conf DEFAULT rpc_backend rabbit
 	crudini --set /etc/trove/trove.conf DEFAULT rabbit_host ${CONTROLLER}
 	crudini --set /etc/trove/trove.conf DEFAULT rabbit_userid ${RABBIT_USER}
 	crudini --set /etc/trove/trove.conf DEFAULT rabbit_password ${RABBIT_PASS}
-    else
+    elif [ $OSVERSION -lt $OSNEWTON ]; then
+	crudini --set /etc/trove/trove.conf DEFAULT rpc_backend rabbit
 	crudini --set /etc/trove/trove.conf oslo_messaging_rabbit \
 	    rabbit_host ${CONTROLLER}
 	crudini --set /etc/trove/trove.conf oslo_messaging_rabbit \
 	    rabbit_userid ${RABBIT_USER}
 	crudini --set /etc/trove/trove.conf oslo_messaging_rabbit \
 	    rabbit_password ${RABBIT_PASS}
+    else
+	crudini --set /etc/trove/trove.conf DEFAULT transport_url $RABBIT_URL
     fi
     crudini --set /etc/trove/trove.conf DEFAULT \
 	trove_auth_url http://${CONTROLLER}:5000/${KAPISTR}
     crudini --set /etc/trove/trove.conf DEFAULT \
-	nova_compute_url http://${CONTROLLER}:8774/v2
+	nova_compute_url http://${CONTROLLER}:8774/${NAPISTR}
     crudini --set /etc/trove/trove.conf DEFAULT \
 	cinder_url http://${CONTROLLER}:8776/v1
     crudini --set /etc/trove/trove.conf DEFAULT \
 	swift_url http://${CONTROLLER}:8080/v1/AUTH_
     # XXX: not sure when this got replaced by database::connection...
     crudini --set /etc/trove/trove.conf DEFAULT \
-	sql_connection mysql://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
+	sql_connection ${DBDSTRING}://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
     crudini --set /etc/trove/trove.conf \
-	database connection mysql://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
+	database connection ${DBDSTRING}://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
     crudini --set /etc/trove/trove.conf DEFAULT \
 	notifier_queue_hostname ${CONTROLLER}
 
@@ -3022,36 +3119,41 @@ if [ -z "${TROVE_DBPASS}" ]; then
 	debug ${DEBUG_LOGGING}
     crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
 	log_dir /var/log/trove
-    crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
-	rpc_backend rabbit
     if [ $OSVERSION -lt $OSLIBERTY ]; then
 	crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	    rpc_backend rabbit
+	crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
 	    rabbit_host ${CONTROLLER}
 	crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
 	    rabbit_userid ${RABBIT_USER}
 	crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	    rabbit_password ${RABBIT_PASS}
+    elif [ $OSVERSION -lt $OSNEWTON ]; then
+	crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	    rpc_backend rabbit
+	crudini --set /etc/trove/trove-taskmanager.conf oslo_messaging_rabbit \
+	    rabbit_host ${CONTROLLER}
+	crudini --set /etc/trove/trove-taskmanager.conf oslo_messaging_rabbit \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/trove/trove-taskmanager.conf oslo_messaging_rabbit \
 	    rabbit_password ${RABBIT_PASS}
     else
-	crudini --set /etc/trove/trove-taskmanager.conf oslo_messaging_rabbit \
-	    rabbit_host ${CONTROLLER}
-	crudini --set /etc/trove/trove-taskmanager.conf oslo_messaging_rabbit \
-	    rabbit_userid ${RABBIT_USER}
-	crudini --set /etc/trove/trove-taskmanager.conf oslo_messaging_rabbit \
-	    rabbit_password ${RABBIT_PASS}
+	crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	    transport_url $RABBIT_URL
     fi
     crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
 	trove_auth_url http://${CONTROLLER}:5000/${KAPISTR}
     crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
-	nova_compute_url http://${CONTROLLER}:8774/v2
+	nova_compute_url http://${CONTROLLER}:8774/${NAPISTR}
     crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
 	cinder_url http://${CONTROLLER}:8776/v1
     crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
 	swift_url http://${CONTROLLER}:8080/v1/AUTH_
     # XXX: not sure when this got replaced by database::connection...
     crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
-	sql_connection mysql://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
+	sql_connection ${DBDSTRING}://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
     crudini --set /etc/trove/trove-taskmanager.conf \
-	database connection mysql://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
+	database connection ${DBDSTRING}://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
     crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
 	notifier_queue_hostname ${CONTROLLER}
 
@@ -3062,36 +3164,41 @@ if [ -z "${TROVE_DBPASS}" ]; then
 	debug ${DEBUG_LOGGING}
     crudini --set /etc/trove/trove-conductor.conf DEFAULT \
 	log_dir /var/log/trove
-    crudini --set /etc/trove/trove-conductor.conf DEFAULT \
-	rpc_backend rabbit
     if [ $OSVERSION -lt $OSLIBERTY ]; then
 	crudini --set /etc/trove/trove-conductor.conf DEFAULT \
+	    rpc_backend rabbit
+	crudini --set /etc/trove/trove-conductor.conf DEFAULT \
 	    rabbit_host ${CONTROLLER}
 	crudini --set /etc/trove/trove-conductor.conf DEFAULT \
 	    rabbit_userid ${RABBIT_USER}
 	crudini --set /etc/trove/trove-conductor.conf DEFAULT \
+	    rabbit_password ${RABBIT_PASS}
+    elif [ $OSVERSION -lt $OSNEWTON ]; then
+	crudini --set /etc/trove/trove-conductor.conf DEFAULT \
+	    rpc_backend rabbit
+	crudini --set /etc/trove/trove-conductor.conf oslo_messaging_rabbit \
+	    rabbit_host ${CONTROLLER}
+	crudini --set /etc/trove/trove-conductor.conf oslo_messaging_rabbit \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/trove/trove-conductor.conf oslo_messaging_rabbit \
 	    rabbit_password ${RABBIT_PASS}
     else
-	crudini --set /etc/trove/trove-conductor.conf oslo_messaging_rabbit \
-	    rabbit_host ${CONTROLLER}
-	crudini --set /etc/trove/trove-conductor.conf oslo_messaging_rabbit \
-	    rabbit_userid ${RABBIT_USER}
-	crudini --set /etc/trove/trove-conductor.conf oslo_messaging_rabbit \
-	    rabbit_password ${RABBIT_PASS}
+	crudini --set /etc/trove/trove-conductor.conf DEFAULT \
+	    transport_url $RABBIT_URL
     fi
     crudini --set /etc/trove/trove-conductor.conf DEFAULT \
 	trove_auth_url http://${CONTROLLER}:5000/${KAPISTR}
     crudini --set /etc/trove/trove-conductor.conf DEFAULT \
-	nova_compute_url http://${CONTROLLER}:8774/v2
+	nova_compute_url http://${CONTROLLER}:8774/${NAPISTR}
     crudini --set /etc/trove/trove-conductor.conf DEFAULT \
 	cinder_url http://${CONTROLLER}:8776/v1
     crudini --set /etc/trove/trove-conductor.conf DEFAULT \
 	swift_url http://${CONTROLLER}:8080/v1/AUTH_
     # XXX: not sure when this got replaced by database::connection...
     crudini --set /etc/trove/trove-conductor.conf DEFAULT \
-	sql_connection mysql://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
+	sql_connection ${DBDSTRING}://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
     crudini --set /etc/trove/trove-conductor.conf \
-	database connection mysql://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
+	database connection ${DBDSTRING}://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
     crudini --set /etc/trove/trove-conductor.conf DEFAULT \
 	notifier_queue_hostname ${CONTROLLER}
 
@@ -3158,11 +3265,10 @@ EOF
 	    password ${TROVE_PASS}
 	crudini --set /etc/trove/trove.conf keystone_authtoken \
 	    region_name $REGION
-
-	if [ $OSVERSION -ge $OSMITAKA ]; then
-	    crudini --set /etc/trove/trove.conf keystone_authtoken \
-		memcached_servers ${CONTROLLER}:11211
-	fi
+    fi
+    if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
+	crudini --set /etc/trove/trove.conf keystone_authtoken \
+	    memcached_servers ${CONTROLLER}:11211
     fi
 
     sed -i -e "s/^\\(.*auth_host.*=.*\\)$/#\1/" /etc/trove/api-paste.ini
@@ -3306,7 +3412,7 @@ if [ -z "${SAHARA_DBPASS}" ]; then
     touch /etc/sahara/sahara.conf
     chown -R sahara /etc/sahara
     crudini --set /etc/sahara/sahara.conf \
-	database connection mysql://sahara:${SAHARA_DBPASS}@$CONTROLLER/sahara
+	database connection ${DBDSTRING}://sahara:${SAHARA_DBPASS}@$CONTROLLER/sahara
     crudini --set /etc/sahara/sahara.conf DEFAULT \
 	verbose ${VERBOSE_LOGGING}
     crudini --set /etc/sahara/sahara.conf DEFAULT \
@@ -3320,7 +3426,19 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 	crudini --set /etc/sahara/sahara.conf DEFAULT rabbit_host $CONTROLLER
 	crudini --set /etc/sahara/sahara.conf DEFAULT rabbit_userid ${RABBIT_USER}
 	crudini --set /etc/sahara/sahara.conf DEFAULT rabbit_password "${RABBIT_PASS}"
+    elif [ $OSVERSION -lt $OSNEWTON ]; then
+	crudini --set /etc/sahara/sahara.conf oslo_messaging_rabbit \
+	    rabbit_host $CONTROLLER
+	crudini --set /etc/sahara/sahara.conf oslo_messaging_rabbit \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/sahara/sahara.conf oslo_messaging_rabbit \
+	    rabbit_password "${RABBIT_PASS}"
+    else
+	crudini --set /etc/sahara/sahara.conf DEFAULT \
+	    transport_url $RABBIT_URL
+    fi
 
+    if [ $OSVERSION -lt $OSKILO ]; then
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
@@ -3332,21 +3450,10 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    admin_password "${SAHARA_PASS}"
     else
-	crudini --set /etc/sahara/sahara.conf oslo_messaging_rabbit \
-	    rabbit_host $CONTROLLER
-	crudini --set /etc/sahara/sahara.conf oslo_messaging_rabbit \
-	    rabbit_userid ${RABBIT_USER}
-	crudini --set /etc/sahara/sahara.conf oslo_messaging_rabbit \
-	    rabbit_password "${RABBIT_PASS}"
-
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:35357
-	if [ $OSVERSION -ge $OSMITAKA ]; then
-	    crudini --set /etc/sahara/sahara.conf keystone_authtoken \
-		memcached_servers  ${CONTROLLER}:11211
-	fi
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
@@ -3359,6 +3466,10 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 	    username sahara
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    password "${SAHARA_PASS}"
+    fi
+    if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
+	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
+	    memcached_servers  ${CONTROLLER}:11211
     fi
 
     # Just slap these in.
@@ -3429,11 +3540,18 @@ if [ 0 = 1 -a "$OSCODENAME" = "kilo" -a -n "$BAREMETALNODES" -a -z "${IRONIC_DBP
     maybe_install_packages ironic-api ironic-conductor python-ironicclient python-ironic
 
     crudini --set /etc/ironic/ironic.conf \
-	database connection "mysql://ironic:${IRONIC_DBPASS}@$CONTROLLER/ironic?charset=utf8"
+	database connection "${DBDSTRING}://ironic:${IRONIC_DBPASS}@$CONTROLLER/ironic?charset=utf8"
 
-    crudini --set /etc/ironic/ironic.conf DEFAULT rabbit_host $CONTROLLER
-    crudini --set /etc/ironic/ironic.conf DEFAULT rabbit_userid ${RABBIT_USER}
-    crudini --set /etc/ironic/ironic.conf DEFAULT rabbit_password ${RABBIT_PASS}
+    if [ $OSVERSION -lt $OSNEWTON ] ; then
+	crudini --set /etc/ironic/ironic.conf DEFAULT \
+	    rabbit_host $CONTROLLER
+	crudini --set /etc/ironic/ironic.conf DEFAULT \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/ironic/ironic.conf DEFAULT \
+	    rabbit_password ${RABBIT_PASS}
+    else
+	crudini --set /etc/ironic/ironic.conf DEFAULT transport_url $RABBIT_URL
+    fi
 
     crudini --set /etc/ironic/ironic.conf DEFAULT verbose ${VERBOSE_LOGGING}
     crudini --set /etc/ironic/ironic.conf DEFAULT debug ${DEBUG_LOGGING}

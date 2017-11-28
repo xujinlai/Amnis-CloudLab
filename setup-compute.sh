@@ -63,18 +63,34 @@ if [ "$COMPUTE_EXTRA_NOVA_DISK_SPACE" = "1" ]; then
     fi
 fi
 
-crudini --set /etc/nova/nova.conf DEFAULT rpc_backend rabbit
 crudini --set /etc/nova/nova.conf DEFAULT auth_strategy keystone
 crudini --set /etc/nova/nova.conf DEFAULT my_ip ${MGMTIP}
-crudini --set /etc/nova/nova.conf glance host $CONTROLLER
+if [ $OSVERSION -lt $OSNEWTON ]; then
+    crudini --set /etc/nova/nova.conf glance host $CONTROLLER
+else
+    crudini --set /etc/nova/nova.conf glance api_servers http://$CONTROLLER:9292
+fi
 crudini --set /etc/nova/nova.conf DEFAULT verbose ${VERBOSE_LOGGING}
 crudini --set /etc/nova/nova.conf DEFAULT debug ${DEBUG_LOGGING}
 
 if [ $OSVERSION -lt $OSKILO ]; then
+    crudini --set /etc/nova/nova.conf DEFAULT rpc_backend rabbit
     crudini --set /etc/nova/nova.conf DEFAULT rabbit_host $CONTROLLER
     crudini --set /etc/nova/nova.conf DEFAULT rabbit_userid ${RABBIT_USER}
     crudini --set /etc/nova/nova.conf DEFAULT rabbit_password "${RABBIT_PASS}"
+elif [ $OSVERSION -lt $OSNEWTON ]; then
+    crudini --set /etc/nova/nova.conf DEFAULT rpc_backend rabbit
+    crudini --set /etc/nova/nova.conf oslo_messaging_rabbit \
+	rabbit_host $CONTROLLER
+    crudini --set /etc/nova/nova.conf oslo_messaging_rabbit \
+	rabbit_userid ${RABBIT_USER}
+    crudini --set /etc/nova/nova.conf oslo_messaging_rabbit \
+	rabbit_password "${RABBIT_PASS}"
+else
+    crudini --set /etc/nova/nova.conf DEFAULT transport_url $RABBIT_URL
+fi
 
+if [ $OSVERSION -lt $OSKILO ]; then
     crudini --set /etc/nova/nova.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000/v2.0
     crudini --set /etc/nova/nova.conf keystone_authtoken \
@@ -86,13 +102,6 @@ if [ $OSVERSION -lt $OSKILO ]; then
     crudini --set /etc/nova/nova.conf keystone_authtoken \
 	admin_password "${NOVA_PASS}"
 else
-    crudini --set /etc/nova/nova.conf oslo_messaging_rabbit \
-	rabbit_host $CONTROLLER
-    crudini --set /etc/nova/nova.conf oslo_messaging_rabbit \
-	rabbit_userid ${RABBIT_USER}
-    crudini --set /etc/nova/nova.conf oslo_messaging_rabbit \
-	rabbit_password "${RABBIT_PASS}"
-
     crudini --set /etc/nova/nova.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/nova/nova.conf keystone_authtoken \
@@ -109,6 +118,11 @@ else
 	username nova
     crudini --set /etc/nova/nova.conf keystone_authtoken \
 	password "${NOVA_PASS}"
+fi
+
+if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
+    crudini --set /etc/nova/nova.conf keystone_authtoken \
+	memcached_servers ${CONTROLLER}:11211
 fi
 
 if [ $OSVERSION -ge $OSKILO ]; then
@@ -131,29 +145,41 @@ if [ $OSVERSION -ge $OSLIBERTY ]; then
 fi
 
 VNCSECTION="DEFAULT"
+VNCENABLEKEY="vnc_enabled"
 if [ $OSVERSION -ge $OSLIBERTY ]; then
     VNCSECTION="vnc"
+    VNCENABLEKEY="enabled"
 fi
 
 cname=`getfqdn $CONTROLLER`
 crudini --set /etc/nova/nova.conf $VNCSECTION vncserver_listen ${MGMTIP}
 crudini --set /etc/nova/nova.conf $VNCSECTION vncserver_proxyclient_address ${MGMTIP}
-crudini --set /etc/nova/nova.conf $VNCSECTION \
-    novncproxy_base_url "http://${cname}:6080/vnc_auto.html"
 #
-# Change vnc_enabled = True for x86 -- but for aarch64, there is
+# https://bugs.launchpad.net/nova/+bug/1635131
+#
+if [ $OSVERSION -eq $OSNEWTON ]; then
+    chost=`host $cname | sed -E -n -e 's/^(.* has address )(.*)$/\\2/p'`
+    crudini --set /etc/nova/nova.conf $VNCSECTION \
+	novncproxy_base_url "http://${chost}:6080/vnc_auto.html"
+else
+    crudini --set /etc/nova/nova.conf $VNCSECTION \
+	novncproxy_base_url "http://${cname}:6080/vnc_auto.html"
+fi
+
+#
+# Change $VNCENABLEKEY = True for x86 -- but for aarch64, there is
 # no video device, for KVM mode, anyway, it seems.
 #
 ARCH=`uname -m`
 if [ "$ARCH" = "aarch64" ] ; then
     if [ $OSVERSION -le $OSKILO ]; then
-	crudini --set /etc/nova/nova.conf $VNCSECTION vnc_enabled False
+	crudini --set /etc/nova/nova.conf $VNCSECTION $VNCENABLEKEY False
     else
 	# QEMU/Nova on Liberty gives aarch64 a vga adapter/bus.
-	crudini --set /etc/nova/nova.conf $VNCSECTION vnc_enabled True
+	crudini --set /etc/nova/nova.conf $VNCSECTION $VNCENABLEKEY True
     fi
 else
-    crudini --set /etc/nova/nova.conf $VNCSECTION vnc_enabled True
+    crudini --set /etc/nova/nova.conf $VNCSECTION $VNCENABLEKEY True
 fi
 
 if [ ${ENABLE_NEW_SERIAL_SUPPORT} = 1 ]; then

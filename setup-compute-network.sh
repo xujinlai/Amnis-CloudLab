@@ -68,11 +68,10 @@ else
     crudini --set /etc/nova/nova.conf neutron project_name service
     crudini --set /etc/nova/nova.conf neutron username neutron
     crudini --set /etc/nova/nova.conf neutron password ${NEUTRON_PASS}
-
-    if [ $OSVERSION -ge $OSMITAKA ]; then
-	crudini --set /etc/nova/nova.conf neutron \
-	    memcached_servers ${CONTROLLER}:11211
-    fi
+fi
+if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
+    crudini --set /etc/nova/nova.conf neutron \
+	memcached_servers ${CONTROLLER}:11211
 fi
 
 touch $OURDIR/setup-compute-network-done

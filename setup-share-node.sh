@@ -39,16 +39,15 @@ fi
 #
 $DIRNAME/setup-network-plugin.sh
 
-maybe_install_packages manila-share python-pymysql
+maybe_install_packages manila-share $DBDPACKAGE
 
 crudini --set /etc/manila/manila.conf \
-    database connection "mysql://manila:$MANILA_DBPASS@$CONTROLLER/manila"
+    database connection "${DBDSTRING}://manila:$MANILA_DBPASS@$CONTROLLER/manila"
 
 crudini --del /etc/manila/manila.conf keystone_authtoken auth_host
 crudini --del /etc/manila/manila.conf keystone_authtoken auth_port
 crudini --del /etc/manila/manila.conf keystone_authtoken auth_protocol
 
-crudini --set /etc/manila/manila.conf DEFAULT rpc_backend rabbit
 crudini --set /etc/manila/manila.conf DEFAULT auth_strategy keystone
 crudini --set /etc/manila/manila.conf DEFAULT verbose ${VERBOSE_LOGGING}
 crudini --set /etc/manila/manila.conf DEFAULT debug ${DEBUG_LOGGING}
@@ -58,13 +57,17 @@ crudini --set /etc/manila/manila.conf DEFAULT \
 crudini --set /etc/manila/manila.conf DEFAULT \
     rootwrap_config /etc/manila/rootwrap.conf
 
-crudini --set /etc/manila/manila.conf oslo_messaging_rabbit \
-    rabbit_host $CONTROLLER
-crudini --set /etc/manila/manila.conf oslo_messaging_rabbit \
-    rabbit_userid ${RABBIT_USER}
-crudini --set /etc/manila/manila.conf oslo_messaging_rabbit \
-    rabbit_password "${RABBIT_PASS}"
-
+if [ $OSVERSION -lt $OSNEWTON ]; then
+    crudini --set /etc/manila/manila.conf DEFAULT rpc_backend rabbit
+    crudini --set /etc/manila/manila.conf oslo_messaging_rabbit \
+	rabbit_host $CONTROLLER
+    crudini --set /etc/manila/manila.conf oslo_messaging_rabbit \
+	rabbit_userid ${RABBIT_USER}
+    crudini --set /etc/manila/manila.conf oslo_messaging_rabbit \
+	rabbit_password "${RABBIT_PASS}"
+else
+    crudini --set /etc/manila/manila.conf DEFAULT transport_url $RABBIT_URL
+fi
 crudini --set /etc/manila/manila.conf keystone_authtoken \
     memcached_servers ${CONTROLLER}:11211
 crudini --set /etc/manila/manila.conf keystone_authtoken \
