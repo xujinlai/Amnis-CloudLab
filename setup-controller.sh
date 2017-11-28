@@ -219,7 +219,7 @@ EOF
 
     if [ ${OSCODENAME} = "juno" ]; then
 	RABBIT_USER="guest"
-    elif [ $OSVERSION -lt $OSNEWTON ]; then
+    else
 	RABBIT_USER="openstack"
 	rabbitmqctl add_vhost /
     fi
