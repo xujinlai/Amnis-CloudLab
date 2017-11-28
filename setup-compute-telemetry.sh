@@ -44,7 +44,6 @@ fi
 
 maybe_install_packages ceilometer-agent-compute
 
-crudini --set /etc/ceilometer/ceilometer.conf DEFAULT rpc_backend rabbit
 crudini --set /etc/ceilometer/ceilometer.conf DEFAULT auth_strategy keystone
 crudini --set /etc/ceilometer/ceilometer.conf glance host $CONTROLLER
 crudini --set /etc/ceilometer/ceilometer.conf DEFAULT verbose $VERBOSE_LOGGING
@@ -53,10 +52,24 @@ crudini --set /etc/ceilometer/ceilometer.conf DEFAULT \
     log_dir /var/log/ceilometer
 
 if [ $OSVERSION -lt $OSKILO ]; then
+    crudini --set /etc/ceilometer/ceilometer.conf DEFAULT rpc_backend rabbit
     crudini --set /etc/ceilometer/ceilometer.conf DEFAULT rabbit_host $CONTROLLER
     crudini --set /etc/ceilometer/ceilometer.conf DEFAULT rabbit_userid ${RABBIT_USER}
     crudini --set /etc/ceilometer/ceilometer.conf DEFAULT rabbit_password "${RABBIT_PASS}"
+elif [ $OSVERSION -lt $OSNEWTON ]; then
+    crudini --set /etc/ceilometer/ceilometer.conf DEFAULT rpc_backend rabbit
+    crudini --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit \
+	rabbit_host $CONTROLLER
+    crudini --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit \
+	rabbit_userid ${RABBIT_USER}
+    crudini --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit \
+	rabbit_password "${RABBIT_PASS}"
+else
+    crudini --set /etc/ceilometer/ceilometer.conf DEFAULT \
+	transport_url $RABBIT_URL
+fi
 
+if [ $OSVERSION -lt $OSKILO ]; then
     crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000/${KAPISTR}
     crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
@@ -68,13 +81,6 @@ if [ $OSVERSION -lt $OSKILO ]; then
     crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	admin_password "${CEILOMETER_PASS}"
 else
-    crudini --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit \
-	rabbit_host $CONTROLLER
-    crudini --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit \
-	rabbit_userid ${RABBIT_USER}
-    crudini --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit \
-	rabbit_password "${RABBIT_PASS}"
-
     crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
