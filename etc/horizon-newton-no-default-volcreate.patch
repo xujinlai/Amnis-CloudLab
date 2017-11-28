@@ -13,7 +13,7 @@
            model.newInstanceSpec.server_groups = [];
 --- /usr/share/openstack-dashboard/openstack_dashboard/dashboards/project/static/dashboard/project/workflow/launch-instance/source/source.controller.js~	2016-10-06 07:13:37.000000000 -0600
 +++ /usr/share/openstack-dashboard/openstack_dashboard/dashboards/project/static/dashboard/project/workflow/launch-instance/source/source.controller.js	2016-11-14 10:01:27.503142035 -0700
-@@ -417,0 +417,0 @@
+@@ -417,7 +417,7 @@
 
      function updateBootSourceSelection(selectedSource) {
        ctrl.currentBootSource = selectedSource;
