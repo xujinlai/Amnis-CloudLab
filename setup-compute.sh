@@ -130,16 +130,36 @@ if [ $OSVERSION -ge $OSKILO ]; then
 	lock_path /var/lib/nova/tmp
 fi
 
-if [ $OSVERSION -ge $OSLIBERTY ]; then
-    crudini --set /etc/nova/nova.conf enabled_apis 'osapi_compute,metadata'
+if [ $OSVERSION -ge $OSOCATA ]; then
+    crudini --set /etc/nova/nova.conf placement \
+	os_region_name $REGION
+    crudini --set /etc/nova/nova.conf placement \
+	auth_url http://${CONTROLLER}:35357/v3
+    crudini --set /etc/nova/nova.conf placement \
+	${AUTH_TYPE_PARAM} password
+    crudini --set /etc/nova/nova.conf placement \
+	${PROJECT_DOMAIN_PARAM} default
+    crudini --set /etc/nova/nova.conf placement \
+	${USER_DOMAIN_PARAM} default
+    crudini --set /etc/nova/nova.conf placement \
+	project_name service
+    crudini --set /etc/nova/nova.conf placement \
+	username placement
+    crudini --set /etc/nova/nova.conf placement \
+	password "${PLACEMENT_PASS}"
+fi
 
+if [ $OSVERSION -ge $OSLIBERTY -a $OSVERSION -lt $OSNEWTON ]; then
+    crudini --set /etc/nova/nova.conf enabled_apis 'osapi_compute,metadata'
     crudini --set /etc/nova/nova.conf DEFAULT \
 	network_api_class nova.network.neutronv2.api.API
-    crudini --set /etc/nova/nova.conf DEFAULT use_neutron True
     crudini --set /etc/nova/nova.conf DEFAULT \
 	security_group_api neutron
     crudini --set /etc/nova/nova.conf DEFAULT \
 	linuxnet_interface_driver nova.network.linux_net.NeutronLinuxBridgeInterfaceDriver
+fi
+if [ $OSVERSION -ge $OSLIBERTY ]; then
+    crudini --set /etc/nova/nova.conf DEFAULT use_neutron True
     crudini --set /etc/nova/nova.conf DEFAULT \
 	firewall_driver nova.virt.firewall.NoopFirewallDriver
 fi
@@ -157,7 +177,7 @@ crudini --set /etc/nova/nova.conf $VNCSECTION vncserver_proxyclient_address ${MG
 #
 # https://bugs.launchpad.net/nova/+bug/1635131
 #
-if [ $OSVERSION -eq $OSNEWTON ]; then
+if [ $OSVERSION -ge $OSNEWTON ]; then
     chost=`host $cname | sed -E -n -e 's/^(.* has address )(.*)$/\\2/p'`
     crudini --set /etc/nova/nova.conf $VNCSECTION \
 	novncproxy_base_url "http://${chost}:6080/vnc_auto.html"

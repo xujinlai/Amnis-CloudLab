@@ -906,6 +906,12 @@ if [ -z "${NOVA_DBPASS}" ]; then
 	echo "grant all privileges on nova_api.* to 'nova'@'%' identified by '$NOVA_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
     fi
 
+    if [ $OSVERSION -ge $OSOCATA ]; then
+	echo "create database nova_cell0" | mysql -u root --password="$DB_ROOT_PASS"
+	echo "grant all privileges on nova_cell0.* to 'nova'@'localhost' identified by '$NOVA_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+	echo "grant all privileges on nova_cell0.* to 'nova'@'%' identified by '$NOVA_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+    fi
+
     if [ $OSVERSION -eq $OSJUNO ]; then
 	keystone user-create --name nova --pass $NOVA_PASS
 	keystone user-role-add --user nova --tenant service --role admin
@@ -929,19 +935,45 @@ if [ -z "${NOVA_DBPASS}" ]; then
 		--internalurl http://$CONTROLLER:8774/${NAPISTR}/%\(tenant_id\)s \
 		--adminurl http://$CONTROLLER:8774/${NAPISTR}/%\(tenant_id\)s \
 		--region $REGION compute
-	else
+	elif [ $OSVERSION -lt $OSNEWTON ]; then
 	    __openstack endpoint create --region $REGION \
 		compute public http://${CONTROLLER}:8774/${NAPISTR}/%\(tenant_id\)s
 	    __openstack endpoint create --region $REGION \
 		compute internal http://${CONTROLLER}:8774/${NAPISTR}/%\(tenant_id\)s
 	    __openstack endpoint create --region $REGION \
 		compute admin http://${CONTROLLER}:8774/${NAPISTR}/%\(tenant_id\)s
+	else
+	    __openstack endpoint create --region $REGION \
+		compute public http://${CONTROLLER}:8774/${NAPISTR}
+	    __openstack endpoint create --region $REGION \
+		compute internal http://${CONTROLLER}:8774/${NAPISTR}
+	    __openstack endpoint create --region $REGION \
+		compute admin http://${CONTROLLER}:8774/${NAPISTR}
+	fi
+
+	if [ $OSVERSION -ge $OSOCATA ]; then
+	    PLACEMENT_PASS=`$PSWDGEN`
+	    __openstack user create $DOMARG --password $PLACEMENT_PASS placement
+	    __openstack role add --user placement --project service admin
+	    __openstack service create --name placement \
+	        --description "OpenStack Placement API" placement
+
+	    __openstack endpoint create --region $REGION \
+		placement public http://${CONTROLLER}:8778
+	    __openstack endpoint create --region $REGION \
+		placement internal http://${CONTROLLER}:8778
+	    __openstack endpoint create --region $REGION \
+		placement admin http://${CONTROLLER}:8778
 	fi
     fi
 
-    maybe_install_packages nova-api nova-cert nova-conductor nova-consoleauth \
+    maybe_install_packages nova-api nova-conductor nova-consoleauth \
 	nova-novncproxy nova-scheduler python-novaclient
-
+    maybe_install_packages nova-cert
+    if [ $OSVERSION -ge $OSOCATA ]; then
+	maybe_install_packages nova-placement-api
+    fi
+    
     if [ ${ENABLE_NEW_SERIAL_SUPPORT} = 1 ]; then
 	maybe_install_packages nova-serialproxy
 	mkdir -p $OURDIR/src
@@ -1081,8 +1113,31 @@ EOF
 	crudini --set /etc/nova/nova.conf api_database max_pool_size $ncpus
     fi
 
+    if [ $OSVERSION -ge $OSOCATA ]; then
+	crudini --set /etc/nova/nova.conf placement \
+	    os_region_name $REGION
+	crudini --set /etc/nova/nova.conf placement \
+	    auth_url http://${CONTROLLER}:35357/v3
+	crudini --set /etc/nova/nova.conf placement \
+	    ${AUTH_TYPE_PARAM} password
+	crudini --set /etc/nova/nova.conf placement \
+	    ${PROJECT_DOMAIN_PARAM} default
+	crudini --set /etc/nova/nova.conf placement \
+	    ${USER_DOMAIN_PARAM} default
+	crudini --set /etc/nova/nova.conf placement \
+	    project_name service
+	crudini --set /etc/nova/nova.conf placement \
+	    username placement
+	crudini --set /etc/nova/nova.conf placement \
+	    password "${PLACEMENT_PASS}"
+    fi
+
     if [ $OSVERSION -ge $OSMITAKA ]; then
 	su -s /bin/sh -c "nova-manage api_db sync" nova
+    fi
+    if [ $OSVERSION -ge $OSOCATA ]; then
+	su -s /bin/sh -c "nova-manage cell_v2 map_cell0" nova
+	su -s /bin/sh -c "nova-manage cell_v2 create_cell --name=cell1 --verbose" nova
     fi
     su -s /bin/sh -c "nova-manage db sync" nova
 
@@ -1130,6 +1185,7 @@ EOF
 
     echo "NOVA_DBPASS=\"${NOVA_DBPASS}\"" >> $SETTINGS
     echo "NOVA_PASS=\"${NOVA_PASS}\"" >> $SETTINGS
+    echo "PLACEMENT_PASS=\"${PLACEMENT_PASS}\"" >> $SETTINGS
     logtend "nova"
 fi
 
@@ -1161,6 +1217,11 @@ if [ -z "${NOVA_COMPUTENODES_DONE}" ]; then
     do
 	touch $OURDIR/compute-done-${node}
     done
+
+    if [ $OSVERSION -ge $OSOCATA ]; then
+	su -s /bin/sh -c "nova-manage cell_v2 discover_hosts --verbose" nova
+	crudini --set /etc/nova/nova.conf scheduler discover_hosts_in_cells_interval 300
+    fi
 
     echo "NOVA_COMPUTENODES_DONE=\"${NOVA_COMPUTENODES_DONE}\"" >> $SETTINGS
     logtend "nova-computenodes"
