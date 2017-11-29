@@ -1567,7 +1567,7 @@ if [ -z "${NEUTRON_NETWORKS_DONE}" ]; then
 	if [ -z "$IPAMSID" ]; then
 	    echo "WARNING: could not find ipamsubnetid from ipamsubnets post-Newton!"
 	else
-	    echo "delete from ipamallocationpools where subnet_id='$IPAMSID'" \
+	    echo "delete from ipamallocationpools where ipam_subnet_id='$IPAMSID'" \
 		| mysql --password=${DB_ROOT_PASS} neutron
 	    for ip in $PUBLICADDRS ; do
 		echo "insert into ipamallocationpools values (UUID(),'$IPAMSID','$ip','$ip')" \
