@@ -1741,6 +1741,10 @@ OPENSTACK_API_VERSIONS = {
 }
 EOF
 
+    if [ $OSVERSION -ge $OSOCATA ]; then
+	chown www-data.www-data /var/lib/openstack-dashboard/secret_key
+    fi
+
     #
     # On some versions, we have special patches to customize horizon.
     # For instance, on Newton, we don't want volume creation to be the
