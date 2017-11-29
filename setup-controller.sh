@@ -2884,15 +2884,18 @@ if [ -z "${TELEMETRY_GLANCE_DONE}" ]; then
 	crudini --set /etc/glance/glance-api.conf \
 	    oslo_messaging_notifications driver messagingv2
     fi
-    crudini --set /etc/glance/glance-api.conf DEFAULT \
-	rpc_backend rabbit
-    crudini --set /etc/glance/glance-api.conf $RIS \
-	rabbit_host ${CONTROLLER}
-    crudini --set /etc/glance/glance-api.conf $RIS \
-	rabbit_userid ${RABBIT_USER}
-    crudini --set /etc/glance/glance-api.conf $RIS \
-	rabbit_password ${RABBIT_PASS}
-
+    if [ $OSVERSION -lt $OSNEWTON ]; then
+	crudini --set /etc/glance/glance-api.conf DEFAULT \
+	    rpc_backend rabbit
+	crudini --set /etc/glance/glance-api.conf $RIS \
+ 	    rabbit_host ${CONTROLLER}
+	crudini --set /etc/glance/glance-api.conf $RIS \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/glance/glance-api.conf $RIS \
+	    rabbit_password ${RABBIT_PASS}
+    else
+	crudini --set /etc/glance/glance-api.conf DEFAULT transport_url $RABBIT_URL
+    fi
     if [ $OSVERSION -lt $OSMITAKA ]; then
 	crudini --set /etc/glance/glance-registry.conf DEFAULT \
 	    notification_driver messagingv2
@@ -2900,14 +2903,18 @@ if [ -z "${TELEMETRY_GLANCE_DONE}" ]; then
 	crudini --set /etc/glance/glance-registry.conf \
 	    oslo_messaging_notifications driver messagingv2
     fi
-    crudini --set /etc/glance/glance-registry.conf DEFAULT \
-	rpc_backend rabbit
-    crudini --set /etc/glance/glance-registry.conf $RIS \
-	rabbit_host ${CONTROLLER}
-    crudini --set /etc/glance/glance-registry.conf $RIS \
-	rabbit_userid ${RABBIT_USER}
-    crudini --set /etc/glance/glance-registry.conf $RIS \
-	rabbit_password ${RABBIT_PASS}
+    if [ $OSVERSION -lt $OSNEWTON ]; then
+	crudini --set /etc/glance/glance-registry.conf DEFAULT \
+	    rpc_backend rabbit
+	crudini --set /etc/glance/glance-registry.conf $RIS \
+	    rabbit_host ${CONTROLLER}
+	crudini --set /etc/glance/glance-registry.conf $RIS \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/glance/glance-registry.conf $RIS \
+	    rabbit_password ${RABBIT_PASS}
+    else
+	crudini --set /etc/glance/glance-api.conf DEFAULT transport_url $RABBIT_URL
+    fi
 
     service_restart glance-registry
     service_restart glance-api
