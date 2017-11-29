@@ -1821,7 +1821,7 @@ if [ -z "${CINDER_DBPASS}" ]; then
 		--adminurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
 		--region $REGION \
 		volumev2
-	else
+	elif [ $OSVERSION -lt $OSOCATA ]; then
 	    __openstack endpoint create --region $REGION \
 		volume public http://${CONTROLLER}:8776/v1/%\(tenant_id\)s
 	    __openstack endpoint create --region $REGION \
@@ -1835,6 +1835,20 @@ if [ -z "${CINDER_DBPASS}" ]; then
 		volumev2 internal http://${CONTROLLER}:8776/v2/%\(tenant_id\)s
 	    __openstack endpoint create --region $REGION \
 		volumev2 admin http://${CONTROLLER}:8776/v2/%\(tenant_id\)s
+	else
+	    __openstack endpoint create --region $REGION \
+		volumev2 public http://${CONTROLLER}:8776/v2/%\(project_id\)s
+	    __openstack endpoint create --region $REGION \
+		volumev2 internal http://${CONTROLLER}:8776/v2/%\(project_id\)s
+	    __openstack endpoint create --region $REGION \
+		volumev2 admin http://${CONTROLLER}:8776/v2/%\(project_id\)s
+
+	    __openstack endpoint create --region $REGION \
+		volumev3 public http://${CONTROLLER}:8776/v3/%\(project_id\)s
+	    __openstack endpoint create --region $REGION \
+		volumev3 internal http://${CONTROLLER}:8776/v3/%\(project_id\)s
+	    __openstack endpoint create --region $REGION \
+		volumev3 admin http://${CONTROLLER}:8776/v3/%\(project_id\)s
 	fi
     fi
 
@@ -1925,8 +1939,6 @@ if [ -z "${CINDER_DBPASS}" ]; then
     service_enable cinder-scheduler
     service_restart cinder-api
     service_enable cinder-api
-    service_restart cinder-volume
-    service_enable cinder-volume
     rm -f /var/lib/cinder/cinder.sqlite
 
     echo "CINDER_DBPASS=\"${CINDER_DBPASS}\"" >> $SETTINGS
