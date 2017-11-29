@@ -124,7 +124,7 @@ if [ -z "${DB_ROOT_PASS}" ]; then
     echo "collation-server = utf8_general_ci" >> /etc/mysql/my.cnf
     echo "init-connect = 'SET NAMES utf8'" >> /etc/mysql/my.cnf
     echo "character-set-server = utf8" >> /etc/mysql/my.cnf
-    echo "max_connections = 5000" >> /etc/mysql/my.cnf
+    echo "max_connections = 4096" >> /etc/mysql/my.cnf
     # Restart it!
     service_restart mysql
     service_enable mysql
@@ -819,7 +819,7 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	crudini --set /etc/glance/glance-api.conf glance_store default_store file
 	crudini --set /etc/glance/glance-api.conf glance_store \
 	    filesystem_store_datadir /var/lib/glance/images/
-	crudini --set /etc/glance/glance-api.conf DEFAULT notification_driver noop
+	#crudini --set /etc/glance/glance-api.conf DEFAULT notification_driver noop
 	if [ $OSVERSION -ge $OSNEWTON ]; then
 	    crudini --set /etc/glance/glance-api.conf glance_store stores file,http
 	fi
@@ -864,7 +864,7 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	    username glance
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
 	    password "${GLANCE_PASS}"
-	crudini --set /etc/glance/glance-registry.conf DEFAULT notification_driver noop
+	#crudini --set /etc/glance/glance-registry.conf DEFAULT notification_driver noop
     fi
     if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
@@ -1087,10 +1087,15 @@ EOF
 	    nova.scheduler.filters.all_filters
 	crudini --set /etc/nova/nova.conf DEFAULT scheduler_default_filters \
 	    'RetryFilter, AvailabilityZoneFilter, RamFilter, ComputeFilter, ComputeCapabilitiesFilter, ImagePropertiesFilter, ServerGroupAntiAffinityFilter, ServerGroupAffinityFilter'
-    elif [ $OSVERSION -ge $OSLIBERTY ]; then
+    elif [ $OSVERSION -ge $OSLIBERTY -a $OSVERSION -lt $OSOCATA ]; then
 	crudini --set /etc/nova/nova.conf DEFAULT scheduler_available_filters \
 	    nova.scheduler.filters.all_filters
 	crudini --set /etc/nova/nova.conf DEFAULT scheduler_default_filters \
+	    'RetryFilter, AvailabilityZoneFilter, RamFilter, ComputeFilter, ComputeCapabilitiesFilter, ImagePropertiesFilter, ServerGroupAntiAffinityFilter, ServerGroupAffinityFilter'
+    elif [ $OSVERSION -ge $OSOCATA ]; then
+	crudini --set /etc/nova/nova.conf filter_scheduler available_filters \
+	    nova.scheduler.filters.all_filters
+	crudini --set /etc/nova/nova.conf filter_scheduler enabled_filters \
 	    'RetryFilter, AvailabilityZoneFilter, RamFilter, ComputeFilter, ComputeCapabilitiesFilter, ImagePropertiesFilter, ServerGroupAntiAffinityFilter, ServerGroupAffinityFilter'
     fi
 
