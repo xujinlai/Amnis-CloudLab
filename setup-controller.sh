@@ -1432,7 +1432,11 @@ EOF
     crudini --set /etc/nova/nova.conf neutron \
 	metadata_proxy_shared_secret ${NEUTRON_METADATA_SECRET}
 
-    su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade ${OSCODENAME}" neutron
+    if [ $OSVERSION -ge $OSNEWTON ]; then
+	su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade head" neutron
+    else
+	su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade ${OSCODENAME}" neutron
+    fi
 
     service_restart nova-api
     service_restart nova-scheduler
