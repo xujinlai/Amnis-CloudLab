@@ -1752,8 +1752,10 @@ OPENSTACK_API_VERSIONS = {
 }
 EOF
 
-    if [ $OSVERSION -ge $OSOCATA ]; then
+    if [ $OSVERSION -eq $OSOCATA ]; then
 	chown www-data.www-data /var/lib/openstack-dashboard/secret_key
+    elif [ $OSVERSION -ge $OSPIKE ]; then
+	chown horizon.www-data /var/lib/openstack-dashboard/secret_key
     fi
 
     #
@@ -2160,6 +2162,10 @@ EOF
     #
     if [ $OSVERSION -eq $OSNEWTON -a -f $DIRNAME/etc/manila-${OSCODENAME}-noset.patch ]; then
 	patch -p0 -d / < $DIRNAME/etc/manila-${OSCODENAME}-noset.patch
+    fi
+    if [ $OSVERSION -eq $OSPIKE ]; then
+	patch -p0 -d / < $DIRNAME/etc/manila-pike-bug-1715540.patch
+	patch -p0 -d / < $DIRNAME/etc/manila-pike-bug-1707303.patch
     fi
 
     service_restart apache2
