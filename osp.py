@@ -35,8 +35,8 @@ pc = portal.Context()
 # Define *many* parameters; see the help docs in geni-lib to learn how to modify.
 #
 pc.defineParameter("release","OpenStack Release",
-                   portal.ParameterType.STRING,"ocata",[("ocata","Ocata"),("newton","Newton"),("mitaka","Mitaka"),("liberty","Liberty"),("kilo","Kilo (deprecated)"),("juno","Juno (deprecated)")],
-                   longDescription="We provide OpenStack Ocata, Newton, Mitaka (Ubuntu 16.04); Liberty (Ubuntu 15.10); Kilo (Ubuntu 15.04); or Juno (Ubuntu 14.10).  OpenStack is installed from packages available on these distributions.")
+                   portal.ParameterType.STRING,"pike",[("pike","Pike"),("ocata","Ocata"),("newton","Newton"),("mitaka","Mitaka"),("liberty","Liberty"),("kilo","Kilo (deprecated)"),("juno","Juno (deprecated)")],
+                   longDescription="We provide OpenStack Pike, Ocata, Newton, Mitaka (Ubuntu 16.04); Liberty (Ubuntu 15.10); Kilo (Ubuntu 15.04); or Juno (Ubuntu 14.10).  OpenStack is installed from packages available on these distributions.")
 pc.defineParameter("computeNodeCount", "Number of compute nodes (at Site 1)",
                    portal.ParameterType.INTEGER, 1)
 pc.defineParameter("osNodeType", "Hardware Type",
