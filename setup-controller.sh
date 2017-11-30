@@ -1863,12 +1863,8 @@ if [ -z "${CINDER_DBPASS}" ]; then
 	    __openstack endpoint create --region $REGION \
 		volumev2 admin http://${CONTROLLER}:8776/v2/%\(project_id\)s
 
-	    # Seems like the volumev3 service doesn't exist a priori in
-	    # Ocata; create it so these don't fail.
-	    openstack service show volumev3 >/dev/null
-	    if [ ! $? -eq 0 ]; then
-		openstack service create --name volumev3 volumev3
-	    fi
+	    __openstack service create --name cinderv3 \
+		--description "OpenStack Block Storage Service" volumev3
 	    __openstack endpoint create --region $REGION \
 		volumev3 public http://${CONTROLLER}:8776/v3/%\(project_id\)s
 	    __openstack endpoint create --region $REGION \
