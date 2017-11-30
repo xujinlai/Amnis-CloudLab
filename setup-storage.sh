@@ -35,6 +35,9 @@ fi
 ARCH=`uname -m`
 
 maybe_install_packages lvm2
+if [ $OSVERSION -ge $OSOCATA ]; then
+    maybe_install_packages thin-provisioning-tools
+fi
 
 #
 # First try to make LVM volumes; fall back to loop device in /storage.  We use

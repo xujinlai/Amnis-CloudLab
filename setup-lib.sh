@@ -88,6 +88,7 @@ UBUNTUMIRRORHOST=""
 UBUNTUMIRRORPATH=""
 ENABLE_NEW_SERIAL_SUPPORT=0
 DO_UBUNTU_CLOUDARCHIVE=0
+DO_UBUNTU_CLOUDARCHIVE_STAGING=0
 BUILD_AARCH64_FROM_CORE=0
 DISABLE_SECURITY_GROUPS=0
 DEFAULT_SECGROUP_ENABLE_SSH_ICMP=1
@@ -702,6 +703,9 @@ if [ ! -f $OURDIR/cloudarchive-added -a "${DO_UBUNTU_CLOUDARCHIVE}" = "1" ]; the
 	# Disable unattended upgrades!
 	rm -fv /etc/apt/apt.conf.d/*unattended-upgrades
 	add-apt-repository -y cloud-archive:$OSRELEASE
+	if [ "${DO_UBUNTU_CLOUDARCHIVE_STAGING}" = "1" ]; then
+	    add-apt-repository -y cloud-archive:${OSRELEASE}-staging
+	fi
 	apt-get update
     #fi
 

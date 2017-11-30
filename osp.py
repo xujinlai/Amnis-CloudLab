@@ -68,6 +68,9 @@ pc.defineParameter("doAptUpgrade","Upgrade OpenStack packages and dependencies t
 pc.defineParameter("doAptDistUpgrade","Upgrade all packages to their latest versions",
                    portal.ParameterType.BOOLEAN, False,advanced=True,
                    longDescription="Sometimes, if you install using the fromScratch option, you'll need to update some of the base distro packages via apt-get dist-upgrade; this option handles that.  NOTE: selecting this option requires that you also select the option to update the Apt package cache!")
+pc.defineParameter("doCloudArchiveStaging","Enable Ubuntu Cloud Archive staging repo",
+                   portal.ParameterType.BOOLEAN, False,advanced=True,
+                   longDescription="If the base Ubuntu version is an LTS release, we enable package installation from the Ubuntu Cloud Archive.  If you want the latest packages, you must enable the staging repository.  This option does that.  Of course, it only matters if you have selected either a fromScratch install, or if you have selected the option to upgrade installed packages.")
 pc.defineParameter("doAptInstall","Install required OpenStack packages and dependencies",
                    portal.ParameterType.BOOLEAN, True,advanced=True,
                    longDescription="This option allows you to tell the setup scripts not to install or upgrade any packages (other than the absolute dependencies without which the scripts cannot run).  If you start from bare images, or select a profile option that may trigger a package to be installed, we may need to install packages for you; and if you have disabled it, we might not be able to configure these features.  This option is really only for people who want to configure only the openstack packages that are already installed on their disk images, and not be surprised by package or database schema upgrades.  NOTE: this option requires that you also select the option to update the Apt package cache!")
@@ -842,6 +845,8 @@ class Parameters(RSpec.Resource):
         param.text = 'DO_APT_UPGRADE=%d' % (int(params.doAptUpgrade),)
         param = ET.SubElement(el,paramXML)
         param.text = 'DO_APT_DIST_UPGRADE=%d' % (int(params.doAptDistUpgrade),)
+        param = ET.SubElement(el,paramXML)
+        param.text = 'DO_UBUNTU_CLOUDARCHIVE_STAGING=%d' % (int(params.doCloudArchiveStaging),)
         param = ET.SubElement(el,paramXML)
         param.text = 'DO_APT_UPDATE=%d' % (int(params.doAptUpdate),)
 
