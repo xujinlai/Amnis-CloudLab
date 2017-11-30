@@ -1761,7 +1761,7 @@ EOF
     # For instance, on Newton, we don't want volume creation to be the
     # default.
     #
-    if [ $OSVERSION -eq $OSNEWTON ]; then
+    if [ $OSVERSION -ge $OSNEWTON ]; then
 	patch -p0 -d / < $DIRNAME/etc/horizon-${OSCODENAME}-no-default-volcreate.patch
 	# Rebuild after patching javascripts.
 	/usr/share/openstack-dashboard/manage.py collectstatic --noinput \
