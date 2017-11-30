@@ -1403,9 +1403,13 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	    memcached_servers ${CONTROLLER}:11211
     fi
 
-    crudini --set /etc/neutron/neutron.conf DEFAULT \
-	notification_driver messagingv2
-
+    if [ $OSVERSION -lt $OSMITAKA ]; then
+	crudini --set /etc/neutron/neutron.conf DEFAULT \
+	    notification_driver messagingv2
+    else
+	crudini --set /etc/neutron/neutron.conf \
+	    oslo_messaging_notifications driver messagingv2
+    fi
     if [ $OSVERSION -ge $OSLIBERTY ]; then
 	# Doc bug: these are supposed to be not just a large amount;
 	# they should be set to the same number as api_workers, and that
@@ -2695,6 +2699,15 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 		--internalurl http://$CONTROLLER:8777 \
 		--adminurl http://$CONTROLLER:8777 \
 		--region $REGION metering
+	# Don't do this for now despite Ocata install instructions; the
+	# package's wsgi file's port is still 8777.
+	#elif [ $OSVERSION -ge $OSOCATA ]; then
+	#    __openstack endpoint create --region $REGION \
+	#	metering public http://${CONTROLLER}:8041
+	#    __openstack endpoint create --region $REGION \
+	#	metering internal http://${CONTROLLER}:8041
+	#    __openstack endpoint create --region $REGION \
+	#	metering admin http://${CONTROLLER}:8041
 	else
 	    __openstack endpoint create --region $REGION \
 		metering public http://${CONTROLLER}:8777
@@ -2861,8 +2874,8 @@ EOF
     service_restart ceilometer-agent-notification
     service_enable ceilometer-agent-notification
 
-    if [ $CEILOMETER_USE_WSGI -eq 1 ]; then
-	cat <<EOF > /etc/apache2/sites-available/wsgi-ceilometer.conf
+    if [ $CEILOMETER_USE_WSGI -eq 1 -a $OSVERSION -lt $OSOCATA ]; then
+	cat <<EOF > /etc/apache2/sites-available/ceilometer-api.conf
 Listen 8777
 
 <VirtualHost *:8777>
@@ -2888,7 +2901,7 @@ Listen 8777
 </VirtualHost>
 EOF
 
-	a2ensite wsgi-ceilometer
+	a2ensite ceilometer-api
 	wget -O /usr/bin/ceilometer-wsgi-app https://raw.githubusercontent.com/openstack/ceilometer/stable/${OSCODENAME}/ceilometer/api/app.wsgi
 	if [ ! $? -eq 0 ]; then
             # Try the EOL version
@@ -2896,9 +2909,20 @@ EOF
 	fi
 	
 	service apache2 reload
+    elif [ $OSVERSION -ge $OSOCATA ]; then
+	a2ensite ceilometer-api.conf
+	service_restart apache2
     else
 	service_restart ceilometer-api
 	service_enable ceilometer-api
+    fi
+
+    #
+    # Patch for https://bugs.launchpad.net/python-ceilometerclient/+bug/1679934 ;
+    # hasn't hit Ubuntu Ocata cloud archive packages yet.
+    #
+    if [ $OSVERSION -eq $OSOCATA ]; then
+	patch -p1 -d / < $DIRNAME/etc/ceilometer-ocata-client-bug-1679934.patch
     fi
 
     service_restart ceilometer-collector
@@ -3099,6 +3123,28 @@ if [ -z "${TELEMETRY_SWIFT_DONE}" ]; then
 
     echo "TELEMETRY_SWIFT_DONE=\"${TELEMETRY_SWIFT_DONE}\"" >> $SETTINGS
     logtend "ceilometer-swift"
+fi
+
+#
+# Install the Telemetry service for Heat
+#
+if [ -z "${TELEMETRY_HEAT_DONE}" ]; then
+    logtstart "ceilometer-heat"
+    TELEMETRY_HEAT_DONE=1
+
+    if [ $OSVERSION -lt $OSMITAKA ]; then
+	crudini --set /etc/heat/heat.conf DEFAULT \
+	    notification_driver messagingv2
+    else
+	crudini --set /etc/heat/heat.conf \
+	    oslo_messaging_notifications driver messagingv2
+    fi
+    service_restart heat-api
+    service_restart heat-api-cfn
+    service_restart heat-engine
+
+    echo "TELEMETRY_HEAT_DONE=\"${TELEMETRY_HEAT_DONE}\"" >> $SETTINGS
+    logtend "ceilometer-heat"
 fi
 
 #
