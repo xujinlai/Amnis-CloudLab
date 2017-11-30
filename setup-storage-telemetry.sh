@@ -31,8 +31,16 @@ fi
 
 
 crudini --set /etc/cinder/cinder.conf DEFAULT control_exchange cinder
-crudini --set /etc/cinder/cinder.conf DEFAULT notification_driver messagingv2
+if [ $OSVERSION -lt $OSMITAKA ]; then
+    crudini --set /etc/cinder/cinder.conf DEFAULT notification_driver messagingv2
+else
+    crudini --set /etc/cinder/cinder.conf oslo_messaging_notifications driver messagingv2
+fi
 #notification_driver = cinder.openstack.common.notifier.rpc_notifier
+
+if [ -x /usr/bin/cinder-volume-usage-audit ]; then
+    echo "*/5 * * * * /usr/bin/cinder-volume-usage-audit --send_actions" >> /etc/crontab
+fi
 
 service_restart cinder-volume
 service_enable cinder-volume
