@@ -65,6 +65,9 @@ pc.defineParameter("ubuntuMirrorPath","Ubuntu Package Mirror Path",
 pc.defineParameter("doAptUpgrade","Upgrade OpenStack packages and dependencies to the latest versions",
                    portal.ParameterType.BOOLEAN, False,advanced=True,
                    longDescription="The default images this profile uses have OpenStack and dependent packages preloaded.  To guarantee that these scripts always work, we no longer upgrade to the latest packages by default, to avoid changes.  If you want to ensure you have the latest packages, you should enable this option -- but if there are setup failures, we can't guarantee support.  NOTE: selecting this option requires that you also select the option to update the Apt package cache!")
+pc.defineParameter("doAptDistUpgrade","Upgrade all packages to their latest versions",
+                   portal.ParameterType.BOOLEAN, False,advanced=True,
+                   longDescription="Sometimes, if you install using the fromScratch option, you'll need to update some of the base distro packages via apt-get dist-upgrade; this option handles that.  NOTE: selecting this option requires that you also select the option to update the Apt package cache!")
 pc.defineParameter("doAptInstall","Install required OpenStack packages and dependencies",
                    portal.ParameterType.BOOLEAN, True,advanced=True,
                    longDescription="This option allows you to tell the setup scripts not to install or upgrade any packages (other than the absolute dependencies without which the scripts cannot run).  If you start from bare images, or select a profile option that may trigger a package to be installed, we may need to install packages for you; and if you have disabled it, we might not be able to configure these features.  This option is really only for people who want to configure only the openstack packages that are already installed on their disk images, and not be surprised by package or database schema upgrades.  NOTE: this option requires that you also select the option to update the Apt package cache!")
@@ -303,6 +306,10 @@ if params.fromScratch and not params.doAptInstall:
     pass
 if params.doAptUpgrade and not params.doAptInstall:
     perr = portal.ParameterWarning("If you disable package installation, and request package upgrades, nothing will happen; you'll have to comb through the setup script logfiles to see what packages would have been upgraded.",['doAptUpgrade','doAptInstall'])
+    pc.reportWarning(perr)
+    pass
+if params.doAptDistUpgrade and not params.doAptInstall:
+    perr = portal.ParameterWarning("If you disable package installation, and request all packages to be upgraded, nothing will happen; so you need to change your parameter values.",['doAptDistUpgrade','doAptInstall'])
     pc.reportWarning(perr)
     pass
 
@@ -546,6 +553,8 @@ elif params.release == 'mitaka':
 else:
     image_os = 'UBUNTU16-64'
     params.fromScratch = True
+    params.doAptDistUpgrade = True
+    params.doAptUpdate = True
     pass
 
 if params.fromScratch:
@@ -831,6 +840,8 @@ class Parameters(RSpec.Resource):
         param.text = 'DO_APT_INSTALL=%d' % (int(params.doAptInstall),)
         param = ET.SubElement(el,paramXML)
         param.text = 'DO_APT_UPGRADE=%d' % (int(params.doAptUpgrade),)
+        param = ET.SubElement(el,paramXML)
+        param.text = 'DO_APT_DIST_UPGRADE=%d' % (int(params.doAptDistUpgrade),)
         param = ET.SubElement(el,paramXML)
         param.text = 'DO_APT_UPDATE=%d' % (int(params.doAptUpdate),)
 

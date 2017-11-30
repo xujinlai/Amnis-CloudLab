@@ -82,6 +82,7 @@ DATAOTHERLANS=""
 USE_EXISTING_IPS=1
 DO_APT_INSTALL=1
 DO_APT_UPGRADE=0
+DO_APT_DIST_UPGRADE=0
 DO_APT_UPDATE=1
 UBUNTUMIRRORHOST=""
 UBUNTUMIRRORPATH=""
@@ -705,6 +706,20 @@ if [ ! -f $OURDIR/cloudarchive-added -a "${DO_UBUNTU_CLOUDARCHIVE}" = "1" ]; the
     #fi
 
     touch $OURDIR/cloudarchive-added
+fi
+
+if [ ! -f $OURDIR/apt-dist-upgraded -a "${DO_APT_DIST_UPGRADE}" = "1" ]; then
+    # First, mark grub packages not to be upgraded; we don't want an
+    # install going to the wrong place.
+    PKGS="grub-common grub-gfxpayload-lists grub-pc grub-pc-bin grub2-common"
+    for pkg in $PKGS; do
+	apt-mark hold $pkg
+    done
+    apt-get dist-upgrade -y
+    for pkg in $PKGS; do
+	apt-mark unhold $pkg
+    done
+    touch $OURDIR/apt-dist-upgraded
 fi
 
 #
