@@ -1161,6 +1161,13 @@ EOF
     service_enable nova-novncproxy
     service_restart nova-serialproxy
     service_enable nova-serialproxy
+    if [ $OSVERSION -ge $OSOCATA ]; then
+	a2ensite nova-placement-api.conf
+	service_restart apache2
+    else
+	service_restart nova-placement-api
+	service_enable nova-placement-api
+    fi
 
     rm -f /var/lib/nova/nova.sqlite
 
