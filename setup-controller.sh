@@ -2875,7 +2875,11 @@ sinks:
 EOF
     fi
 
-    su -s /bin/sh -c "ceilometer-dbsync" ceilometer
+    if [ $OSVERSION -lt $OSOCATA ]; then
+	su -s /bin/sh -c "ceilometer-dbsync" ceilometer
+    else
+	ceilometer-upgrade
+    fi
 
     service_restart ceilometer-agent-central
     service_enable ceilometer-agent-central
