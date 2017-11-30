@@ -2423,6 +2423,12 @@ if [ -z "${OBJECT_RING_DONE}" ]; then
 
     cd $cdir
 
+    if [ ${HAVE_SYSTEMD} -eq 0 ]; then
+	swift-init proxy-server restart
+    else
+	service_restart swift-proxy
+    fi
+
     echo "OBJECT_RING_DONE=\"1\"" >> $SETTINGS
     logtend "swift-rings"
 fi
