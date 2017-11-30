@@ -1953,8 +1953,14 @@ if [ -z "${CINDER_DBPASS}" ]; then
 
     service_restart cinder-scheduler
     service_enable cinder-scheduler
-    service_restart cinder-api
-    service_enable cinder-api
+
+    if [ $OSVERSION -ge $OSOCATA ]; then
+	a2enconf cinder-wsgi.conf
+	service_restart apache2
+    else
+	service_restart cinder-api
+	service_enable cinder-api
+    fi
     rm -f /var/lib/cinder/cinder.sqlite
 
     echo "CINDER_DBPASS=\"${CINDER_DBPASS}\"" >> $SETTINGS
