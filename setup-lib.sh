@@ -299,6 +299,7 @@ OSKILO=11
 OSLIBERTY=12
 OSMITAKA=13
 OSNEWTON=14
+OSOCATA=15
 
 . /etc/lsb-release
 #
@@ -311,6 +312,7 @@ if [ ! "x$OSRELEASE" = "x" ]; then
     if [ $OSCODENAME = "liberty" ]; then OSVERSION=$OSLIBERTY ; fi
     if [ $OSCODENAME = "mitaka" ]; then OSVERSION=$OSMITAKA ; fi
     if [ $OSCODENAME = "newton" ]; then OSVERSION=$OSNEWTON ; fi
+    if [ $OSCODENAME = "ocata" ]; then OSVERSION=$OSOCATA ; fi
 
     #
     # We only use cloudarchive for LTS images!

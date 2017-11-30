@@ -124,7 +124,7 @@ if [ -z "${DB_ROOT_PASS}" ]; then
     echo "collation-server = utf8_general_ci" >> /etc/mysql/my.cnf
     echo "init-connect = 'SET NAMES utf8'" >> /etc/mysql/my.cnf
     echo "character-set-server = utf8" >> /etc/mysql/my.cnf
-    echo "max_connections = 5000" >> /etc/mysql/my.cnf
+    echo "max_connections = 4096" >> /etc/mysql/my.cnf
     # Restart it!
     service_restart mysql
     service_enable mysql
@@ -819,7 +819,7 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	crudini --set /etc/glance/glance-api.conf glance_store default_store file
 	crudini --set /etc/glance/glance-api.conf glance_store \
 	    filesystem_store_datadir /var/lib/glance/images/
-	crudini --set /etc/glance/glance-api.conf DEFAULT notification_driver noop
+	#crudini --set /etc/glance/glance-api.conf DEFAULT notification_driver noop
 	if [ $OSVERSION -ge $OSNEWTON ]; then
 	    crudini --set /etc/glance/glance-api.conf glance_store stores file,http
 	fi
@@ -864,7 +864,7 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	    username glance
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
 	    password "${GLANCE_PASS}"
-	crudini --set /etc/glance/glance-registry.conf DEFAULT notification_driver noop
+	#crudini --set /etc/glance/glance-registry.conf DEFAULT notification_driver noop
     fi
     if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
@@ -906,6 +906,12 @@ if [ -z "${NOVA_DBPASS}" ]; then
 	echo "grant all privileges on nova_api.* to 'nova'@'%' identified by '$NOVA_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
     fi
 
+    if [ $OSVERSION -ge $OSOCATA ]; then
+	echo "create database nova_cell0" | mysql -u root --password="$DB_ROOT_PASS"
+	echo "grant all privileges on nova_cell0.* to 'nova'@'localhost' identified by '$NOVA_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+	echo "grant all privileges on nova_cell0.* to 'nova'@'%' identified by '$NOVA_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+    fi
+
     if [ $OSVERSION -eq $OSJUNO ]; then
 	keystone user-create --name nova --pass $NOVA_PASS
 	keystone user-role-add --user nova --tenant service --role admin
@@ -929,19 +935,45 @@ if [ -z "${NOVA_DBPASS}" ]; then
 		--internalurl http://$CONTROLLER:8774/${NAPISTR}/%\(tenant_id\)s \
 		--adminurl http://$CONTROLLER:8774/${NAPISTR}/%\(tenant_id\)s \
 		--region $REGION compute
-	else
+	elif [ $OSVERSION -lt $OSNEWTON ]; then
 	    __openstack endpoint create --region $REGION \
 		compute public http://${CONTROLLER}:8774/${NAPISTR}/%\(tenant_id\)s
 	    __openstack endpoint create --region $REGION \
 		compute internal http://${CONTROLLER}:8774/${NAPISTR}/%\(tenant_id\)s
 	    __openstack endpoint create --region $REGION \
 		compute admin http://${CONTROLLER}:8774/${NAPISTR}/%\(tenant_id\)s
+	else
+	    __openstack endpoint create --region $REGION \
+		compute public http://${CONTROLLER}:8774/${NAPISTR}
+	    __openstack endpoint create --region $REGION \
+		compute internal http://${CONTROLLER}:8774/${NAPISTR}
+	    __openstack endpoint create --region $REGION \
+		compute admin http://${CONTROLLER}:8774/${NAPISTR}
+	fi
+
+	if [ $OSVERSION -ge $OSOCATA ]; then
+	    PLACEMENT_PASS=`$PSWDGEN`
+	    __openstack user create $DOMARG --password $PLACEMENT_PASS placement
+	    __openstack role add --user placement --project service admin
+	    __openstack service create --name placement \
+	        --description "OpenStack Placement API" placement
+
+	    __openstack endpoint create --region $REGION \
+		placement public http://${CONTROLLER}:8778
+	    __openstack endpoint create --region $REGION \
+		placement internal http://${CONTROLLER}:8778
+	    __openstack endpoint create --region $REGION \
+		placement admin http://${CONTROLLER}:8778
 	fi
     fi
 
-    maybe_install_packages nova-api nova-cert nova-conductor nova-consoleauth \
+    maybe_install_packages nova-api nova-conductor nova-consoleauth \
 	nova-novncproxy nova-scheduler python-novaclient
-
+    maybe_install_packages nova-cert
+    if [ $OSVERSION -ge $OSOCATA ]; then
+	maybe_install_packages nova-placement-api
+    fi
+    
     if [ ${ENABLE_NEW_SERIAL_SUPPORT} = 1 ]; then
 	maybe_install_packages nova-serialproxy
 	mkdir -p $OURDIR/src
@@ -1055,10 +1087,15 @@ EOF
 	    nova.scheduler.filters.all_filters
 	crudini --set /etc/nova/nova.conf DEFAULT scheduler_default_filters \
 	    'RetryFilter, AvailabilityZoneFilter, RamFilter, ComputeFilter, ComputeCapabilitiesFilter, ImagePropertiesFilter, ServerGroupAntiAffinityFilter, ServerGroupAffinityFilter'
-    elif [ $OSVERSION -ge $OSLIBERTY ]; then
+    elif [ $OSVERSION -ge $OSLIBERTY -a $OSVERSION -lt $OSOCATA ]; then
 	crudini --set /etc/nova/nova.conf DEFAULT scheduler_available_filters \
 	    nova.scheduler.filters.all_filters
 	crudini --set /etc/nova/nova.conf DEFAULT scheduler_default_filters \
+	    'RetryFilter, AvailabilityZoneFilter, RamFilter, ComputeFilter, ComputeCapabilitiesFilter, ImagePropertiesFilter, ServerGroupAntiAffinityFilter, ServerGroupAffinityFilter'
+    elif [ $OSVERSION -ge $OSOCATA ]; then
+	crudini --set /etc/nova/nova.conf filter_scheduler available_filters \
+	    nova.scheduler.filters.all_filters
+	crudini --set /etc/nova/nova.conf filter_scheduler enabled_filters \
 	    'RetryFilter, AvailabilityZoneFilter, RamFilter, ComputeFilter, ComputeCapabilitiesFilter, ImagePropertiesFilter, ServerGroupAntiAffinityFilter, ServerGroupAffinityFilter'
     fi
 
@@ -1081,8 +1118,31 @@ EOF
 	crudini --set /etc/nova/nova.conf api_database max_pool_size $ncpus
     fi
 
+    if [ $OSVERSION -ge $OSOCATA ]; then
+	crudini --set /etc/nova/nova.conf placement \
+	    os_region_name $REGION
+	crudini --set /etc/nova/nova.conf placement \
+	    auth_url http://${CONTROLLER}:35357/v3
+	crudini --set /etc/nova/nova.conf placement \
+	    ${AUTH_TYPE_PARAM} password
+	crudini --set /etc/nova/nova.conf placement \
+	    ${PROJECT_DOMAIN_PARAM} default
+	crudini --set /etc/nova/nova.conf placement \
+	    ${USER_DOMAIN_PARAM} default
+	crudini --set /etc/nova/nova.conf placement \
+	    project_name service
+	crudini --set /etc/nova/nova.conf placement \
+	    username placement
+	crudini --set /etc/nova/nova.conf placement \
+	    password "${PLACEMENT_PASS}"
+    fi
+
     if [ $OSVERSION -ge $OSMITAKA ]; then
 	su -s /bin/sh -c "nova-manage api_db sync" nova
+    fi
+    if [ $OSVERSION -ge $OSOCATA ]; then
+	su -s /bin/sh -c "nova-manage cell_v2 map_cell0" nova
+	su -s /bin/sh -c "nova-manage cell_v2 create_cell --name=cell1 --verbose" nova
     fi
     su -s /bin/sh -c "nova-manage db sync" nova
 
@@ -1101,6 +1161,13 @@ EOF
     service_enable nova-novncproxy
     service_restart nova-serialproxy
     service_enable nova-serialproxy
+    if [ $OSVERSION -ge $OSOCATA ]; then
+	a2ensite nova-placement-api.conf
+	service_restart apache2
+    else
+	service_restart nova-placement-api
+	service_enable nova-placement-api
+    fi
 
     rm -f /var/lib/nova/nova.sqlite
 
@@ -1130,6 +1197,7 @@ EOF
 
     echo "NOVA_DBPASS=\"${NOVA_DBPASS}\"" >> $SETTINGS
     echo "NOVA_PASS=\"${NOVA_PASS}\"" >> $SETTINGS
+    echo "PLACEMENT_PASS=\"${PLACEMENT_PASS}\"" >> $SETTINGS
     logtend "nova"
 fi
 
@@ -1161,6 +1229,11 @@ if [ -z "${NOVA_COMPUTENODES_DONE}" ]; then
     do
 	touch $OURDIR/compute-done-${node}
     done
+
+    if [ $OSVERSION -ge $OSOCATA ]; then
+	su -s /bin/sh -c "nova-manage cell_v2 discover_hosts --verbose" nova
+	crudini --set /etc/nova/nova.conf scheduler discover_hosts_in_cells_interval 300
+    fi
 
     echo "NOVA_COMPUTENODES_DONE=\"${NOVA_COMPUTENODES_DONE}\"" >> $SETTINGS
     logtend "nova-computenodes"
@@ -1330,9 +1403,13 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	    memcached_servers ${CONTROLLER}:11211
     fi
 
-    crudini --set /etc/neutron/neutron.conf DEFAULT \
-	notification_driver messagingv2
-
+    if [ $OSVERSION -lt $OSMITAKA ]; then
+	crudini --set /etc/neutron/neutron.conf DEFAULT \
+	    notification_driver messagingv2
+    else
+	crudini --set /etc/neutron/neutron.conf \
+	    oslo_messaging_notifications driver messagingv2
+    fi
     if [ $OSVERSION -ge $OSLIBERTY ]; then
 	# Doc bug: these are supposed to be not just a large amount;
 	# they should be set to the same number as api_workers, and that
@@ -1432,7 +1509,11 @@ EOF
     crudini --set /etc/nova/nova.conf neutron \
 	metadata_proxy_shared_secret ${NEUTRON_METADATA_SECRET}
 
-    su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade ${OSCODENAME}" neutron
+    if [ $OSVERSION -ge $OSNEWTON ]; then
+	su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade head" neutron
+    else
+	su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade ${OSCODENAME}" neutron
+    fi
 
     service_restart nova-api
     service_restart nova-scheduler
@@ -1563,7 +1644,7 @@ if [ -z "${NEUTRON_NETWORKS_DONE}" ]; then
 	if [ -z "$IPAMSID" ]; then
 	    echo "WARNING: could not find ipamsubnetid from ipamsubnets post-Newton!"
 	else
-	    echo "delete from ipamallocationpools where subnet_id='$IPAMSID'" \
+	    echo "delete from ipamallocationpools where ipam_subnet_id='$IPAMSID'" \
 		| mysql --password=${DB_ROOT_PASS} neutron
 	    for ip in $PUBLICADDRS ; do
 		echo "insert into ipamallocationpools values (UUID(),'$IPAMSID','$ip','$ip')" \
@@ -1671,12 +1752,16 @@ OPENSTACK_API_VERSIONS = {
 }
 EOF
 
+    if [ $OSVERSION -ge $OSOCATA ]; then
+	chown www-data.www-data /var/lib/openstack-dashboard/secret_key
+    fi
+
     #
     # On some versions, we have special patches to customize horizon.
     # For instance, on Newton, we don't want volume creation to be the
     # default.
     #
-    if [ $OSVERSION -eq $OSNEWTON ]; then
+    if [ $OSVERSION -ge $OSNEWTON ]; then
 	patch -p0 -d / < $DIRNAME/etc/horizon-${OSCODENAME}-no-default-volcreate.patch
 	# Rebuild after patching javascripts.
 	/usr/share/openstack-dashboard/manage.py collectstatic --noinput \
@@ -1756,7 +1841,7 @@ if [ -z "${CINDER_DBPASS}" ]; then
 		--adminurl http://${CONTROLLER}:8776/v2/%\(tenant_id\)s \
 		--region $REGION \
 		volumev2
-	else
+	elif [ $OSVERSION -lt $OSOCATA ]; then
 	    __openstack endpoint create --region $REGION \
 		volume public http://${CONTROLLER}:8776/v1/%\(tenant_id\)s
 	    __openstack endpoint create --region $REGION \
@@ -1770,6 +1855,22 @@ if [ -z "${CINDER_DBPASS}" ]; then
 		volumev2 internal http://${CONTROLLER}:8776/v2/%\(tenant_id\)s
 	    __openstack endpoint create --region $REGION \
 		volumev2 admin http://${CONTROLLER}:8776/v2/%\(tenant_id\)s
+	else
+	    __openstack endpoint create --region $REGION \
+		volumev2 public http://${CONTROLLER}:8776/v2/%\(project_id\)s
+	    __openstack endpoint create --region $REGION \
+		volumev2 internal http://${CONTROLLER}:8776/v2/%\(project_id\)s
+	    __openstack endpoint create --region $REGION \
+		volumev2 admin http://${CONTROLLER}:8776/v2/%\(project_id\)s
+
+	    __openstack service create --name cinderv3 \
+		--description "OpenStack Block Storage Service" volumev3
+	    __openstack endpoint create --region $REGION \
+		volumev3 public http://${CONTROLLER}:8776/v3/%\(project_id\)s
+	    __openstack endpoint create --region $REGION \
+		volumev3 internal http://${CONTROLLER}:8776/v3/%\(project_id\)s
+	    __openstack endpoint create --region $REGION \
+		volumev3 admin http://${CONTROLLER}:8776/v3/%\(project_id\)s
 	fi
     fi
 
@@ -1858,10 +1959,14 @@ if [ -z "${CINDER_DBPASS}" ]; then
 
     service_restart cinder-scheduler
     service_enable cinder-scheduler
-    service_restart cinder-api
-    service_enable cinder-api
-    service_restart cinder-volume
-    service_enable cinder-volume
+
+    if [ $OSVERSION -ge $OSOCATA ]; then
+	a2enconf cinder-wsgi.conf
+	service_restart apache2
+    else
+	service_restart cinder-api
+	service_enable cinder-api
+    fi
     rm -f /var/lib/cinder/cinder.sqlite
 
     echo "CINDER_DBPASS=\"${CINDER_DBPASS}\"" >> $SETTINGS
@@ -2318,6 +2423,12 @@ if [ -z "${OBJECT_RING_DONE}" ]; then
 
     cd $cdir
 
+    if [ ${HAVE_SYSTEMD} -eq 0 ]; then
+	swift-init proxy-server restart
+    else
+	service_restart swift-proxy
+    fi
+
     echo "OBJECT_RING_DONE=\"1\"" >> $SETTINGS
     logtend "swift-rings"
 fi
@@ -2596,6 +2707,15 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 		--internalurl http://$CONTROLLER:8777 \
 		--adminurl http://$CONTROLLER:8777 \
 		--region $REGION metering
+	# Don't do this for now despite Ocata install instructions; the
+	# package's wsgi file's port is still 8777.
+	#elif [ $OSVERSION -ge $OSOCATA ]; then
+	#    __openstack endpoint create --region $REGION \
+	#	metering public http://${CONTROLLER}:8041
+	#    __openstack endpoint create --region $REGION \
+	#	metering internal http://${CONTROLLER}:8041
+	#    __openstack endpoint create --region $REGION \
+	#	metering admin http://${CONTROLLER}:8041
 	else
 	    __openstack endpoint create --region $REGION \
 		metering public http://${CONTROLLER}:8777
@@ -2755,15 +2875,19 @@ sinks:
 EOF
     fi
 
-    su -s /bin/sh -c "ceilometer-dbsync" ceilometer
+    if [ $OSVERSION -lt $OSOCATA ]; then
+	su -s /bin/sh -c "ceilometer-dbsync" ceilometer
+    else
+	ceilometer-upgrade
+    fi
 
     service_restart ceilometer-agent-central
     service_enable ceilometer-agent-central
     service_restart ceilometer-agent-notification
     service_enable ceilometer-agent-notification
 
-    if [ $CEILOMETER_USE_WSGI -eq 1 ]; then
-	cat <<EOF > /etc/apache2/sites-available/wsgi-ceilometer.conf
+    if [ $CEILOMETER_USE_WSGI -eq 1 -a $OSVERSION -lt $OSOCATA ]; then
+	cat <<EOF > /etc/apache2/sites-available/ceilometer-api.conf
 Listen 8777
 
 <VirtualHost *:8777>
@@ -2789,7 +2913,7 @@ Listen 8777
 </VirtualHost>
 EOF
 
-	a2ensite wsgi-ceilometer
+	a2ensite ceilometer-api
 	wget -O /usr/bin/ceilometer-wsgi-app https://raw.githubusercontent.com/openstack/ceilometer/stable/${OSCODENAME}/ceilometer/api/app.wsgi
 	if [ ! $? -eq 0 ]; then
             # Try the EOL version
@@ -2797,9 +2921,20 @@ EOF
 	fi
 	
 	service apache2 reload
+    elif [ $OSVERSION -ge $OSOCATA ]; then
+	a2ensite ceilometer-api.conf
+	service_restart apache2
     else
 	service_restart ceilometer-api
 	service_enable ceilometer-api
+    fi
+
+    #
+    # Patch for https://bugs.launchpad.net/python-ceilometerclient/+bug/1679934 ;
+    # hasn't hit Ubuntu Ocata cloud archive packages yet.
+    #
+    if [ $OSVERSION -eq $OSOCATA ]; then
+	patch -p1 -d / < $DIRNAME/etc/ceilometer-ocata-client-bug-1679934.patch
     fi
 
     service_restart ceilometer-collector
@@ -2880,15 +3015,18 @@ if [ -z "${TELEMETRY_GLANCE_DONE}" ]; then
 	crudini --set /etc/glance/glance-api.conf \
 	    oslo_messaging_notifications driver messagingv2
     fi
-    crudini --set /etc/glance/glance-api.conf DEFAULT \
-	rpc_backend rabbit
-    crudini --set /etc/glance/glance-api.conf $RIS \
-	rabbit_host ${CONTROLLER}
-    crudini --set /etc/glance/glance-api.conf $RIS \
-	rabbit_userid ${RABBIT_USER}
-    crudini --set /etc/glance/glance-api.conf $RIS \
-	rabbit_password ${RABBIT_PASS}
-
+    if [ $OSVERSION -lt $OSNEWTON ]; then
+	crudini --set /etc/glance/glance-api.conf DEFAULT \
+	    rpc_backend rabbit
+	crudini --set /etc/glance/glance-api.conf $RIS \
+ 	    rabbit_host ${CONTROLLER}
+	crudini --set /etc/glance/glance-api.conf $RIS \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/glance/glance-api.conf $RIS \
+	    rabbit_password ${RABBIT_PASS}
+    else
+	crudini --set /etc/glance/glance-api.conf DEFAULT transport_url $RABBIT_URL
+    fi
     if [ $OSVERSION -lt $OSMITAKA ]; then
 	crudini --set /etc/glance/glance-registry.conf DEFAULT \
 	    notification_driver messagingv2
@@ -2896,14 +3034,18 @@ if [ -z "${TELEMETRY_GLANCE_DONE}" ]; then
 	crudini --set /etc/glance/glance-registry.conf \
 	    oslo_messaging_notifications driver messagingv2
     fi
-    crudini --set /etc/glance/glance-registry.conf DEFAULT \
-	rpc_backend rabbit
-    crudini --set /etc/glance/glance-registry.conf $RIS \
-	rabbit_host ${CONTROLLER}
-    crudini --set /etc/glance/glance-registry.conf $RIS \
-	rabbit_userid ${RABBIT_USER}
-    crudini --set /etc/glance/glance-registry.conf $RIS \
-	rabbit_password ${RABBIT_PASS}
+    if [ $OSVERSION -lt $OSNEWTON ]; then
+	crudini --set /etc/glance/glance-registry.conf DEFAULT \
+	    rpc_backend rabbit
+	crudini --set /etc/glance/glance-registry.conf $RIS \
+	    rabbit_host ${CONTROLLER}
+	crudini --set /etc/glance/glance-registry.conf $RIS \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/glance/glance-registry.conf $RIS \
+	    rabbit_password ${RABBIT_PASS}
+    else
+	crudini --set /etc/glance/glance-api.conf DEFAULT transport_url $RABBIT_URL
+    fi
 
     service_restart glance-registry
     service_restart glance-api
@@ -2993,6 +3135,28 @@ if [ -z "${TELEMETRY_SWIFT_DONE}" ]; then
 
     echo "TELEMETRY_SWIFT_DONE=\"${TELEMETRY_SWIFT_DONE}\"" >> $SETTINGS
     logtend "ceilometer-swift"
+fi
+
+#
+# Install the Telemetry service for Heat
+#
+if [ -z "${TELEMETRY_HEAT_DONE}" ]; then
+    logtstart "ceilometer-heat"
+    TELEMETRY_HEAT_DONE=1
+
+    if [ $OSVERSION -lt $OSMITAKA ]; then
+	crudini --set /etc/heat/heat.conf DEFAULT \
+	    notification_driver messagingv2
+    else
+	crudini --set /etc/heat/heat.conf \
+	    oslo_messaging_notifications driver messagingv2
+    fi
+    service_restart heat-api
+    service_restart heat-api-cfn
+    service_restart heat-engine
+
+    echo "TELEMETRY_HEAT_DONE=\"${TELEMETRY_HEAT_DONE}\"" >> $SETTINGS
+    logtend "ceilometer-heat"
 fi
 
 #
