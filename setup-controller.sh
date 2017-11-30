@@ -1865,7 +1865,7 @@ if [ -z "${CINDER_DBPASS}" ]; then
 
 	    # Seems like the volumev3 service doesn't exist a priori in
 	    # Ocata; create it so these don't fail.
-	    openstack service show volumev3 >& /dev/null
+	    openstack service show volumev3 >/dev/null
 	    if [ ! $? -eq 0 ]; then
 		openstack service create --name volumev3 volumev3
 	    fi
