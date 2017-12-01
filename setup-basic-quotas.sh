@@ -41,6 +41,7 @@ if [ ${DEFAULT_SECGROUP_ENABLE_SSH_ICMP} -eq 1 ]; then
 	    --protocol tcp --dst-port 22:22 ${ADMIN_SEC_GROUP}
 	openstack security group rule create \
 	    --protocol icmp ${ADMIN_SEC_GROUP}
+    fi
 fi
 
 if [ $QUOTASOFF -eq 1 ]; then
