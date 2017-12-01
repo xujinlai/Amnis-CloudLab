@@ -2759,6 +2759,11 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    ceilometer-alarm-notifier
     fi
 
+    # Seems like the Pike package doesn't properly install /etc/ceilometer;
+    # it is owned by some non-existent uid.  So just shotgun this; it is
+    # always correct.
+    chown -R ceilometer /etc/ceilometer
+
     if [ "${CEILOMETER_USE_MONGODB}" = "1" ]; then
 	crudini --set /etc/ceilometer/ceilometer.conf database \
 	    connection "mongodb://ceilometer:${CEILOMETER_DBPASS}@${MGMTIP}:27017/ceilometer" 
