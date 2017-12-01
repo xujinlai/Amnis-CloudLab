@@ -3787,6 +3787,223 @@ if [ 0 = 1 -a "$OSCODENAME" = "kilo" -a -n "$BAREMETALNODES" -a -z "${IRONIC_DBP
 fi
 
 #
+# Maybe install Designate.
+#
+if [ $OSVERSION -ge $OSNEWTON -a -z "${DESIGNATE_DBPASS}" ]; then
+    logtstart "designate"
+    DESIGNATE_DBPASS=`$PSWDGEN`
+    DESIGNATE_PASS=`$PSWDGEN`
+
+    echo "create database designate" | mysql -u root --password="$DB_ROOT_PASS"
+    echo "grant all privileges on designate.* to 'designate'@'localhost' identified by '$DESIGNATE_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+    echo "grant all privileges on designate.* to 'designate'@'%' identified by '$DESIGNATE_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+
+    __openstack user create $DOMARG --password $DESIGNATE_PASS designate
+    __openstack role add --user designate --project service admin
+    __openstack service create --name designate \
+	--description "OpenStack Domain Name Service" dns
+
+    if [ $KEYSTONEAPIVERSION -lt 3 ]; then
+	__openstack endpoint create \
+	    --publicurl http://${CONTROLLER}:9001/ \
+	    --internalurl http://${CONTROLLER}:9001/ \
+	    --adminurl http://${CONTROLLER}:9001/ \
+	    --region $REGION \
+	    dns
+    else
+	__openstack endpoint create --region $REGION \
+	    dns public http://${CONTROLLER}:9001/
+	__openstack endpoint create --region $REGION \
+	    dns internal http://${CONTROLLER}:9001/
+	__openstack endpoint create --region $REGION \
+	    dns admin http://${CONTROLLER}:9001/
+    fi
+
+    maybe_install_packages designate bind9 bind9utils bind9-doc
+    rndc-confgen -a -k designate -c /etc/designate/rndc.key
+
+    cat <<EOF >>/etc/bind/named.conf.options
+include "/etc/designate/rndc.key";
+
+options {
+    ...
+    allow-new-zones yes;
+    request-ixfr no;
+    listen-on port 53 { 127.0.0.1; };
+    recursion no;
+    allow-query { 127.0.0.1; };
+};
+
+controls {
+  inet 127.0.0.1 port 953
+    allow { 127.0.0.1; } keys { "designate"; };
+};
+EOF
+
+    service_enable bind9
+    service_restart bind9
+
+    crudini --set /etc/designate/designate.conf storage:sqlalchemy \
+	connection "${DBDSTRING}://designate:$DESIGNATE_DBPASS@$CONTROLLER/designate"
+
+    crudini --del /etc/designate/designate.conf keystone_authtoken auth_host
+    crudini --del /etc/designate/designate.conf keystone_authtoken auth_port
+    crudini --del /etc/designate/designate.conf keystone_authtoken auth_protocol
+
+    crudini --set /etc/designate/designate.conf service:api auth_strategy keystone
+    crudini --set /etc/designate/designate.conf service:api listen ${MGMTIP}:9001
+    crudini --set /etc/designate/designate.conf service:api enable_api_v1 True
+    crudini --set /etc/designate/designate.conf service:api \
+	api_base_url http://${CONTROLLER}:9001/
+    crudini --set /etc/designate/designate.conf service:api \
+	enabled_extensions_v1 quotas,reports
+    crudini --set /etc/designate/designate.conf service:api enable_api_v2 True
+    crudini --set /etc/designate/designate.conf service:api \
+	enabled_extensions_v2 quotas,reports
+    crudini --set /etc/designate/designate.conf service:worker enabled True
+    crudini --set /etc/designate/designate.conf service:worker notify True
+    crudini --set /etc/designate/designate.conf DEFAULT verbose ${VERBOSE_LOGGING}
+    crudini --set /etc/designate/designate.conf DEFAULT debug ${DEBUG_LOGGING}
+
+    if [ $OSVERSION -lt $OSNEWTON ]; then
+	crudini --set /etc/designate/designate.conf DEFAULT rpc_backend rabbit
+	crudini --set /etc/designate/designate.conf oslo_messaging_rabbit \
+	    rabbit_host $CONTROLLER
+	crudini --set /etc/designate/designate.conf oslo_messaging_rabbit \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/designate/designate.conf oslo_messaging_rabbit \
+	    rabbit_password "${RABBIT_PASS}"
+    else
+	crudini --set /etc/designate/designate.conf DEFAULT \
+	    transport_url $RABBIT_URL
+    fi
+
+    crudini --set /etc/designate/designate.conf keystone_authtoken \
+	auth_uri http://${CONTROLLER}:5000
+    crudini --set /etc/designate/designate.conf keystone_authtoken \
+	auth_url http://${CONTROLLER}:35357
+    crudini --set /etc/designate/designate.conf keystone_authtoken \
+	${AUTH_TYPE_PARAM} password
+    crudini --set /etc/designate/designate.conf keystone_authtoken \
+	${PROJECT_DOMAIN_PARAM} default
+    crudini --set /etc/designate/designate.conf keystone_authtoken \
+	${USER_DOMAIN_PARAM} default
+    crudini --set /etc/designate/designate.conf keystone_authtoken \
+	project_name service
+    crudini --set /etc/designate/designate.conf keystone_authtoken \
+	username designate
+    crudini --set /etc/designate/designate.conf keystone_authtoken \
+	password "${DESIGNATE_PASS}"
+    crudini --set /etc/designate/designate.conf keystone_authtoken \
+	memcached_servers ${CONTROLLER}:11211
+
+    crudini --set /etc/designate/designate.conf 
+
+    su -s /bin/sh -c "designate-manage database sync" designate
+
+    service_restart designate-central
+    service_enable designate-central
+    service_restart designate-api
+    service_enable designate-api
+
+    cat <<EOF > /etc/designate/pools.yaml
+- name: default
+  # The name is immutable. There will be no option to change the name after
+  # creation and the only way will to change it will be to delete it
+  # (and all zones associated with it) and recreate it.
+  description: Default Pool
+
+  attributes: {}
+
+  # List out the NS records for zones hosted within this pool
+  # This should be a record that is created outside of designate, that
+  # points to the public IP of the controller node.
+  ns_records:
+    - hostname: ns1-1.example.org.
+      priority: 1
+
+  # List out the nameservers for this pool. These are the actual BIND servers.
+  # We use these to verify changes have propagated to all nameservers.
+  nameservers:
+    - host: 127.0.0.1
+      port: 53
+
+  # List out the targets for this pool. For BIND there will be one
+  # entry for each BIND server, as we have to run rndc command on each server
+  targets:
+    - type: bind9
+      description: BIND9 Server 1
+
+      # List out the designate-mdns servers from which BIND servers should
+      # request zone transfers (AXFRs) from.
+      # This should be the IP of the controller node.
+      # If you have multiple controllers you can add multiple masters
+      # by running designate-mdns on them, and adding them here.
+      masters:
+        - host: 127.0.0.1
+          port: 5354
+
+      # BIND Configuration options
+      options:
+        host: 127.0.0.1
+        port: 53
+        rndc_host: 127.0.0.1
+        rndc_port: 953
+        rndc_key_file: /etc/designate/rndc.key
+EOF
+    chown designate /etc/designate/pools.yaml
+
+    su -s /bin/sh -c "designate-manage pool update" designate
+
+    maybe_install_packages designate-worker designate-producer designate-mdns
+
+    service_restart designate-worker
+    service_enable designate-worker
+    service_restart designate-producer
+    service_enable designate-producer
+    service_restart designate-mdns
+    service_enable designate-mdns
+
+    rm -f /var/lib/designate/designate.sqlite
+
+    crudini --set /etc/neutron/neutron.conf DEFAULT \
+	external_dns_driver designate
+    crudini --set /etc/neutron/neutron.conf designate \
+	url http://${CONTROLLER}:9001/
+    crudini --set /etc/neutron/neutron.conf designate \
+        auth_url http://$CONTROLLER:35357
+    crudini --set /etc/neutron/neutron.conf designate \
+	allow_reverse_dns_lookup True
+    crudini --set /etc/neutron/neutron.conf designate \
+	ipv4_ptr_zone_prefix_size 24
+    crudini --set /etc/neutron/neutron.conf designate \
+	ipv6_ptr_zone_prefix_size 116
+
+    crudini --set /etc/neutron/neutron.conf designate \
+	${PROJECT_DOMAIN_PARAM} default
+    crudini --set /etc/neutron/neutron.conf designate \
+	${USER_DOMAIN_PARAM} default
+    crudini --set /etc/neutron/neutron.conf designate \
+	auth_type password
+    crudini --set /etc/neutron/neutron.conf designate \
+	project_name service
+    crudini --set /etc/neutron/neutron.conf designate \
+	username designate
+    crudini --set /etc/neutron/neutron.conf designate \
+	password ${DESIGNATE_PASS}
+    crudini --set /etc/neutron/neutron.conf designate \
+	region_name $REGION
+    crudini --set /etc/neutron/neutron.conf designate \
+	memcached_servers ${CONTROLLER}:11211
+
+    service_restart neutron-server
+
+    echo "DESIGNATE_DBPASS=\"${DESIGNATE_DBPASS}\"" >> $SETTINGS
+    echo "DESIGNATE_PASS=\"${DESIGNATE_PASS}\"" >> $SETTINGS
+    logtend "designate"
+fi
+
+#
 # Setup some basic images and networks
 #
 if [ -z "${SETUP_BASIC_DONE}" ]; then

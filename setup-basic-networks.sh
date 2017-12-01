@@ -30,6 +30,14 @@ fi
 . $OURDIR/admin-openrc.sh
 
 #
+# Before we setup networks, create a Designate zone.
+#
+if [ $OSVERSION -ge $OSNEWTON ]; then
+    mydomain=`hostname | sed -n -e 's/[^\.]*\.\(.*\)$/\1/p'`
+    __openstack zone create --email root@localhost ${mydomain}.
+fi
+
+#
 # Setup tunnel-based networks
 #
 if [ ${DATATUNNELS} -gt 0 ]; then
@@ -47,12 +55,15 @@ if [ ${DATATUNNELS} -gt 0 ]; then
 	neutron router-interface-add ${LAN}-router ${LAN}-subnet
 	neutron router-gateway-set ${LAN}-router ext-net
 
-	# Create a share network for this network...
+	# Create a share network for this network; and maybe a Designate DNS domain.
 	if [ $OSVERSION -ge $OSMITAKA ]; then
 	    NETID=`neutron net-show ${LAN}-net | awk '/ id / { print $4 }'`
 	    SUBNETID=`neutron subnet-show ${LAN}-subnet | awk '/ id / { print $4 }'`
 	    manila share-network-create --name share-${LAN}-net \
 		--neutron-net-id $NETID --neutron-subnet-id $SUBNETID
+	    if [ $OSVERSION -ge $OSNEWTON ]; then
+		neutron net-update $NETID --dns-domain ${mydomain}
+	    fi
 	fi
 
 	i=`expr $i + 1`
@@ -97,12 +108,15 @@ for lan in ${DATAFLATLANS} ; do
 	fi
     done
 
-    # Create a share network for this network...
+    # Create a share network for this network; and maybe a Designate DNS domain.
     if [ $OSVERSION -ge $OSMITAKA ]; then
 	NETID=`neutron net-show ${lan}-net | awk '/ id / { print $4 }'`
 	SUBNETID=`neutron subnet-show ${lan}-subnet | awk '/ id / { print $4 }'`
 	manila share-network-create --name share-${lan}-net \
 	    --neutron-net-id $NETID --neutron-subnet-id $SUBNETID
+	if [ $OSVERSION -ge $OSNEWTON ]; then
+	    neutron net-update $NETID --dns-domain ${mydomain}
+	fi
     fi
 done
 
@@ -123,12 +137,15 @@ for lan in ${DATAVLANS} ; do
 	neutron router-gateway-set ${lan}-router ext-net
     #fi
 
-    # Create a share network for this network...
+    # Create a share network for this network; and maybe a Designate DNS domain.
     if [ $OSVERSION -ge $OSMITAKA ]; then
 	NETID=`neutron net-show ${lan}-net | awk '/ id / { print $4 }'`
 	SUBNETID=`neutron subnet-show ${lan}-subnet | awk '/ id / { print $4 }'`
 	manila share-network-create --name share-${lan}-net \
 	    --neutron-net-id $NETID --neutron-subnet-id $SUBNETID
+	if [ $OSVERSION -ge $OSNEWTON ]; then
+	    neutron net-update $NETID --dns-domain ${mydomain}
+	fi
     fi
 done
 
