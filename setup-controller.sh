@@ -1402,6 +1402,24 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	crudini --set /etc/neutron/neutron.conf nova \
 	    memcached_servers ${CONTROLLER}:11211
     fi
+    if [ $OSVERSION -ge $OSOCATA ]; then
+	crudini --set /etc/neutron/neutron.conf placement \
+	    os_region_name $REGION
+	crudini --set /etc/neutron/neutron.conf placement \
+	    auth_url http://${CONTROLLER}:35357/v3
+	crudini --set /etc/neutron/neutron.conf placement \
+	    ${AUTH_TYPE_PARAM} password
+	crudini --set /etc/neutron/neutron.conf placement \
+	    ${PROJECT_DOMAIN_PARAM} default
+	crudini --set /etc/neutron/neutron.conf placement \
+	    ${USER_DOMAIN_PARAM} default
+	crudini --set /etc/neutron/neutron.conf placement \
+	    project_name service
+	crudini --set /etc/neutron/neutron.conf placement \
+	    username placement
+	crudini --set /etc/neutron/neutron.conf placement \
+	    password "${PLACEMENT_PASS}"
+    fi
 
     if [ $OSVERSION -lt $OSMITAKA ]; then
 	crudini --set /etc/neutron/neutron.conf DEFAULT \
