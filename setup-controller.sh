@@ -1975,6 +1975,11 @@ if [ -z "${CINDER_DBPASS}" ]; then
 
     sed -i -e "s/^\\(.*volume_group.*=.*\\)$/#\1/" /etc/cinder/cinder.conf
 
+    if [ $OSVERSION -eq $OSPIKE ]; then
+	patch -p1 -d /usr/lib/python2.7/dist-packages \
+            < $DIRNAME/etc/cinder-pike-bug-1714417.patch
+    fi
+
     su -s /bin/sh -c "/usr/bin/cinder-manage db sync" cinder
 
     service_restart cinder-scheduler
