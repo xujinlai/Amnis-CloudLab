@@ -278,10 +278,8 @@ else
 fi
 
 if [ $OSVERSION -eq $OSPIKE ]; then
-    cdir=`pwd`
-    cd /usr/lib/python2.7/dist-packages
-    patch -p1 < $DIRNAME/etc/manila-pike-bug-1716922.patch
-    cd $cdir
+    patch -p1 -d /usr/lib/python2.7/dist-packages \
+        < $DIRNAME/etc/manila-pike-bug-1716922.patch
 fi
 
 service_restart manila-share
