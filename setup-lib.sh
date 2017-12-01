@@ -704,7 +704,7 @@ if [ ! -f $OURDIR/cloudarchive-added -a "${DO_UBUNTU_CLOUDARCHIVE}" = "1" ]; the
 	rm -fv /etc/apt/apt.conf.d/*unattended-upgrades
 	add-apt-repository -y cloud-archive:$OSRELEASE
 	if [ "${DO_UBUNTU_CLOUDARCHIVE_STAGING}" = "1" ]; then
-	    add-apt-repository -y cloud-archive:${OSRELEASE}-staging
+	    add-apt-repository -y cloud-archive:${OSRELEASE}-proposed
 	fi
 	apt-get update
     #fi
