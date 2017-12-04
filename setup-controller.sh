@@ -3821,17 +3821,27 @@ if [ $OSVERSION -ge $OSNEWTON -a -z "${DESIGNATE_DBPASS}" ]; then
 
     maybe_install_packages designate bind9 bind9utils bind9-doc
     rndc-confgen -a -k designate -c /etc/designate/rndc.key
+    chgrp bind /etc/designate/rndc.key
+    chmod g+r /etc/designate/rndc.key
 
-    cat <<EOF >>/etc/bind/named.conf.options
+    mynameserver=`cat /var/emulab/boot/bossip`
+    cat <<EOF >/etc/bind/named.conf.options
 include "/etc/designate/rndc.key";
 
 options {
-    ...
+    directory "/var/cache/bind";
+    forwarders {
+        $mynameserver;
+    };
+    dnssec-validation auto;
+    auth-nxdomain no;    # conform to RFC1035
+    listen-on-v6 { any; };
+
     allow-new-zones yes;
     request-ixfr no;
-    listen-on port 53 { 127.0.0.1; };
-    recursion no;
-    allow-query { 127.0.0.1; };
+    listen-on port 53 { 127.0.0.1; ${MGMTIP}; };
+    recursion yes;
+    allow-query { 127.0.0.1; ${MGMTIP}/${MGMTPREFIX}; };
 };
 
 controls {

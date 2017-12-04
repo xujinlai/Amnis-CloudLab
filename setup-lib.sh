@@ -731,6 +731,24 @@ fi
 #
 maybe_install_packages crudini
 
+netmask2prefix() {
+    nm=$1
+    bits=0
+    IFS=.
+    read -r i1 i2 i3 i4 <<EOF
+$nm
+EOF
+    unset IFS
+    for n in $i1 $i2 $i3 $i4 ; do
+	v=128
+	while [ $v -gt 0 ]; do
+	    bits=`expr $bits + \( \( $n / $v \) % 2 \)`
+	    v=`expr $v / 2`
+	done
+    done
+    echo $bits
+}
+
 #
 # Create IP addresses for the Management and Data networks, as necessary.
 #
@@ -1067,6 +1085,7 @@ fi
 if [ ! -e $OURDIR/info.mgmt ]; then
     MGMTIP=`grep -E "$NODEID$" $OURDIR/mgmt-hosts | head -1 | sed -n -e 's/^\\([0-9]*\\.[0-9]*\\.[0-9]*\\.[0-9]*\\).*$/\\1/p'`
     MGMTNETMASK=`cat $OURDIR/mgmt-netmask`
+    MGMTPREFIX=`netmask2prefix $MGMTNETMASK`
     if [ -z "$MGMTLAN" ] ; then
 	MGMTVLAN=0
 	MVMTVLANDEV=
@@ -1088,6 +1107,7 @@ if [ ! -e $OURDIR/info.mgmt ]; then
     fi
     echo "MGMTIP='$MGMTIP'" >> $OURDIR/info.mgmt
     echo "MGMTNETMASK='$MGMTNETMASK'" >> $OURDIR/info.mgmt
+    echo "MGMTPREFIX='$MGMTPREFIX'" >> $OURDIR/info.mgmt
     echo "MGMTVLAN=$MGMTVLAN" >> $OURDIR/info.mgmt
     echo "MGMTMAC='$MGMTMAC'" >> $OURDIR/info.mgmt
     echo "MGMT_NETWORK_INTERFACE='$MGMT_NETWORK_INTERFACE'" >> $OURDIR/info.mgmt

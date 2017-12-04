@@ -78,7 +78,7 @@ if [ ${DATATUNNELS} -gt 0 ]; then
 	    manila share-network-create --name share-${LAN}-net \
 		--neutron-net-id $NETID --neutron-subnet-id $SUBNETID
 	    if [ $OSVERSION -ge $OSNEWTON ]; then
-		neutron net-update $NETID --dns-domain ${mydomain}
+		neutron net-update $NETID --dns-domain ${mydomain}.
 	    fi
 	fi
 
@@ -131,7 +131,7 @@ for lan in ${DATAFLATLANS} ; do
 	manila share-network-create --name share-${lan}-net \
 	    --neutron-net-id $NETID --neutron-subnet-id $SUBNETID
 	if [ $OSVERSION -ge $OSNEWTON ]; then
-	    neutron net-update $NETID --dns-domain ${mydomain}
+	    neutron net-update $NETID --dns-domain ${mydomain}.
 	fi
     fi
 done
@@ -160,7 +160,7 @@ for lan in ${DATAVLANS} ; do
 	manila share-network-create --name share-${lan}-net \
 	    --neutron-net-id $NETID --neutron-subnet-id $SUBNETID
 	if [ $OSVERSION -ge $OSNEWTON ]; then
-	    neutron net-update $NETID --dns-domain ${mydomain}
+	    neutron net-update $NETID --dns-domain ${mydomain}.
 	fi
     fi
 done
@@ -190,7 +190,7 @@ if [ ${DATAVXLANS} -gt 0 ]; then
 	    manila share-network-create --name share-${LAN}-net \
 		--neutron-net-id $NETID --neutron-subnet-id $SUBNETID
 	    if [ $OSVERSION -ge $OSNEWTON ]; then
-		neutron net-update $NETID --dns-domain ${mydomain}
+		neutron net-update $NETID --dns-domain ${mydomain}.
 	    fi
 	fi
 
