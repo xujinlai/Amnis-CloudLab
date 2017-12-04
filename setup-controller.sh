@@ -4026,6 +4026,13 @@ EOF
 
     service_restart neutron-server
 
+    if [ "${USE_DESIGNATE_AS_RESOLVER}" = "1" ]; then
+	outerdomain=`cat /var/emulab/boot/mydomain`
+	echo nameserver 127.0.0.1 >/etc/resolv.conf
+	echo nameserver $mynameserver >/etc/resolv.conf
+	echo search $mydomain $outerdomain
+    fi
+
     echo "DESIGNATE_DBPASS=\"${DESIGNATE_DBPASS}\"" >> $SETTINGS
     echo "DESIGNATE_PASS=\"${DESIGNATE_PASS}\"" >> $SETTINGS
     logtend "designate"

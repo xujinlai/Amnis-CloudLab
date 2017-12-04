@@ -112,6 +112,11 @@ ML2PLUGIN="openvswitch"
 MANILADRIVER="generic"
 EXTRAIMAGEURLS=""
 LINUXBRIDGE_STATIC=0
+# If set to 1, and if OSRELEASE >= OSNEWTON, the physical machines will
+# use the MGMTIP as the primary DNS server (in preference to the real
+# control net DNS server).  The local domain will also be searched prior
+# to the cluster's domain.
+USE_DESIGNATE_AS_RESOLVER=1
 # The input OpenStack release, if any, from profile params.
 OSRELEASE=""
 

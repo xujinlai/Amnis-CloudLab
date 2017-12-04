@@ -96,7 +96,11 @@ pc.defineParameter("vxlanDataLanCount","Number of VXLAN Data Networks",
                    portal.ParameterType.INTEGER,0,
                    longDescription="To use VXLAN networks, you must have at least one flat data network; all tunnels are implemented using the first flat network!",
                    advanced=True)
-
+pc.defineParameter("useDesignateAsResolver",
+                   "Use Designate as physical host nameserver",
+                   portal.ParameterType.BOOLEAN,True,
+                   longDescription="If using OpenStack Newton or greater, use the Designate nameserver as the primary nameserver for each physical machine.  This will allow you to resolve virtual IPs for instances from the physical machines.",
+                   advanced=True)
 pc.defineParameter("managementLanType","Management Network Type",
                    portal.ParameterType.STRING,"vpn",[("vpn","VPN"),("flat","Flat")],
                    advanced=True,longDescription="This profile creates a classic OpenStack setup, where services communicate not over the public network, but over an isolated private management network.  By default, that management network is implemented as a VPN hosted on the public network; this allows us to not use up a physical experiment network interface just to host the management network, and leaves that unused interface available for OpenStack data networks.  However, if you are using multiplexed Flat networks, you can also make this a Flat network, and it will be multiplexed along with your other flat networks---isolated by VLAN tags.  These VLAN tags are internal to CloudLab, and are invisible to OpenStack.")
@@ -921,6 +925,9 @@ class Parameters(RSpec.Resource):
 
         param = ET.SubElement(el,paramXML)
         param.text = "ML2PLUGIN=%s" % (str(params.ml2plugin))
+
+        param = ET.SubElement(el,paramXML)
+        param.text = "USE_DESIGNATE_AS_RESOLVER=%d" % (int(bool(params.useDesignateAsResolver)))
 
         param = ET.SubElement(el,paramXML)
         param.text = "EXTRAIMAGEURLS='%s'" % (str(params.extraImageURLs))
