@@ -3805,18 +3805,18 @@ if [ $OSVERSION -ge $OSNEWTON -a -z "${DESIGNATE_DBPASS}" ]; then
 
     if [ $KEYSTONEAPIVERSION -lt 3 ]; then
 	__openstack endpoint create \
-	    --publicurl http://${CONTROLLER}:9001/ \
-	    --internalurl http://${CONTROLLER}:9001/ \
-	    --adminurl http://${CONTROLLER}:9001/ \
+	    --publicurl http://${CONTROLLER}:9001/v2 \
+	    --internalurl http://${CONTROLLER}:9001/v2 \
+	    --adminurl http://${CONTROLLER}:9001/v2 \
 	    --region $REGION \
 	    dns
     else
 	__openstack endpoint create --region $REGION \
-	    dns public http://${CONTROLLER}:9001/
+	    dns public http://${CONTROLLER}:9001/v2
 	__openstack endpoint create --region $REGION \
-	    dns internal http://${CONTROLLER}:9001/
+	    dns internal http://${CONTROLLER}:9001/v2
 	__openstack endpoint create --region $REGION \
-	    dns admin http://${CONTROLLER}:9001/
+	    dns admin http://${CONTROLLER}:9001/v2
     fi
 
     maybe_install_packages designate bind9 bind9utils bind9-doc
@@ -3851,7 +3851,9 @@ EOF
     crudini --del /etc/designate/designate.conf keystone_authtoken auth_protocol
 
     crudini --set /etc/designate/designate.conf service:api auth_strategy keystone
-    crudini --set /etc/designate/designate.conf service:api listen ${MGMTIP}:9001
+    crudini --set /etc/designate/designate.conf service:api api_host 0.0.0.0
+    crudini --set /etc/designate/designate.conf service:api api_port 9001
+    crudini --set /etc/designate/designate.conf service:api listen 0.0.0.0:9001
     crudini --set /etc/designate/designate.conf service:api enable_api_v1 True
     crudini --set /etc/designate/designate.conf service:api \
 	api_base_url http://${CONTROLLER}:9001/
@@ -3966,10 +3968,20 @@ EOF
 
     rm -f /var/lib/designate/designate.sqlite
 
+    mydomain=`hostname | sed -n -e 's/[^\.]*\.\(.*\)$/\1/p'`
+    crudini --set /etc/neutron/neutron.conf DEFAULT dns_domain "${mydomain}."
+    plugins=`crudini --get /etc/neutron/neutron.conf ml2 extension_drivers`
+    if [ -n "$plugins" ]; then
+	crudini --set /etc/neutron/neutron.conf ml2 \
+	    extension_drivers ${plugins},dns
+    else
+	crudini --set /etc/neutron/neutron.conf ml2 \
+	    extension_drivers dns
+    fi
     crudini --set /etc/neutron/neutron.conf DEFAULT \
 	external_dns_driver designate
     crudini --set /etc/neutron/neutron.conf designate \
-	url http://${CONTROLLER}:9001/
+	url http://${CONTROLLER}:9001/v2
     crudini --set /etc/neutron/neutron.conf designate \
         auth_url http://$CONTROLLER:35357
     crudini --set /etc/neutron/neutron.conf designate \
@@ -3995,6 +4007,8 @@ EOF
 	region_name $REGION
     crudini --set /etc/neutron/neutron.conf designate \
 	memcached_servers ${CONTROLLER}:11211
+    crudini --set /etc/neutron/neutron.conf designate \
+	insecure True
 
     service_restart neutron-server
 

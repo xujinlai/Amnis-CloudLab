@@ -30,11 +30,27 @@ fi
 . $OURDIR/admin-openrc.sh
 
 #
+# Before we do any network stuff, wait for Neutron to be up.  Neutron
+# takes awhile to start up, and if that was one of the last things we
+# did in setup-controller.sh, it might not be up.  It has to be up for
+# any of this stuff to work, so wait forever.  The only reason it would
+# fail to come up at this point would be a config error.
+#
+while [ true ]; do
+    echo "Checking for neutron-server to be up..."
+    neutron net-list
+    if [ $? -eq 0 ]; then
+	break
+    fi
+    sleep 1
+done
+
+#
 # Before we setup networks, create a Designate zone.
 #
 if [ $OSVERSION -ge $OSNEWTON ]; then
     mydomain=`hostname | sed -n -e 's/[^\.]*\.\(.*\)$/\1/p'`
-    __openstack zone create --email root@localhost ${mydomain}.
+    openstack zone create --email root@localhost "${mydomain}."
 fi
 
 #
@@ -167,17 +183,31 @@ if [ ${DATAVXLANS} -gt 0 ]; then
 	neutron router-interface-add ${LAN}-router ${LAN}-subnet
 	neutron router-gateway-set ${LAN}-router ext-net
 
-	# Create a share network for this network...
+	# Create a share network for this network; and maybe a Designate DNS domain.
 	if [ $OSVERSION -ge $OSMITAKA ]; then
 	    NETID=`neutron net-show ${LAN}-net | awk '/ id / { print $4 }'`
 	    SUBNETID=`neutron subnet-show ${LAN}-subnet | awk '/ id / { print $4 }'`
 	    manila share-network-create --name share-${LAN}-net \
 		--neutron-net-id $NETID --neutron-subnet-id $SUBNETID
+	    if [ $OSVERSION -ge $OSNEWTON ]; then
+		neutron net-update $NETID --dns-domain ${mydomain}
+	    fi
 	fi
 
 	i=`expr $i + 1`
     done
 fi
+
+#
+# Finally, now that we've created all our routers (and their gateways to
+# the ext-net), create floating IPs until we get an error.
+#
+#while [ true ]; do
+#    neutron floatingip-create ext-net
+#    if [ ! $? -eq 0 ]; then
+#	break
+#    fi
+#done
 
 logtend "basic-networks"
 
