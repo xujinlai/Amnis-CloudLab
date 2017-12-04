@@ -3861,8 +3861,10 @@ EOF
     crudini --del /etc/designate/designate.conf keystone_authtoken auth_protocol
 
     crudini --set /etc/designate/designate.conf service:api auth_strategy keystone
+    #crudini --set /etc/designate/designate.conf service:api api_host $MGMTIP
     crudini --set /etc/designate/designate.conf service:api api_host 0.0.0.0
     crudini --set /etc/designate/designate.conf service:api api_port 9001
+    #crudini --set /etc/designate/designate.conf service:api listen ${MGMTIP}:9001
     crudini --set /etc/designate/designate.conf service:api listen 0.0.0.0:9001
     crudini --set /etc/designate/designate.conf service:api enable_api_v1 True
     crudini --set /etc/designate/designate.conf service:api \
@@ -3872,6 +3874,8 @@ EOF
     crudini --set /etc/designate/designate.conf service:api enable_api_v2 True
     crudini --set /etc/designate/designate.conf service:api \
 	enabled_extensions_v2 quotas,reports
+    #crudini --set /etc/designate/designate.conf service:mdns listen ${MGMTIP}:9001
+    #crudini --set /etc/designate/designate.conf service:agent listen ${MGMTIP}:9001
     crudini --set /etc/designate/designate.conf service:worker enabled True
     crudini --set /etc/designate/designate.conf service:worker notify True
     crudini --set /etc/designate/designate.conf DEFAULT verbose ${VERBOSE_LOGGING}
