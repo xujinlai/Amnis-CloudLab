@@ -1727,27 +1727,27 @@ EOF
 
     if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
 	IDVERS=3
-	grep OPENSTACK_KEYSTONE_URL /etc/openstack-dashboard/local_settings.py
+	grep '^#[ \t]*OPENSTACK_KEYSTONE_URL' /etc/openstack-dashboard/local_settings.py
 	if [ $? -eq 0 ]; then
-	    sed -i -e "s|^.*OPENSTACK_KEYSTONE_URL.*=.*\$|OPENSTACK_KEYSTONE_URL = \"http://%s:5000/v3\" % OPENSTACK_HOST|" \
+	    sed -i -e "s|^#.*OPENSTACK_KEYSTONE_URL.*=.*\$|OPENSTACK_KEYSTONE_URL = \"http://%s:5000/v3\" % OPENSTACK_HOST|" \
 		/etc/openstack-dashboard/local_settings.py
 	else
 	    cat <<EOF >> /etc/openstack-dashboard/local_settings.py
 OPENSTACK_KEYSTONE_URL = "http://%s:5000/v3" % OPENSTACK_HOST
 EOF
 	fi
-	grep OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT /etc/openstack-dashboard/local_settings.py
+	grep '^#[ \t]*OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT' /etc/openstack-dashboard/local_settings.py
 	if [ $? -eq 0 ]; then
-	    sed -i -e "s|^.*OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT.*=.*\$|OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = True|" \
+	    sed -i -e "s|^#.*OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT.*=.*\$|OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = True|" \
 		/etc/openstack-dashboard/local_settings.py
 	else
 	    cat <<EOF >> /etc/openstack-dashboard/local_settings.py
 OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = True
 EOF
 	fi
-	grep OPENSTACK_KEYSTONE_DEFAULT_DOMAIN /etc/openstack-dashboard/local_settings.py
+	grep '^#[ \t]*OPENSTACK_KEYSTONE_DEFAULT_DOMAIN' /etc/openstack-dashboard/local_settings.py
 	if [ $? -eq 0 ]; then
-	    sed -i -e "s|^.*OPENSTACK_KEYSTONE_DEFAULT_DOMAIN.*=.*\$|OPENSTACK_KEYSTONE_DEFAULT_DOMAIN = 'default'|" \
+	    sed -i -e "s|^#.*OPENSTACK_KEYSTONE_DEFAULT_DOMAIN.*=.*\$|OPENSTACK_KEYSTONE_DEFAULT_DOMAIN = 'default'|" \
 		/etc/openstack-dashboard/local_settings.py
 	else
 	    cat <<EOF >> /etc/openstack-dashboard/local_settings.py
