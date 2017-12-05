@@ -63,6 +63,7 @@ fi
 
 maybe_install_packages pssh
 PSSH='/usr/bin/parallel-ssh -t 0 -O StrictHostKeyChecking=no '
+PSCP='/usr/bin/parallel-scp -t 0 -O StrictHostKeyChecking=no '
 
 # Make sure our repos are setup.
 #apt-get install ubuntu-cloud-keyring
@@ -4143,9 +4144,9 @@ if [ -n "$DESIGNATE_PASS" -a "${USE_DESIGNATE_AS_RESOLVER}" = "1" ]; then
     grep -q forwarders /etc/bind/named.conf.options
     if [ $? -eq 0 -a -n "$mynameserver" ]; then
 	outerdomain=`cat /var/emulab/boot/mydomain`
-	dig @${MGMTIP} $mydomain
+	dig @127.0.0.1 $mydomain
 	if [ $? -eq 0 ]; then
-	    echo nameserver 127.0.0.1 >/etc/resolv.conf
+	    echo nameserver ${MGMTIP} >/etc/resolv.conf
 	    echo nameserver $mynameserver >>/etc/resolv.conf
 	    echo search $mydomain $outerdomain >>/etc/resolv.conf
 
@@ -4154,6 +4155,22 @@ if [ -n "$DESIGNATE_PASS" -a "${USE_DESIGNATE_AS_RESOLVER}" = "1" ]; then
 	       echo "WARNING: cannot lookup boss.$outerdomain using Designate;"
 	       echo "reverting back to non-Designate phys host configuration!"
 	       cp -p /etc/resolv.conf.orig /etc/resolv.conf
+	    else
+		mkdir -p $OURDIR/pssh.setup-designate-resolv-conf.stdout
+		mkdir -p $OURDIR/pssh.setup-designate-resolv-conf.stderr
+
+		cat $OURDIR/fqdn.map | cut -f1 | grep -v ^$CONTROLLER$ > /tmp/pssh.hosts
+
+		echo "*** Saving original /etc/resolv.conf on all hosts..."
+		$PSSH -h /tmp/pssh.hosts \
+		    -o $OURDIR/pssh.setup-compute.stdout \
+		    -e $OURDIR/pssh.setup-compute.stderr \
+		    /bin/cp -p /etc/resolv.conf /etc/resolv.conf.pre-designate
+		echo "*** Copying Designate /etc/resolv.conf on all hosts..."
+		$PSCP -h /tmp/pssh.hosts \
+		    -o $OURDIR/pssh.setup-compute.stdout \
+		    -e $OURDIR/pssh.setup-compute.stderr \
+		    /etc/resolv.conf /etc/resolv.conf
 	    fi
 	else
 	    echo "WARNING: could not redirect phys host DNS to Designate;"
