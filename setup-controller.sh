@@ -3994,14 +3994,18 @@ EOF
     rm -f /var/lib/designate/designate.sqlite
 
     crudini --set /etc/neutron/neutron.conf DEFAULT dns_domain "${mydomain}."
-    plugins=`crudini --get /etc/neutron/neutron.conf ml2 extension_drivers`
-    if [ -n "$plugins" ]; then
-	crudini --set /etc/neutron/neutron.conf ml2 \
-	    extension_drivers ${plugins},dns
-    else
-	crudini --set /etc/neutron/neutron.conf ml2 \
-	    extension_drivers dns
-    fi
+    # NB, we do this in the setup-network-plugin-*.sh scripts, because
+    # they might also set the extension_drivers key -- but they might do
+    # it in the mechanism driver's file instead of neutron.conf.  Can't
+    # have it both places, ugh.
+    #plugins=`crudini --get /etc/neutron/neutron.conf ml2 extension_drivers`
+    #if [ -n "$plugins" ]; then
+    #	crudini --set /etc/neutron/neutron.conf ml2 \
+    #	    extension_drivers ${plugins},dns
+    #else
+    #	crudini --set /etc/neutron/neutron.conf ml2 \
+    #	    extension_drivers dns
+    #fi
     crudini --set /etc/neutron/neutron.conf DEFAULT \
 	external_dns_driver designate
     crudini --set /etc/neutron/neutron.conf designate \

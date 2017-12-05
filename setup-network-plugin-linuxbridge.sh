@@ -174,8 +174,12 @@ crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
     tenant_network_types ${network_types}
 crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
     mechanism_drivers 'linuxbridge,l2population'
+extdrivers=port_security
+if [ $OSVERSION -ge $OSNEWTON ]; then
+    extdrivers="${extdrivers},dns"
+fi
 crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
-    extension_drivers port_security
+    extension_drivers $extdrivers
 crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat \
     flat_networks ${flat_networks}
 #crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_gre \
