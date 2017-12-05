@@ -1353,6 +1353,26 @@ if [ ! -f $OURDIR/neutron.vars ]; then
 
 fi
 
+#
+# Emulab tmcc finds the bossip via first server in /etc/resolv.conf,
+# ugh, and we might change /etc/resolv.conf if we are installing
+# Designate on >= Ocata.  So force it to find the bossip via this file
+# instead.  Previously, we had done this near the bottom of
+# setup-controller.sh, but this change has to be made in a
+# multi-cluster-compatible manner; the bossip could be different for
+# phys node at different clusters.
+#
+if [ ! -f /etc/emulab/bossnode -a $OSVERSION -ge $OSNEWTON -a "${USE_DESIGNATE_AS_RESOLVER}" = "1"]; then
+    mydomain=`hostname | sed -n -e 's/[^\.]*\.\(.*\)$/\1/p'`
+    mynameserver=`sed -n -e 's/^nameserver \([0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\).*$/\1/p' < /etc/resolv.conf | head -1`
+    if [ -z "$mynameserver" ]; then
+	mynameserver=`dig +short boss.$mydomain A`
+    fi
+    if [ -n "$mynameserver" ]; then
+	echo $mynameserver > /etc/emulab/bossnode
+    fi
+fi
+
 ##
 ## Finally, if we had been UPDATING, remove the lockfile!
 ##

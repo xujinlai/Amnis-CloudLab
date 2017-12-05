@@ -4157,11 +4157,6 @@ if [ -n "$DESIGNATE_PASS" -a "${USE_DESIGNATE_AS_RESOLVER}" = "1" ]; then
 	       echo "reverting back to non-Designate phys host configuration!"
 	       cp -p /etc/resolv.conf.orig /etc/resolv.conf
 	    else
-		# tmcc finds the bossip via first server in
-		# /etc/resolv.conf, ugh.  So force it to find the bossip
-		# via this file instead.
-		echo $mynameserver > /etc/emulab/bossnode
-
 		mkdir -p $OURDIR/pssh.setup-designate.stdout
 		mkdir -p $OURDIR/pssh.setup-designate.stderr
 
@@ -4177,11 +4172,6 @@ if [ -n "$DESIGNATE_PASS" -a "${USE_DESIGNATE_AS_RESOLVER}" = "1" ]; then
 		    -o $OURDIR/pssh.setup-designate.stdout \
 		    -e $OURDIR/pssh.setup-designate.stderr \
 		    /etc/resolv.conf /etc/resolv.conf
-		echo "*** Copying /etc/emulab/bossnode to all hosts..."
-		$PSCP -h /tmp/pssh.hosts \
-		    -o $OURDIR/pssh.setup-designate.stdout \
-		    -e $OURDIR/pssh.setup-designate.stderr \
-		    /etc/emulab/bossnode /etc/emulab/bossnode
 	    fi
 	else
 	    echo "WARNING: could not redirect phys host DNS to Designate;"
