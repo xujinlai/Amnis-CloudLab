@@ -3824,15 +3824,24 @@ if [ $OSVERSION -ge $OSNEWTON -a -z "${DESIGNATE_DBPASS}" ]; then
     chgrp bind /etc/designate/rndc.key
     chmod g+r /etc/designate/rndc.key
 
-    mynameserver=`cat /var/emulab/boot/bossip`
+    mydomain=`hostname | sed -n -e 's/[^\.]*\.\(.*\)$/\1/p'`
+    mynameserver=`sed -n -e 's/^nameserver \([0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\).*$/\1/p' < /etc/resolv.conf | head -1`
+    if [ -z "$mynameserver" ]; then
+	mynameserver=`dig +short boss.$mydomain A`
+    fi
+    if [ -z "$mynameserver" ]; then
+	echo "WARNING: cannot find current nameserver; not configuring Designate"
+	echo "forwarder recursive resolver!"
+	fstr=
+    else
+	fstr="forwarders { $mynameserver; };"
+    fi
     cat <<EOF >/etc/bind/named.conf.options
 include "/etc/designate/rndc.key";
 
 options {
     directory "/var/cache/bind";
-    forwarders {
-        $mynameserver;
-    };
+    $fstr
     dnssec-validation auto;
     auth-nxdomain no;    # conform to RFC1035
     listen-on-v6 { any; };
@@ -3982,7 +3991,6 @@ EOF
 
     rm -f /var/lib/designate/designate.sqlite
 
-    mydomain=`hostname | sed -n -e 's/[^\.]*\.\(.*\)$/\1/p'`
     crudini --set /etc/neutron/neutron.conf DEFAULT dns_domain "${mydomain}."
     plugins=`crudini --get /etc/neutron/neutron.conf ml2 extension_drivers`
     if [ -n "$plugins" ]; then
@@ -4025,13 +4033,6 @@ EOF
 	insecure True
 
     service_restart neutron-server
-
-    if [ "${USE_DESIGNATE_AS_RESOLVER}" = "1" ]; then
-	outerdomain=`cat /var/emulab/boot/mydomain`
-	echo nameserver 127.0.0.1 >/etc/resolv.conf
-	echo nameserver $mynameserver >/etc/resolv.conf
-	echo search $mydomain $outerdomain
-    fi
 
     echo "DESIGNATE_DBPASS=\"${DESIGNATE_DBPASS}\"" >> $SETTINGS
     echo "DESIGNATE_PASS=\"${DESIGNATE_PASS}\"" >> $SETTINGS
@@ -4125,6 +4126,48 @@ if [ ! -z "$EXTDIRS" ]; then
     done
 fi
 logtend "ext"
+
+#
+# At the very end, we tweak the resolv.conf file to use Designate if we
+# configured it, and if user wants it as the phys host resolver.  We
+# cannot modify resolv.conf in the middle of things, especially if
+# Designate setup happens to fail or bind doesn't start.
+#
+if [ -n "$DESIGNATE_PASS" -a "${USE_DESIGNATE_AS_RESOLVER}" = "1" ]; then
+    mydomain=`hostname | sed -n -e 's/[^\.]*\.\(.*\)$/\1/p'`
+    mynameserver=`sed -n -e 's/^nameserver \([0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\).*$/\1/p' < /etc/resolv.conf | head -1`
+    if [ -z "$mynameserver" ]; then
+	mynameserver=`dig +short boss.$mydomain A`
+    fi
+    cp -p /etc/resolv.conf /etc/resolv.conf.orig
+    grep -q forwarders /etc/bind/named.conf.options
+    if [ $? -eq 0 -a -n "$mynameserver" ]; then
+	outerdomain=`cat /var/emulab/boot/mydomain`
+	dig @${MGMTIP} $mydomain
+	if [ $? -eq 0 ]; then
+	    echo nameserver 127.0.0.1 >/etc/resolv.conf
+	    echo nameserver $mynameserver >>/etc/resolv.conf
+	    echo search $mydomain $outerdomain >>/etc/resolv.conf
+
+	    dig @${MGMTIP} boss.$outerdomain
+	    if [ ! $? -eq 0 ]; then
+	       echo "WARNING: cannot lookup boss.$outerdomain using Designate;"
+	       echo "reverting back to non-Designate phys host configuration!"
+	       cp -p /etc/resolv.conf.orig /etc/resolv.conf
+	    fi
+	else
+	    echo "WARNING: could not redirect phys host DNS to Designate;"
+	    echo "bind is not responding; the configuration must be incorrect;"
+	    echo "reverting back to non-Designate phys host configuration!"
+	    cp -p /etc/resolv.conf.orig /etc/resolv.conf
+	fi
+    else
+	echo "WARNING: could not find nameserver in /etc/resolv.conf or as"
+	echo "boss.$mydomain; reverting back to non-Designate phys host"
+	echo "configuration!"
+	cp -p /etc/resolv.conf.orig /etc/resolv.conf
+    fi
+fi
 
 echo "***"
 echo "*** Done with OpenStack Setup!"
