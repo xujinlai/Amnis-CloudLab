@@ -1690,18 +1690,18 @@ if [ -z "${DASHBOARD_DONE}" ]; then
     sed -i -e 's/^.*ALLOWED_HOSTS = \[.*$/ALLOWED_HOSTS = \["*"\]/' \
 	/etc/openstack-dashboard/local_settings.py
 
-    grep -q SESSION_TIMEOUT /etc/openstack-dashboard/local_settings.py
+    grep -q '^#[ \t]*SESSION_TIMEOUT' /etc/openstack-dashboard/local_settings.py
     if [ $? -eq 0 ]; then
-	sed -i -e "s/^.*SESSION_TIMEOUT.*=.*\$/SESSION_TIMEOUT = ${SESSIONTIMEOUT}/" \
+	sed -i -e "s/^#.*SESSION_TIMEOUT.*=.*\$/SESSION_TIMEOUT = ${SESSIONTIMEOUT}/" \
 	    /etc/openstack-dashboard/local_settings.py
     else
 	echo "SESSION_TIMEOUT = ${SESSIONTIMEOUT}" \
 	    >> /etc/openstack-dashboard/local_settings.py
     fi
 
-    grep -q OPENSTACK_KEYSTONE_DEFAULT_ROLE /etc/openstack-dashboard/local_settings.py
+    grep -q '^#[ \t]*OPENSTACK_KEYSTONE_DEFAULT_ROLE' /etc/openstack-dashboard/local_settings.py
     if [ $? -eq 0 ]; then
-	sed -i -e "s/^.*OPENSTACK_KEYSTONE_DEFAULT_ROLE.*=.*\$/OPENSTACK_KEYSTONE_DEFAULT_ROLE = \"user\"/" \
+	sed -i -e "s/^#.*OPENSTACK_KEYSTONE_DEFAULT_ROLE.*=.*\$/OPENSTACK_KEYSTONE_DEFAULT_ROLE = \"user\"/" \
 	    /etc/openstack-dashboard/local_settings.py
     else
 	echo "OPENSTACK_KEYSTONE_DEFAULT_ROLE = \"user\"" \
