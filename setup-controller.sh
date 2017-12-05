@@ -1685,6 +1685,7 @@ if [ -z "${DASHBOARD_DONE}" ]; then
 
     maybe_install_packages openstack-dashboard apache2 libapache2-mod-wsgi
 
+    echo "" >> /etc/openstack-dashboard/local_settings.py
     sed -i -e "s/OPENSTACK_HOST.*=.*\$/OPENSTACK_HOST = \"${CONTROLLER}\"/" \
 	/etc/openstack-dashboard/local_settings.py
     sed -i -e 's/^.*ALLOWED_HOSTS = \[.*$/ALLOWED_HOSTS = \["*"\]/' \
