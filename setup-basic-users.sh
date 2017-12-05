@@ -42,8 +42,13 @@ if [ $GENIUSER -eq 1 ] ; then
     # make those keys be for the admin user, then add the same keys again (for
     # the adminapi user).  Then both admin users have the keys.
     #
-    AAID=`keystone user-get ${ADMIN_API} | awk '/ id / {print $4}'`
-    AID=`keystone user-get admin | awk '/ id / {print $4}'`
+    if [ -x /usr/bin/keystone ]; then
+	AAID=`keystone user-get ${ADMIN_API} | awk '/ id / {print $4}'`
+	AID=`keystone user-get admin | awk '/ id / {print $4}'`
+    else
+	AAID=`openstack user show adminapi | awk '/ id / { print $4 }'`
+	AID=`openstack user show admin | awk '/ id / { print $4 }'`
+    fi
     echo "update key_pairs set user_id='$AID' where user_id='$AAID'" \
 	| mysql -u root --password=${DB_ROOT_PASS} nova
 
