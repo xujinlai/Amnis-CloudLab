@@ -2770,6 +2770,11 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 		metering admin http://${CONTROLLER}:8777
 	fi
     else
+	__openstack user create $DOMARG --password $CEILOMETER_PASS ceilometer
+	__openstack role add --user ceilometer --project service admin
+	__openstack service create --name ceilometer \
+	    --description "OpenStack Telemetry Service" metering
+
 	GNOCCHI_PASS=`$PSWDGEN`
 	__openstack user create $DOMARG --password $GNOCCHI_PASS gnocchi
 	__openstack service create --name gnocchi \
@@ -2957,6 +2962,13 @@ EOF
     # These options are Gnocchi-specific.
     #
     if [ $USING_GNOCCHI -eq 1 ]; then
+	crudini --del /etc/gnocchi/gnocchi.conf DEFAULT auth_host
+	crudini --del /etc/gnocchi/gnocchi.conf DEFAULT auth_port
+	crudini --del /etc/gnocchi/gnocchi.conf DEFAULT auth_protocol
+	crudini --del /etc/gnocchi/gnocchi.conf DEFAULT admin_user
+	crudini --del /etc/gnocchi/gnocchi.conf DEFAULT admin_password
+	crudini --del /etc/gnocchi/gnocchi.conf DEFAULT admin_tenant_name
+
 	crudini --set /etc/ceilometer/ceilometer.conf dispatcher_gnocchi \
 	    filter_service_activity False
 	crudini --set /etc/ceilometer/ceilometer.conf dispatcher_gnocchi \
@@ -2965,8 +2977,8 @@ EOF
 	    transport_url $RABBIT_URL
 
 	crudini --set /etc/gnocchi/gnocchi.conf api auth_mode keystone
-	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
-	    auth_uri http://${CONTROLLER}:5000
+	#crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	#    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:35357
 	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
@@ -2983,6 +2995,10 @@ EOF
 	    password "${GNOCCHI_PASS}"
 	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
 	    interface internalURL
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    region_name $REGION
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    memcached_servers ${CONTROLLER}:11211
 	crudini --set /etc/gnocchi/gnocchi.conf indexer \
 	    url "${DBDSTRING}://gnocchi:${GNOCCHI_DBPASS}@$CONTROLLER/gnocchi"
 	crudini --set /etc/gnocchi/gnocchi.conf storage driver file
@@ -3052,10 +3068,8 @@ EOF
 	service_restart ceilometer-api
 	service_enable ceilometer-api
     else
-	service_restart gnocchi-api
-	service_enable gnocchi-api
-	service_restart gnocchi-metricd
-	service_enable gnocchi-metricd
+	a2ensite gnocchi-api
+	service apache2 reload
     fi
 
     if [ $USING_GNOCCHI -eq 0 ]; then
@@ -3067,6 +3081,9 @@ EOF
 	    service_restart ceilometer-alarm-notifier
 	    service_enable ceilometer-alarm-notifier
 	fi
+    else
+	service_restart gnocchi-metricd
+	service_enable gnocchi-metricd
     fi
 
     # NB: restart the neutron ceilometer agent too
@@ -3084,7 +3101,6 @@ EOF
     if [ $USING_GNOCCHI -eq 1 ]; then
 	echo "GNOCCHI_DBPASS=\"${GNOCCHI_DBPASS}\"" >> $SETTINGS
 	echo "GNOCCHI_PASS=\"${GNOCCHI_PASS}\"" >> $SETTINGS
-    else
     fi
     logtend "ceilometer"
 fi
