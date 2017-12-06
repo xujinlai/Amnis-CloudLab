@@ -185,7 +185,7 @@ pc.defineParameter("enableNewSerialSupport","Enable new Juno serial consoles",
 
 pc.defineParameter("ceilometerUseMongoDB","Use MongoDB in Ceilometer",
                    portal.ParameterType.BOOLEAN,False,advanced=True,
-                   longDescription="Use MongoDB for Ceilometer instead of MySQL (with Ubuntu 14 and Juno, we have observed crashy behavior with MongoDB, so the default is MySQL; YMMV.")
+                   longDescription="Use MongoDB for Ceilometer instead of MySQL (with Ubuntu 14 and Juno, we have observed crashy behavior with MongoDB, so the default is MySQL; YMMV.  Also, this option only applies to OpenStack releases < Ocata.")
 
 pc.defineParameter("enableVerboseLogging","Enable Verbose Logging",
                    portal.ParameterType.BOOLEAN,False,advanced=True,

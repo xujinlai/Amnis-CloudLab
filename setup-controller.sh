@@ -2688,7 +2688,19 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
     CEILOMETER_PASS=`$PSWDGEN`
     CEILOMETER_SECRET=`$PSWDGEN`
 
-    if [ "${CEILOMETER_USE_MONGODB}" = "1" ]; then
+    #
+    # We now have basically three cases: < Ocata + mysql ; < Ocata + mongodb;
+    # and >= Ocata + gnocchi.
+    #
+    USING_GNOCCHI=0
+    if [ $OSVERSION -ge $OSOCATA ]; then
+	USING_GNOCCHI=1
+    fi
+
+    #
+    # Setup the database.
+    #
+    if [ $USING_GNOCCHI -eq 0 -a "${CEILOMETER_USE_MONGODB}" = "1" ]; then
 	maybe_install_packages mongodb-server python-pymongo
 	maybe_install_packages mongodb-clients
 
@@ -2706,14 +2718,25 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    mongo --host ${MGMTIP} --eval "db = db.getSiblingDB(\"ceilometer\"); db.addUser({user: \"ceilometer\", pwd: \"${CEILOMETER_DBPASS}\", roles: [ \"readWrite\", \"dbAdmin\" ]})"
 	    MDONE=$?
 	done
-    else
+    elif [ $USING_GNOCCHI -eq 0 ]; then
 	maybe_install_packages mariadb-server python-mysqldb
 
 	echo "create database ceilometer" | mysql -u root --password="$DB_ROOT_PASS"
 	echo "grant all privileges on ceilometer.* to 'ceilometer'@'localhost' identified by '$CEILOMETER_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
 	echo "grant all privileges on ceilometer.* to 'ceilometer'@'%' identified by '$CEILOMETER_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+    else
+	GNOCCHI_DBPASS=`$PSWDGEN`
+	GNOCCHI_PASS=`$PSWDGEN`
+
+	maybe_install_packages mariadb-server python-mysqldb
+	echo "create database gnocchi" | mysql -u root --password="$DB_ROOT_PASS"
+	echo "grant all privileges on gnocchi.* to 'gnocchi'@'localhost' identified by '$GNOCCHI_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+	echo "grant all privileges on gnocchi.* to 'gnocchi'@'%' identified by '$GNOCCHI_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
     fi
 
+    #
+    # Setup the API endpoints.
+    #
     if [ $OSVERSION -eq $OSJUNO ]; then
 	keystone user-create --name ceilometer --pass $CEILOMETER_PASS
 	keystone user-role-add --user ceilometer --tenant service --role admin
@@ -2726,7 +2749,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    --internalurl http://${CONTROLLER}:8777 \
 	    --adminurl http://${CONTROLLER}:8777 \
 	    --region $REGION
-    else
+    elif [ $USING_GNOCCHI -eq 0 ]; then
 	__openstack user create $DOMARG --password $CEILOMETER_PASS ceilometer
 	__openstack role add --user ceilometer --project service admin
 	__openstack service create --name ceilometer \
@@ -2738,15 +2761,6 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 		--internalurl http://$CONTROLLER:8777 \
 		--adminurl http://$CONTROLLER:8777 \
 		--region $REGION metering
-	# Don't do this for now despite Ocata install instructions; the
-	# package's wsgi file's port is still 8777.
-	#elif [ $OSVERSION -ge $OSOCATA ]; then
-	#    __openstack endpoint create --region $REGION \
-	#	metering public http://${CONTROLLER}:8041
-	#    __openstack endpoint create --region $REGION \
-	#	metering internal http://${CONTROLLER}:8041
-	#    __openstack endpoint create --region $REGION \
-	#	metering admin http://${CONTROLLER}:8041
 	else
 	    __openstack endpoint create --region $REGION \
 		metering public http://${CONTROLLER}:8777
@@ -2755,15 +2769,33 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    __openstack endpoint create --region $REGION \
 		metering admin http://${CONTROLLER}:8777
 	fi
+    else
+	GNOCCHI_PASS=`$PSWDGEN`
+	__openstack user create $DOMARG --password $GNOCCHI_PASS gnocchi
+	__openstack service create --name gnocchi \
+	    --description "OpenStack Metric Service" metric
+
+	__openstack endpoint create --region $REGION \
+	    metric public http://${CONTROLLER}:8041
+	__openstack endpoint create --region $REGION \
+	    metric internal http://${CONTROLLER}:8041
+	__openstack endpoint create --region $REGION \
+	    metric admin http://${CONTROLLER}:8041
     fi
 
-    maybe_install_packages ceilometer-api ceilometer-collector \
-	ceilometer-agent-central ceilometer-agent-notification \
-	python-ceilometerclient python-bson
-
-    if [ $OSVERSION -lt $OSMITAKA ]; then
-	maybe_install_packages ceilometer-alarm-evaluator \
-	    ceilometer-alarm-notifier
+    #
+    # Install packages.
+    #
+    maybe_install_packages ceilometer-agent-central ceilometer-agent-notification
+    if [ $USING_GNOCCHI -eq 0 ]; then
+	maybe_install_packages ceilometer-api ceilometer-collector \
+	    python-ceilometerclient python-bson
+	if [ $OSVERSION -lt $OSMITAKA ]; then
+	    maybe_install_packages ceilometer-alarm-evaluator \
+	        ceilometer-alarm-notifier
+	fi
+    else
+	maybe_install_packages gnocchi-api gnocchi-metricd python-gnocchiclient
     fi
 
     # Seems like the Pike package doesn't properly install /etc/ceilometer;
@@ -2771,21 +2803,24 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
     # always correct.
     chown -R ceilometer /etc/ceilometer
 
-    if [ "${CEILOMETER_USE_MONGODB}" = "1" ]; then
+    if [ $USING_GNOCCHI -eq 0 -a "${CEILOMETER_USE_MONGODB}" = "1" ]; then
 	crudini --set /etc/ceilometer/ceilometer.conf database \
 	    connection "mongodb://ceilometer:${CEILOMETER_DBPASS}@${MGMTIP}:27017/ceilometer" 
-    else
+    elif [ $USING_GNOCCHI -eq 0 ]; then
 	crudini --set /etc/ceilometer/ceilometer.conf database \
 	    connection "${DBDSTRING}://ceilometer:${CEILOMETER_DBPASS}@$CONTROLLER/ceilometer?charset=utf8"
     fi
 
-    crudini --set /etc/ceilometer/ceilometer.conf DEFAULT auth_strategy keystone
-    crudini --set /etc/ceilometer/ceilometer.conf glance host $CONTROLLER
+    #
+    # Set generic ceilometer options.
+    #
     crudini --set /etc/ceilometer/ceilometer.conf DEFAULT verbose ${VERBOSE_LOGGING}
     crudini --set /etc/ceilometer/ceilometer.conf DEFAULT debug ${DEBUG_LOGGING}
     crudini --set /etc/ceilometer/ceilometer.conf DEFAULT \
 	log_dir /var/log/ceilometer
-
+    crudini --del /etc/ceilometer/ceilometer.conf DEFAULT auth_host
+    crudini --del /etc/ceilometer/ceilometer.conf DEFAULT auth_port
+    crudini --del /etc/ceilometer/ceilometer.conf DEFAULT auth_protocol
     if [ $OSVERSION -lt $OSKILO ]; then
 	crudini --set /etc/ceilometer/ceilometer.conf DEFAULT rpc_backend rabbit
 	crudini --set /etc/ceilometer/ceilometer.conf DEFAULT rabbit_host $CONTROLLER
@@ -2803,40 +2838,81 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	crudini --set /etc/ceilometer/ceilometer.conf DEFAULT transport_url $RABBIT_URL
     fi
 
-    if [ $OSVERSION -lt $OSKILO ]; then
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    identity_uri http://${CONTROLLER}:35357
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    admin_tenant_name service
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    admin_user ceilometer
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    admin_password "${CEILOMETER_PASS}"
-    else
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    auth_uri http://${CONTROLLER}:5000
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    auth_url http://${CONTROLLER}:35357
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    ${AUTH_TYPE_PARAM} password
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    ${PROJECT_DOMAIN_PARAM} default
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    ${USER_DOMAIN_PARAM} default
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    project_name service
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    username ceilometer
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    password "${CEILOMETER_PASS}"
-    fi
-    if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    memcached_servers  ${CONTROLLER}:11211
+    #
+    # Set specific < Ocata (i.e. non-gnocchi) Ceilometer options.
+    #
+    if [ $USING_GNOCCHI -eq 0 ]; then
+	crudini --set /etc/ceilometer/ceilometer.conf DEFAULT auth_strategy keystone
+	crudini --set /etc/ceilometer/ceilometer.conf glance host $CONTROLLER
+
+	if [ $OSVERSION -lt $OSKILO ]; then
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	        auth_uri http://${CONTROLLER}:5000/${KAPISTR}
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+		identity_uri http://${CONTROLLER}:35357
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+		admin_tenant_name service
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	        admin_user ceilometer
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	        admin_password "${CEILOMETER_PASS}"
+	else
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	        auth_uri http://${CONTROLLER}:5000
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	        auth_url http://${CONTROLLER}:35357
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	        ${AUTH_TYPE_PARAM} password
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	        ${PROJECT_DOMAIN_PARAM} default
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	        ${USER_DOMAIN_PARAM} default
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	        project_name service
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+		username ceilometer
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+		password "${CEILOMETER_PASS}"
+	fi
+	if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	        memcached_servers  ${CONTROLLER}:11211
+	fi
+
+	crudini --set /etc/ceilometer/ceilometer.conf notification \
+	    store_events true
+	crudini --set /etc/ceilometer/ceilometer.conf notification \
+	    disable_non_metric_meters false
+
+	if [ $OSVERSION -le $OSJUNO ]; then
+	    crudini --set /etc/ceilometer/ceilometer.conf publisher \
+	        metering_secret ${CEILOMETER_SECRET}
+	else
+	    crudini --set /etc/ceilometer/ceilometer.conf publisher \
+	        telemetry_secret ${CEILOMETER_SECRET}
+	fi
+
+	if [ ! -e /etc/ceilometer/event_pipeline.yaml ]; then
+	    cat <<EOF > /etc/ceilometer/event_pipeline.yaml
+sources:
+    - name: event_source
+      events:
+          - "*"
+      sinks:
+          - event_sink
+sinks:
+    - name: event_sink
+      transformers:
+      triggers:
+      publishers:
+          - notifier://
+EOF
+	fi
     fi
 
+    #
+    # These options apply whether we use Ceilometer or Gnocchi.
+    #
     if [ $OSVERSION -lt $OSMITAKA ]; then
 	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
 	    os_auth_url http://${CONTROLLER}:5000/${KAPISTR}
@@ -2877,52 +2953,64 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    memcached_servers ${CONTROLLER}:11211
     fi
 
-    crudini --set /etc/ceilometer/ceilometer.conf notification \
-	store_events true
-    crudini --set /etc/ceilometer/ceilometer.conf notification \
-	disable_non_metric_meters false
+    #
+    # These options are Gnocchi-specific.
+    #
+    if [ $USING_GNOCCHI -eq 1 ]; then
+	crudini --set /etc/ceilometer/ceilometer.conf dispatcher_gnocchi \
+	    filter_service_activity False
+	crudini --set /etc/ceilometer/ceilometer.conf dispatcher_gnocchi \
+	    archive_policy low
+	crudini --set /etc/ceilometer/ceilometer.conf DEFAULT \
+	    transport_url $RABBIT_URL
 
-    if [ $OSVERSION -le $OSJUNO ]; then
-	crudini --set /etc/ceilometer/ceilometer.conf publisher \
-	    metering_secret ${CEILOMETER_SECRET}
-    else
-	crudini --set /etc/ceilometer/ceilometer.conf publisher \
-	    telemetry_secret ${CEILOMETER_SECRET}
+	crudini --set /etc/gnocchi/gnocchi.conf api auth_mode keystone
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    auth_uri http://${CONTROLLER}:5000
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    auth_url http://${CONTROLLER}:35357
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    ${AUTH_TYPE_PARAM} password
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    ${PROJECT_DOMAIN_PARAM} default
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    ${USER_DOMAIN_PARAM} default
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    project_name service
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    username gnocchi
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    password "${GNOCCHI_PASS}"
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    interface internalURL
+	crudini --set /etc/gnocchi/gnocchi.conf indexer \
+	    url "${DBDSTRING}://gnocchi:${GNOCCHI_DBPASS}@$CONTROLLER/gnocchi"
+	crudini --set /etc/gnocchi/gnocchi.conf storage driver file
+	crudini --set /etc/gnocchi/gnocchi.conf storage file_basepath /var/lib/gnocchi
     fi
 
-    crudini --del /etc/ceilometer/ceilometer.conf DEFAULT auth_host
-    crudini --del /etc/ceilometer/ceilometer.conf DEFAULT auth_port
-    crudini --del /etc/ceilometer/ceilometer.conf DEFAULT auth_protocol
-
-    if [ ! -e /etc/ceilometer/event_pipeline.yaml ]; then
-	cat <<EOF > /etc/ceilometer/event_pipeline.yaml
-sources:
-    - name: event_source
-      events:
-          - "*"
-      sinks:
-          - event_sink
-sinks:
-    - name: event_sink
-      transformers:
-      triggers:
-      publishers:
-          - notifier://
-EOF
-    fi
-
-    if [ $OSVERSION -lt $OSOCATA ]; then
+    #
+    # Update the database schemata.
+    #
+    if [ $USING_GNOCCHI -eq 0 ]; then
 	su -s /bin/sh -c "ceilometer-dbsync" ceilometer
     else
-	ceilometer-upgrade
+	gnocchi-upgrade
+	ceilometer-upgrade --skip-metering-database
     fi
 
+    #
+    # Restart the services used in either case.
+    #
     service_restart ceilometer-agent-central
     service_enable ceilometer-agent-central
     service_restart ceilometer-agent-notification
     service_enable ceilometer-agent-notification
 
-    if [ $CEILOMETER_USE_WSGI -eq 1 -a $OSVERSION -lt $OSOCATA ]; then
+    #
+    # Make sure the API endpoint server is setup and running, if not Gnocchi.
+    #
+    if [ $CEILOMETER_USE_WSGI -eq 1 -a $USING_GNOCCHI -eq 0 ]; then
 	cat <<EOF > /etc/apache2/sites-available/ceilometer-api.conf
 Listen 8777
 
@@ -2957,29 +3045,28 @@ EOF
 	fi
 	
 	service apache2 reload
-    elif [ $OSVERSION -ge $OSOCATA ]; then
-	a2ensite ceilometer-api.conf
-	service_restart apache2
-    else
+    #elif [ $OSVERSION -ge $OSOCATA ]; then
+    #	a2ensite ceilometer-api.conf
+    #	service_restart apache2
+    elif [ $USING_GNOCCHI -eq 0 ]; then
 	service_restart ceilometer-api
 	service_enable ceilometer-api
+    else
+	service_restart gnocchi-api
+	service_enable gnocchi-api
+	service_restart gnocchi-metricd
+	service_enable gnocchi-metricd
     fi
 
-    #
-    # Patch for https://bugs.launchpad.net/python-ceilometerclient/+bug/1679934 ;
-    # hasn't hit Ubuntu Ocata cloud archive packages yet.
-    #
-    if [ $OSVERSION -eq $OSOCATA ]; then
-	patch -p1 -d / < $DIRNAME/etc/ceilometer-ocata-client-bug-1679934.patch
-    fi
-
-    service_restart ceilometer-collector
-    service_enable ceilometer-collector
-    if [ $OSVERSION -lt $OSMITAKA ]; then
-	service_restart ceilometer-alarm-evaluator
-	service_enable ceilometer-alarm-evaluator
-	service_restart ceilometer-alarm-notifier
-	service_enable ceilometer-alarm-notifier
+    if [ $USING_GNOCCHI -eq 0 ]; then
+	service_restart ceilometer-collector
+	service_enable ceilometer-collector
+	if [ $OSVERSION -lt $OSMITAKA ]; then
+	    service_restart ceilometer-alarm-evaluator
+	    service_enable ceilometer-alarm-evaluator
+	    service_restart ceilometer-alarm-notifier
+	    service_enable ceilometer-alarm-notifier
+	fi
     fi
 
     # NB: restart the neutron ceilometer agent too
@@ -2993,6 +3080,12 @@ EOF
     echo "CEILOMETER_DBPASS=\"${CEILOMETER_DBPASS}\"" >> $SETTINGS
     echo "CEILOMETER_PASS=\"${CEILOMETER_PASS}\"" >> $SETTINGS
     echo "CEILOMETER_SECRET=\"${CEILOMETER_SECRET}\"" >> $SETTINGS
+    echo "USING_GNOCCHI=\"${USING_GNOCCHI}\"" >> $SETTINGS
+    if [ $USING_GNOCCHI -eq 1 ]; then
+	echo "GNOCCHI_DBPASS=\"${GNOCCHI_DBPASS}\"" >> $SETTINGS
+	echo "GNOCCHI_PASS=\"${GNOCCHI_PASS}\"" >> $SETTINGS
+    else
+    fi
     logtend "ceilometer"
 fi
 
@@ -3127,7 +3220,10 @@ if [ -z "${TELEMETRY_SWIFT_DONE}" ]; then
 
     chmod g+w /var/log/ceilometer
 
-    maybe_install_packages python-ceilometerclient python-ceilometermiddleware
+    if [ ! $USING_GNOCCHI -eq 1 ]; then
+	maybe_install_packages python-ceilometerclient
+    fi
+    maybe_install_packages python-ceilometermiddleware
 
     if [ $OSVERSION -le $OSJUNO ]; then
 	keystone role-create --name ResellerAdmin
