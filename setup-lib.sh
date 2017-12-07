@@ -344,6 +344,13 @@ else
     OSVERSION=$OSJUNO
 fi
 
+#
+# Default memcached fully on for Mitaka or greater.  Too slow without it.
+#
+if [ $OSVERSION -ge $OSMITAKA ]; then
+    KEYSTONEUSEMEMCACHE=1
+fi
+
 if [ $OSVERSION -eq $OSJUNO ]; then
     REGION="regionOne"
 else

@@ -345,28 +345,35 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
 	    crudini --set /etc/keystone/keystone.conf token driver \
 		'keystone.token.persistence.backends.memcache.Token'
 	    crudini --set /etc/keystone/keystone.conf memcache servers \
-		'localhost:11211'
+		'127.0.0.1:11211'
 	else
 	    crudini --set /etc/keystone/keystone.conf token driver \
 		'keystone.token.persistence.backends.sql.Token'
 	fi
-    elif [ $OSVERSION -le $OSMITAKA ]; then
-	crudini --set /etc/keystone/keystone.conf token provider 'uuid'
-	crudini --set /etc/keystone/keystone.conf revoke driver 'sql'
-	if [ $KEYSTONEUSEMEMCACHE -eq 1 ]; then
-	    crudini --set /etc/keystone/keystone.conf token driver 'memcache'
-	    crudini --set /etc/keystone/keystone.conf memcache servers \
-		'localhost:11211'
-	else
-	    crudini --set /etc/keystone/keystone.conf token driver 'sql'
-	fi
     else
-	crudini --set /etc/keystone/keystone.conf token provider fernet
-	
+	if [ $OSVERSION -le $OSMITAKA ]; then
+	    crudini --set /etc/keystone/keystone.conf token provider 'uuid'
+	    crudini --set /etc/keystone/keystone.conf revoke driver 'sql'
+	else
+	    crudini --set /etc/keystone/keystone.conf token provider fernet
+	fi
+
 	if [ $KEYSTONEUSEMEMCACHE -eq 1 ]; then
 	    crudini --set /etc/keystone/keystone.conf token driver 'memcache'
+	    crudini --set /etc/keystone/keystone.conf cache \
+	        backend dogpile.cache.memcached
+	    crudini --set /etc/keystone/keystone.conf cache \
+		backend_argument url:127.0.0.1:11211
+	    crudini --set /etc/keystone/keystone.conf cache \
+		enable true
+	    crudini --set /etc/keystone/keystone.conf cache \
+		enabled true
+	    crudini --set /etc/keystone/keystone.conf cache \
+		memcache_servers 127.0.0.1:11211
+	    crudini --set /etc/keystone/keystone.conf cache \
+		memcached_servers 127.0.0.1:11211
 	    crudini --set /etc/keystone/keystone.conf memcache servers \
-		'localhost:11211'
+		'127.0.0.1:11211'
 	else
 	    crudini --set /etc/keystone/keystone.conf token driver 'sql'
 	fi
