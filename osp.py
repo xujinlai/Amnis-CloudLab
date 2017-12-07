@@ -549,6 +549,7 @@ else:
 #
 image_project = 'emulab-ops'
 image_urn = 'utah.cloudlab.us'
+image_tag_rel = ''
 if params.release == "juno":
     image_os = 'UBUNTU14-10-64'
 elif params.release == "kilo":
@@ -557,6 +558,15 @@ elif params.release == 'liberty':
     image_os = 'UBUNTU15-10-64'
 elif params.release == 'mitaka':
     image_os = 'UBUNTU16-64'
+elif params.release == 'newton':
+    image_os = 'UBUNTU16-64'
+    image_tag_rel = '-N'
+elif params.release == 'ocata':
+    image_os = 'UBUNTU16-64'
+    image_tag_rel = '-O'
+elif params.release == 'pike':
+    image_os = 'UBUNTU16-64'
+    image_tag_rel = '-P'
 else:
     image_os = 'UBUNTU16-64'
     params.fromScratch = True
@@ -568,6 +578,7 @@ if params.fromScratch:
     image_tag_cn = 'STD'
     image_tag_nm = 'STD'
     image_tag_cp = 'STD'
+    image_tag_rel = ''
 else:
     image_tag_cn = 'OSCN'
     image_tag_nm = 'OSNM'
@@ -585,7 +596,7 @@ if params.osNodeType:
     controller.hardware_type = params.osNodeType
     pass
 controller.Site("1")
-controller.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s" % (image_urn,image_project,image_os,image_tag_cn)
+controller.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s%s" % (image_urn,image_project,image_os,image_tag_cn,image_tag_rel)
 i = 0
 for datalan in alllans:
     iface = controller.addInterface("if%d" % (i,))
@@ -620,7 +631,7 @@ if params.controllerHost != params.networkManagerHost:
         networkManager.hardware_type = params.osNodeType
         pass
     networkManager.Site("1")
-    networkManager.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s" % (image_urn,image_project,image_os,image_tag_nm)
+    networkManager.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s%s" % (image_urn,image_project,image_os,image_tag_nm,image_tag_rel)
     i = 0
     for datalan in alllans:
         iface = networkManager.addInterface("if%d" % (i,))
@@ -677,7 +688,7 @@ for (siteNumber,cpnameList) in computeNodeNamesBySite.iteritems():
             cpnode.hardware_type = params.osNodeType
         pass
         cpnode.Site(str(siteNumber))
-        cpnode.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s" % (image_urn,image_project,image_os,image_tag_cp)
+        cpnode.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s%s" % (image_urn,image_project,image_os,image_tag_cp,image_tag_rel)
         i = 0
         for datalan in alllans:
             iface = cpnode.addInterface("if%d" % (i,))
