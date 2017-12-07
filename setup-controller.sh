@@ -4024,6 +4024,10 @@ EOF
 	    transport_url $RABBIT_URL
     fi
 
+    crudini --del /etc/designate/designate.conf keystone_authtoken \
+	project_domain_id
+    crudini --del /etc/designate/designate.conf keystone_authtoken \
+	user_domain_id
     crudini --set /etc/designate/designate.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/designate/designate.conf keystone_authtoken \
@@ -4040,6 +4044,8 @@ EOF
 	username designate
     crudini --set /etc/designate/designate.conf keystone_authtoken \
 	password "${DESIGNATE_PASS}"
+    crudini --set /etc/designate/designate.conf keystone_authtoken \
+	region_name $REGION
     crudini --set /etc/designate/designate.conf keystone_authtoken \
 	memcached_servers ${CONTROLLER}:11211
 
