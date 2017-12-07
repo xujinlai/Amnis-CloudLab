@@ -1362,7 +1362,7 @@ fi
 # multi-cluster-compatible manner; the bossip could be different for
 # phys node at different clusters.
 #
-if [ ! -f /etc/emulab/bossnode -a $OSVERSION -ge $OSNEWTON -a "${USE_DESIGNATE_AS_RESOLVER}" = "1"]; then
+if [ ! -f /etc/emulab/bossnode -a $OSVERSION -ge $OSNEWTON -a "${USE_DESIGNATE_AS_RESOLVER}" = "1" ]; then
     mydomain=`hostname | sed -n -e 's/[^\.]*\.\(.*\)$/\1/p'`
     mynameserver=`sed -n -e 's/^nameserver \([0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\).*$/\1/p' < /etc/resolv.conf | head -1`
     if [ -z "$mynameserver" ]; then
