@@ -2969,12 +2969,12 @@ EOF
     # These options are Gnocchi-specific.
     #
     if [ $USING_GNOCCHI -eq 1 ]; then
-	crudini --del /etc/gnocchi/gnocchi.conf DEFAULT auth_host
-	crudini --del /etc/gnocchi/gnocchi.conf DEFAULT auth_port
-	crudini --del /etc/gnocchi/gnocchi.conf DEFAULT auth_protocol
-	crudini --del /etc/gnocchi/gnocchi.conf DEFAULT admin_user
-	crudini --del /etc/gnocchi/gnocchi.conf DEFAULT admin_password
-	crudini --del /etc/gnocchi/gnocchi.conf DEFAULT admin_tenant_name
+	crudini --del /etc/gnocchi/gnocchi.conf keystone_authtoken auth_host
+	crudini --del /etc/gnocchi/gnocchi.conf keystone_authtoken auth_port
+	crudini --del /etc/gnocchi/gnocchi.conf keystone_authtoken auth_protocol
+	crudini --del /etc/gnocchi/gnocchi.conf keystone_authtoken admin_user
+	crudini --del /etc/gnocchi/gnocchi.conf keystone_authtoken admin_password
+	crudini --del /etc/gnocchi/gnocchi.conf keystone_authtoken admin_tenant_name
 
 	crudini --set /etc/ceilometer/ceilometer.conf dispatcher_gnocchi \
 	    filter_service_activity False
@@ -2984,8 +2984,8 @@ EOF
 	    transport_url $RABBIT_URL
 
 	crudini --set /etc/gnocchi/gnocchi.conf api auth_mode keystone
-	#crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
-	#    auth_uri http://${CONTROLLER}:5000
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:35357
 	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
