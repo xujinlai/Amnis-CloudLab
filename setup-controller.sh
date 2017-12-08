@@ -3224,7 +3224,7 @@ if [ -z "${TELEMETRY_GLANCE_DONE}" ]; then
 	crudini --set /etc/glance/glance-registry.conf $RIS \
 	    rabbit_password ${RABBIT_PASS}
     else
-	crudini --set /etc/glance/glance-api.conf DEFAULT transport_url $RABBIT_URL
+	crudini --set /etc/glance/glance-registry.conf DEFAULT transport_url $RABBIT_URL
     fi
 
     service_restart glance-registry
