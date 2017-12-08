@@ -2784,6 +2784,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 
 	GNOCCHI_PASS=`$PSWDGEN`
 	__openstack user create $DOMARG --password $GNOCCHI_PASS gnocchi
+	__openstack role add --user gnocchi --project service admin
 	__openstack service create --name gnocchi \
 	    --description "OpenStack Metric Service" metric
 
