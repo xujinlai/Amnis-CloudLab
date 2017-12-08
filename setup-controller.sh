@@ -1171,7 +1171,7 @@ EOF
     service_enable nova-serialproxy
     if [ $OSVERSION -ge $OSOCATA ]; then
 	a2ensite nova-placement-api.conf
-	service_restart apache2
+	service apache2 reload
     else
 	service_restart nova-placement-api
 	service_enable nova-placement-api
@@ -3076,11 +3076,6 @@ EOF
 	service_restart ceilometer-api
 	service_enable ceilometer-api
     else
-	a2ensite gnocchi-api
-	service apache2 reload
-    fi
-
-    if [ $USING_GNOCCHI -eq 0 ]; then
 	grep -qi 'allow from' /etc/apache2/sites-available/gnocchi-api.conf
 	if [ ! $? -eq 0 -a -f /etc/apache2/sites-available/gnocchi-api.conf -a -f /usr/lib/python2.7/dist-packages/gnocchi/rest/app.wsgi ]; then
 	    cat <<EOF >/etc/apache2/sites-available/gnocchi-api.conf
@@ -3107,9 +3102,12 @@ Listen 8041
     CustomLog /var/log/apache2/gnocchi_access.log combined
 </VirtualHost>
 EOF
-	    service apache2 reload
 	fi
+	a2ensite gnocchi-api
+	service apache2 reload
+    fi
 
+    if [ $USING_GNOCCHI -eq 0 ]; then
 	service_restart ceilometer-collector
 	service_enable ceilometer-collector
 	if [ $OSVERSION -lt $OSMITAKA ]; then
