@@ -3081,6 +3081,35 @@ EOF
     fi
 
     if [ $USING_GNOCCHI -eq 0 ]; then
+	grep -qi 'allow from' /etc/apache2/sites-available/gnocchi-api.conf
+	if [ ! $? -eq 0 -a -f /etc/apache2/sites-available/gnocchi-api.conf -a -f /usr/lib/python2.7/dist-packages/gnocchi/rest/app.wsgi ]; then
+	    cat <<EOF >/etc/apache2/sites-available/gnocchi-api.conf
+Listen 8041
+
+<VirtualHost *:8041>
+    WSGIDaemonProcess gnocchi-api processes=2 threads=10 user=gnocchi display-name=%{GROUP}
+    WSGIProcessGroup gnocchi-api
+    WSGIScriptAlias / /usr/lib/python2.7/dist-packages/gnocchi/rest/app.wsgi
+    WSGIApplicationGroup %{GLOBAL}
+    <IfVersion >= 2.4>
+        ErrorLogFormat "%{cu}t %M"
+    </IfVersion>
+    <Directory /usr/lib/python2.7/dist-packages/gnocchi/rest>
+       <IfVersion >= 2.4>
+          Require all granted
+       </IfVersion>
+       <IfVersion < 2.4>
+          Order allow,deny
+          Allow from all
+       </IfVersion>
+    </Directory>
+    ErrorLog /var/log/apache2/gnocchi_error.log
+    CustomLog /var/log/apache2/gnocchi_access.log combined
+</VirtualHost>
+EOF
+	    service apache2 reload
+	fi
+
 	service_restart ceilometer-collector
 	service_enable ceilometer-collector
 	if [ $OSVERSION -lt $OSMITAKA ]; then
