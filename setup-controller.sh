@@ -3019,6 +3019,11 @@ EOF
     if [ $USING_GNOCCHI -eq 0 ]; then
 	su -s /bin/sh -c "ceilometer-dbsync" ceilometer
     else
+	mkdir -p /var/lib/gnocchi
+	chown -R gnocchi:gnocchi /var/lib/gnocchi
+	usermod -a -G gnocchi ceilometer
+	chmod -R 770 /var/lib/gnocchi
+
 	gnocchi-upgrade
 	ceilometer-upgrade --skip-metering-database
     fi
