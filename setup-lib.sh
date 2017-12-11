@@ -82,11 +82,13 @@ DATAOTHERLANS=""
 USE_EXISTING_IPS=1
 DO_APT_INSTALL=1
 DO_APT_UPGRADE=0
+DO_APT_DIST_UPGRADE=0
 DO_APT_UPDATE=1
 UBUNTUMIRRORHOST=""
 UBUNTUMIRRORPATH=""
 ENABLE_NEW_SERIAL_SUPPORT=0
 DO_UBUNTU_CLOUDARCHIVE=0
+DO_UBUNTU_CLOUDARCHIVE_STAGING=0
 BUILD_AARCH64_FROM_CORE=0
 DISABLE_SECURITY_GROUPS=0
 DEFAULT_SECGROUP_ENABLE_SSH_ICMP=1
@@ -110,6 +112,11 @@ ML2PLUGIN="openvswitch"
 MANILADRIVER="generic"
 EXTRAIMAGEURLS=""
 LINUXBRIDGE_STATIC=0
+# If set to 1, and if OSRELEASE >= OSNEWTON, the physical machines will
+# use the MGMTIP as the primary DNS server (in preference to the real
+# control net DNS server).  The local domain will also be searched prior
+# to the cluster's domain.
+USE_DESIGNATE_AS_RESOLVER=1
 # The input OpenStack release, if any, from profile params.
 OSRELEASE=""
 
@@ -300,6 +307,7 @@ OSLIBERTY=12
 OSMITAKA=13
 OSNEWTON=14
 OSOCATA=15
+OSPIKE=16
 
 . /etc/lsb-release
 #
@@ -313,6 +321,7 @@ if [ ! "x$OSRELEASE" = "x" ]; then
     if [ $OSCODENAME = "mitaka" ]; then OSVERSION=$OSMITAKA ; fi
     if [ $OSCODENAME = "newton" ]; then OSVERSION=$OSNEWTON ; fi
     if [ $OSCODENAME = "ocata" ]; then OSVERSION=$OSOCATA ; fi
+    if [ $OSCODENAME = "pike" ]; then OSVERSION=$OSPIKE ; fi
 
     #
     # We only use cloudarchive for LTS images!
@@ -333,6 +342,13 @@ elif [ ${DISTRIB_CODENAME} = "xenial" ]; then
 else
     OSCODENAME="juno"
     OSVERSION=$OSJUNO
+fi
+
+#
+# Default memcached fully on for Mitaka or greater.  Too slow without it.
+#
+if [ $OSVERSION -ge $OSMITAKA ]; then
+    KEYSTONEUSEMEMCACHE=1
 fi
 
 if [ $OSVERSION -eq $OSJUNO ]; then
@@ -699,16 +715,51 @@ if [ ! -f $OURDIR/cloudarchive-added -a "${DO_UBUNTU_CLOUDARCHIVE}" = "1" ]; the
 	# Disable unattended upgrades!
 	rm -fv /etc/apt/apt.conf.d/*unattended-upgrades
 	add-apt-repository -y cloud-archive:$OSRELEASE
+	if [ "${DO_UBUNTU_CLOUDARCHIVE_STAGING}" = "1" ]; then
+	    add-apt-repository -y cloud-archive:${OSRELEASE}-proposed
+	fi
 	apt-get update
     #fi
 
     touch $OURDIR/cloudarchive-added
 fi
 
+if [ ! -f $OURDIR/apt-dist-upgraded -a "${DO_APT_DIST_UPGRADE}" = "1" ]; then
+    # First, mark grub packages not to be upgraded; we don't want an
+    # install going to the wrong place.
+    PKGS="grub-common grub-gfxpayload-lists grub-pc grub-pc-bin grub2-common"
+    for pkg in $PKGS; do
+	apt-mark hold $pkg
+    done
+    apt-get dist-upgrade -y
+    for pkg in $PKGS; do
+	apt-mark unhold $pkg
+    done
+    touch $OURDIR/apt-dist-upgraded
+fi
+
 #
 # We rely on crudini in a few spots, instead of sed whacking.
 #
 maybe_install_packages crudini
+
+netmask2prefix() {
+    nm=$1
+    bits=0
+    IFS=.
+    read -r i1 i2 i3 i4 <<EOF
+$nm
+EOF
+    unset IFS
+    for n in $i1 $i2 $i3 $i4 ; do
+	v=128
+	while [ $v -gt 0 ]; do
+	    bits=`expr $bits + \( \( $n / $v \) % 2 \)`
+	    v=`expr $v / 2`
+	done
+    done
+    echo $bits
+}
 
 #
 # Create IP addresses for the Management and Data networks, as necessary.
@@ -1046,6 +1097,7 @@ fi
 if [ ! -e $OURDIR/info.mgmt ]; then
     MGMTIP=`grep -E "$NODEID$" $OURDIR/mgmt-hosts | head -1 | sed -n -e 's/^\\([0-9]*\\.[0-9]*\\.[0-9]*\\.[0-9]*\\).*$/\\1/p'`
     MGMTNETMASK=`cat $OURDIR/mgmt-netmask`
+    MGMTPREFIX=`netmask2prefix $MGMTNETMASK`
     if [ -z "$MGMTLAN" ] ; then
 	MGMTVLAN=0
 	MVMTVLANDEV=
@@ -1067,6 +1119,7 @@ if [ ! -e $OURDIR/info.mgmt ]; then
     fi
     echo "MGMTIP='$MGMTIP'" >> $OURDIR/info.mgmt
     echo "MGMTNETMASK='$MGMTNETMASK'" >> $OURDIR/info.mgmt
+    echo "MGMTPREFIX='$MGMTPREFIX'" >> $OURDIR/info.mgmt
     echo "MGMTVLAN=$MGMTVLAN" >> $OURDIR/info.mgmt
     echo "MGMTMAC='$MGMTMAC'" >> $OURDIR/info.mgmt
     echo "MGMT_NETWORK_INTERFACE='$MGMT_NETWORK_INTERFACE'" >> $OURDIR/info.mgmt
@@ -1305,6 +1358,26 @@ if [ ! -f $OURDIR/neutron.vars ]; then
 
     echo "fwdriver=\"${fwdriver}\"" >> $OURDIR/neutron.vars
 
+fi
+
+#
+# Emulab tmcc finds the bossip via first server in /etc/resolv.conf,
+# ugh, and we might change /etc/resolv.conf if we are installing
+# Designate on >= Ocata.  So force it to find the bossip via this file
+# instead.  Previously, we had done this near the bottom of
+# setup-controller.sh, but this change has to be made in a
+# multi-cluster-compatible manner; the bossip could be different for
+# phys node at different clusters.
+#
+if [ ! -f /etc/emulab/bossnode -a $OSVERSION -ge $OSNEWTON -a "${USE_DESIGNATE_AS_RESOLVER}" = "1" ]; then
+    mydomain=`hostname | sed -n -e 's/[^\.]*\.\(.*\)$/\1/p'`
+    mynameserver=`sed -n -e 's/^nameserver \([0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\).*$/\1/p' < /etc/resolv.conf | head -1`
+    if [ -z "$mynameserver" ]; then
+	mynameserver=`dig +short boss.$mydomain A`
+    fi
+    if [ -n "$mynameserver" ]; then
+	echo $mynameserver > /etc/emulab/bossnode
+    fi
 fi
 
 ##

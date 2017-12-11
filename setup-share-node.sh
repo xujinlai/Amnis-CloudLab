@@ -277,6 +277,11 @@ else
 	region_name $REGION
 fi
 
+if [ $OSVERSION -eq $OSPIKE ]; then
+    patch -p1 -d /usr/lib/python2.7/dist-packages \
+        < $DIRNAME/etc/manila-pike-bug-1716922.patch
+fi
+
 service_restart manila-share
 service_enable manila-share
 

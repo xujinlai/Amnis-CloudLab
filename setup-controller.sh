@@ -63,6 +63,7 @@ fi
 
 maybe_install_packages pssh
 PSSH='/usr/bin/parallel-ssh -t 0 -O StrictHostKeyChecking=no '
+PSCP='/usr/bin/parallel-scp -t 0 -O StrictHostKeyChecking=no '
 
 # Make sure our repos are setup.
 #apt-get install ubuntu-cloud-keyring
@@ -344,28 +345,35 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
 	    crudini --set /etc/keystone/keystone.conf token driver \
 		'keystone.token.persistence.backends.memcache.Token'
 	    crudini --set /etc/keystone/keystone.conf memcache servers \
-		'localhost:11211'
+		'127.0.0.1:11211'
 	else
 	    crudini --set /etc/keystone/keystone.conf token driver \
 		'keystone.token.persistence.backends.sql.Token'
 	fi
-    elif [ $OSVERSION -le $OSMITAKA ]; then
-	crudini --set /etc/keystone/keystone.conf token provider 'uuid'
-	crudini --set /etc/keystone/keystone.conf revoke driver 'sql'
-	if [ $KEYSTONEUSEMEMCACHE -eq 1 ]; then
-	    crudini --set /etc/keystone/keystone.conf token driver 'memcache'
-	    crudini --set /etc/keystone/keystone.conf memcache servers \
-		'localhost:11211'
-	else
-	    crudini --set /etc/keystone/keystone.conf token driver 'sql'
-	fi
     else
-	crudini --set /etc/keystone/keystone.conf token provider fernet
-	
+	if [ $OSVERSION -le $OSMITAKA ]; then
+	    crudini --set /etc/keystone/keystone.conf token provider 'uuid'
+	    crudini --set /etc/keystone/keystone.conf revoke driver 'sql'
+	else
+	    crudini --set /etc/keystone/keystone.conf token provider fernet
+	fi
+
 	if [ $KEYSTONEUSEMEMCACHE -eq 1 ]; then
 	    crudini --set /etc/keystone/keystone.conf token driver 'memcache'
+	    crudini --set /etc/keystone/keystone.conf cache \
+	        backend dogpile.cache.memcached
+	    crudini --set /etc/keystone/keystone.conf cache \
+		backend_argument url:127.0.0.1:11211
+	    crudini --set /etc/keystone/keystone.conf cache \
+		enable true
+	    crudini --set /etc/keystone/keystone.conf cache \
+		enabled true
+	    crudini --set /etc/keystone/keystone.conf cache \
+		memcache_servers 127.0.0.1:11211
+	    crudini --set /etc/keystone/keystone.conf cache \
+		memcached_servers 127.0.0.1:11211
 	    crudini --set /etc/keystone/keystone.conf memcache servers \
-		'localhost:11211'
+		'127.0.0.1:11211'
 	else
 	    crudini --set /etc/keystone/keystone.conf token driver 'sql'
 	fi
@@ -1163,7 +1171,7 @@ EOF
     service_enable nova-serialproxy
     if [ $OSVERSION -ge $OSOCATA ]; then
 	a2ensite nova-placement-api.conf
-	service_restart apache2
+	service apache2 reload
     else
 	service_restart nova-placement-api
 	service_enable nova-placement-api
@@ -1401,6 +1409,24 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
     if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
 	crudini --set /etc/neutron/neutron.conf nova \
 	    memcached_servers ${CONTROLLER}:11211
+    fi
+    if [ $OSVERSION -ge $OSOCATA ]; then
+	crudini --set /etc/neutron/neutron.conf placement \
+	    os_region_name $REGION
+	crudini --set /etc/neutron/neutron.conf placement \
+	    auth_url http://${CONTROLLER}:35357/v3
+	crudini --set /etc/neutron/neutron.conf placement \
+	    ${AUTH_TYPE_PARAM} password
+	crudini --set /etc/neutron/neutron.conf placement \
+	    ${PROJECT_DOMAIN_PARAM} default
+	crudini --set /etc/neutron/neutron.conf placement \
+	    ${USER_DOMAIN_PARAM} default
+	crudini --set /etc/neutron/neutron.conf placement \
+	    project_name service
+	crudini --set /etc/neutron/neutron.conf placement \
+	    username placement
+	crudini --set /etc/neutron/neutron.conf placement \
+	    password "${PLACEMENT_PASS}"
     fi
 
     if [ $OSVERSION -lt $OSMITAKA ]; then
@@ -1666,23 +1692,24 @@ if [ -z "${DASHBOARD_DONE}" ]; then
 
     maybe_install_packages openstack-dashboard apache2 libapache2-mod-wsgi
 
+    echo "" >> /etc/openstack-dashboard/local_settings.py
     sed -i -e "s/OPENSTACK_HOST.*=.*\$/OPENSTACK_HOST = \"${CONTROLLER}\"/" \
 	/etc/openstack-dashboard/local_settings.py
     sed -i -e 's/^.*ALLOWED_HOSTS = \[.*$/ALLOWED_HOSTS = \["*"\]/' \
 	/etc/openstack-dashboard/local_settings.py
 
-    grep -q SESSION_TIMEOUT /etc/openstack-dashboard/local_settings.py
+    grep -q '^#[ \t]*SESSION_TIMEOUT' /etc/openstack-dashboard/local_settings.py
     if [ $? -eq 0 ]; then
-	sed -i -e "s/^.*SESSION_TIMEOUT.*=.*\$/SESSION_TIMEOUT = ${SESSIONTIMEOUT}/" \
+	sed -i -e "s/^#.*SESSION_TIMEOUT.*=.*\$/SESSION_TIMEOUT = ${SESSIONTIMEOUT}/" \
 	    /etc/openstack-dashboard/local_settings.py
     else
 	echo "SESSION_TIMEOUT = ${SESSIONTIMEOUT}" \
 	    >> /etc/openstack-dashboard/local_settings.py
     fi
 
-    grep -q OPENSTACK_KEYSTONE_DEFAULT_ROLE /etc/openstack-dashboard/local_settings.py
+    grep -q '^#[ \t]*OPENSTACK_KEYSTONE_DEFAULT_ROLE' /etc/openstack-dashboard/local_settings.py
     if [ $? -eq 0 ]; then
-	sed -i -e "s/^.*OPENSTACK_KEYSTONE_DEFAULT_ROLE.*=.*\$/OPENSTACK_KEYSTONE_DEFAULT_ROLE = \"user\"/" \
+	sed -i -e "s/^#.*OPENSTACK_KEYSTONE_DEFAULT_ROLE.*=.*\$/OPENSTACK_KEYSTONE_DEFAULT_ROLE = \"user\"/" \
 	    /etc/openstack-dashboard/local_settings.py
     else
 	echo "OPENSTACK_KEYSTONE_DEFAULT_ROLE = \"user\"" \
@@ -1708,27 +1735,27 @@ EOF
 
     if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
 	IDVERS=3
-	grep OPENSTACK_KEYSTONE_URL /etc/openstack-dashboard/local_settings.py
+	grep '^#[ \t]*OPENSTACK_KEYSTONE_URL' /etc/openstack-dashboard/local_settings.py
 	if [ $? -eq 0 ]; then
-	    sed -i -e "s|^.*OPENSTACK_KEYSTONE_URL.*=.*\$|OPENSTACK_KEYSTONE_URL = \"http://%s:5000/v3\" % OPENSTACK_HOST|" \
+	    sed -i -e "s|^#.*OPENSTACK_KEYSTONE_URL.*=.*\$|OPENSTACK_KEYSTONE_URL = \"http://%s:5000/v3\" % OPENSTACK_HOST|" \
 		/etc/openstack-dashboard/local_settings.py
 	else
 	    cat <<EOF >> /etc/openstack-dashboard/local_settings.py
 OPENSTACK_KEYSTONE_URL = "http://%s:5000/v3" % OPENSTACK_HOST
 EOF
 	fi
-	grep OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT /etc/openstack-dashboard/local_settings.py
+	grep '^#[ \t]*OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT' /etc/openstack-dashboard/local_settings.py
 	if [ $? -eq 0 ]; then
-	    sed -i -e "s|^.*OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT.*=.*\$|OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = True|" \
+	    sed -i -e "s|^#.*OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT.*=.*\$|OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = True|" \
 		/etc/openstack-dashboard/local_settings.py
 	else
 	    cat <<EOF >> /etc/openstack-dashboard/local_settings.py
 OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = True
 EOF
 	fi
-	grep OPENSTACK_KEYSTONE_DEFAULT_DOMAIN /etc/openstack-dashboard/local_settings.py
+	grep '^#[ \t]*OPENSTACK_KEYSTONE_DEFAULT_DOMAIN' /etc/openstack-dashboard/local_settings.py
 	if [ $? -eq 0 ]; then
-	    sed -i -e "s|^.*OPENSTACK_KEYSTONE_DEFAULT_DOMAIN.*=.*\$|OPENSTACK_KEYSTONE_DEFAULT_DOMAIN = 'default'|" \
+	    sed -i -e "s|^#.*OPENSTACK_KEYSTONE_DEFAULT_DOMAIN.*=.*\$|OPENSTACK_KEYSTONE_DEFAULT_DOMAIN = 'default'|" \
 		/etc/openstack-dashboard/local_settings.py
 	else
 	    cat <<EOF >> /etc/openstack-dashboard/local_settings.py
@@ -1752,8 +1779,10 @@ OPENSTACK_API_VERSIONS = {
 }
 EOF
 
-    if [ $OSVERSION -ge $OSOCATA ]; then
+    if [ $OSVERSION -eq $OSOCATA ]; then
 	chown www-data.www-data /var/lib/openstack-dashboard/secret_key
+    elif [ $OSVERSION -ge $OSPIKE ]; then
+	chown horizon.www-data /var/lib/openstack-dashboard/secret_key
     fi
 
     #
@@ -1954,6 +1983,11 @@ if [ -z "${CINDER_DBPASS}" ]; then
     fi
 
     sed -i -e "s/^\\(.*volume_group.*=.*\\)$/#\1/" /etc/cinder/cinder.conf
+
+    if [ $OSVERSION -eq $OSPIKE ]; then
+	patch -p1 -d /usr/lib/python2.7/dist-packages \
+            < $DIRNAME/etc/cinder-pike-bug-1714417.patch
+    fi
 
     su -s /bin/sh -c "/usr/bin/cinder-manage db sync" cinder
 
@@ -2160,6 +2194,10 @@ EOF
     #
     if [ $OSVERSION -eq $OSNEWTON -a -f $DIRNAME/etc/manila-${OSCODENAME}-noset.patch ]; then
 	patch -p0 -d / < $DIRNAME/etc/manila-${OSCODENAME}-noset.patch
+    fi
+    if [ $OSVERSION -eq $OSPIKE ]; then
+	patch -p0 -d / < $DIRNAME/etc/manila-pike-bug-1715540.patch
+	patch -p0 -d / < $DIRNAME/etc/manila-pike-bug-1707303.patch
     fi
 
     service_restart apache2
@@ -2657,7 +2695,19 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
     CEILOMETER_PASS=`$PSWDGEN`
     CEILOMETER_SECRET=`$PSWDGEN`
 
-    if [ "${CEILOMETER_USE_MONGODB}" = "1" ]; then
+    #
+    # We now have basically three cases: < Ocata + mysql ; < Ocata + mongodb;
+    # and >= Ocata + gnocchi.
+    #
+    USING_GNOCCHI=0
+    if [ $OSVERSION -ge $OSOCATA ]; then
+	USING_GNOCCHI=1
+    fi
+
+    #
+    # Setup the database.
+    #
+    if [ $USING_GNOCCHI -eq 0 -a "${CEILOMETER_USE_MONGODB}" = "1" ]; then
 	maybe_install_packages mongodb-server python-pymongo
 	maybe_install_packages mongodb-clients
 
@@ -2675,14 +2725,25 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    mongo --host ${MGMTIP} --eval "db = db.getSiblingDB(\"ceilometer\"); db.addUser({user: \"ceilometer\", pwd: \"${CEILOMETER_DBPASS}\", roles: [ \"readWrite\", \"dbAdmin\" ]})"
 	    MDONE=$?
 	done
-    else
+    elif [ $USING_GNOCCHI -eq 0 ]; then
 	maybe_install_packages mariadb-server python-mysqldb
 
 	echo "create database ceilometer" | mysql -u root --password="$DB_ROOT_PASS"
 	echo "grant all privileges on ceilometer.* to 'ceilometer'@'localhost' identified by '$CEILOMETER_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
 	echo "grant all privileges on ceilometer.* to 'ceilometer'@'%' identified by '$CEILOMETER_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+    else
+	GNOCCHI_DBPASS=`$PSWDGEN`
+	GNOCCHI_PASS=`$PSWDGEN`
+
+	maybe_install_packages mariadb-server python-mysqldb
+	echo "create database gnocchi" | mysql -u root --password="$DB_ROOT_PASS"
+	echo "grant all privileges on gnocchi.* to 'gnocchi'@'localhost' identified by '$GNOCCHI_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+	echo "grant all privileges on gnocchi.* to 'gnocchi'@'%' identified by '$GNOCCHI_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
     fi
 
+    #
+    # Setup the API endpoints.
+    #
     if [ $OSVERSION -eq $OSJUNO ]; then
 	keystone user-create --name ceilometer --pass $CEILOMETER_PASS
 	keystone user-role-add --user ceilometer --tenant service --role admin
@@ -2695,7 +2756,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    --internalurl http://${CONTROLLER}:8777 \
 	    --adminurl http://${CONTROLLER}:8777 \
 	    --region $REGION
-    else
+    elif [ $USING_GNOCCHI -eq 0 ]; then
 	__openstack user create $DOMARG --password $CEILOMETER_PASS ceilometer
 	__openstack role add --user ceilometer --project service admin
 	__openstack service create --name ceilometer \
@@ -2707,15 +2768,6 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 		--internalurl http://$CONTROLLER:8777 \
 		--adminurl http://$CONTROLLER:8777 \
 		--region $REGION metering
-	# Don't do this for now despite Ocata install instructions; the
-	# package's wsgi file's port is still 8777.
-	#elif [ $OSVERSION -ge $OSOCATA ]; then
-	#    __openstack endpoint create --region $REGION \
-	#	metering public http://${CONTROLLER}:8041
-	#    __openstack endpoint create --region $REGION \
-	#	metering internal http://${CONTROLLER}:8041
-	#    __openstack endpoint create --region $REGION \
-	#	metering admin http://${CONTROLLER}:8041
 	else
 	    __openstack endpoint create --region $REGION \
 		metering public http://${CONTROLLER}:8777
@@ -2724,32 +2776,64 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    __openstack endpoint create --region $REGION \
 		metering admin http://${CONTROLLER}:8777
 	fi
+    else
+	__openstack user create $DOMARG --password $CEILOMETER_PASS ceilometer
+	__openstack role add --user ceilometer --project service admin
+	__openstack service create --name ceilometer \
+	    --description "OpenStack Telemetry Service" metering
+
+	GNOCCHI_PASS=`$PSWDGEN`
+	__openstack user create $DOMARG --password $GNOCCHI_PASS gnocchi
+	__openstack role add --user gnocchi --project service admin
+	__openstack service create --name gnocchi \
+	    --description "OpenStack Metric Service" metric
+
+	__openstack endpoint create --region $REGION \
+	    metric public http://${CONTROLLER}:8041
+	__openstack endpoint create --region $REGION \
+	    metric internal http://${CONTROLLER}:8041
+	__openstack endpoint create --region $REGION \
+	    metric admin http://${CONTROLLER}:8041
     fi
 
-    maybe_install_packages ceilometer-api ceilometer-collector \
-	ceilometer-agent-central ceilometer-agent-notification \
-	python-ceilometerclient python-bson
-
-    if [ $OSVERSION -lt $OSMITAKA ]; then
-	maybe_install_packages ceilometer-alarm-evaluator \
-	    ceilometer-alarm-notifier
+    #
+    # Install packages.
+    #
+    maybe_install_packages ceilometer-agent-central ceilometer-agent-notification
+    if [ $USING_GNOCCHI -eq 0 ]; then
+	maybe_install_packages ceilometer-api ceilometer-collector \
+	    python-ceilometerclient python-bson
+	if [ $OSVERSION -lt $OSMITAKA ]; then
+	    maybe_install_packages ceilometer-alarm-evaluator \
+	        ceilometer-alarm-notifier
+	fi
+    else
+	maybe_install_packages gnocchi-api gnocchi-metricd python-gnocchiclient
     fi
 
-    if [ "${CEILOMETER_USE_MONGODB}" = "1" ]; then
+    # Seems like the Pike package doesn't properly install /etc/ceilometer;
+    # it is owned by some non-existent uid.  So just shotgun this; it is
+    # always correct.
+    chown -R ceilometer /etc/ceilometer
+
+    if [ $USING_GNOCCHI -eq 0 -a "${CEILOMETER_USE_MONGODB}" = "1" ]; then
 	crudini --set /etc/ceilometer/ceilometer.conf database \
 	    connection "mongodb://ceilometer:${CEILOMETER_DBPASS}@${MGMTIP}:27017/ceilometer" 
-    else
+    elif [ $USING_GNOCCHI -eq 0 ]; then
 	crudini --set /etc/ceilometer/ceilometer.conf database \
 	    connection "${DBDSTRING}://ceilometer:${CEILOMETER_DBPASS}@$CONTROLLER/ceilometer?charset=utf8"
     fi
 
-    crudini --set /etc/ceilometer/ceilometer.conf DEFAULT auth_strategy keystone
-    crudini --set /etc/ceilometer/ceilometer.conf glance host $CONTROLLER
+    #
+    # Set generic ceilometer options.
+    #
     crudini --set /etc/ceilometer/ceilometer.conf DEFAULT verbose ${VERBOSE_LOGGING}
     crudini --set /etc/ceilometer/ceilometer.conf DEFAULT debug ${DEBUG_LOGGING}
     crudini --set /etc/ceilometer/ceilometer.conf DEFAULT \
 	log_dir /var/log/ceilometer
-
+    crudini --del /etc/ceilometer/ceilometer.conf DEFAULT auth_host
+    crudini --del /etc/ceilometer/ceilometer.conf DEFAULT auth_port
+    crudini --del /etc/ceilometer/ceilometer.conf DEFAULT auth_protocol
     if [ $OSVERSION -lt $OSKILO ]; then
 	crudini --set /etc/ceilometer/ceilometer.conf DEFAULT rpc_backend rabbit
 	crudini --set /etc/ceilometer/ceilometer.conf DEFAULT rabbit_host $CONTROLLER
@@ -2767,40 +2851,81 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	crudini --set /etc/ceilometer/ceilometer.conf DEFAULT transport_url $RABBIT_URL
     fi
 
-    if [ $OSVERSION -lt $OSKILO ]; then
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    identity_uri http://${CONTROLLER}:35357
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    admin_tenant_name service
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    admin_user ceilometer
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    admin_password "${CEILOMETER_PASS}"
-    else
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    auth_uri http://${CONTROLLER}:5000
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    auth_url http://${CONTROLLER}:35357
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    ${AUTH_TYPE_PARAM} password
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    ${PROJECT_DOMAIN_PARAM} default
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    ${USER_DOMAIN_PARAM} default
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    project_name service
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    username ceilometer
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    password "${CEILOMETER_PASS}"
-    fi
-    if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
-	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	    memcached_servers  ${CONTROLLER}:11211
+    #
+    # Set specific < Ocata (i.e. non-gnocchi) Ceilometer options.
+    #
+    if [ $USING_GNOCCHI -eq 0 ]; then
+	crudini --set /etc/ceilometer/ceilometer.conf DEFAULT auth_strategy keystone
+	crudini --set /etc/ceilometer/ceilometer.conf glance host $CONTROLLER
+
+	if [ $OSVERSION -lt $OSKILO ]; then
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	        auth_uri http://${CONTROLLER}:5000/${KAPISTR}
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+		identity_uri http://${CONTROLLER}:35357
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+		admin_tenant_name service
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	        admin_user ceilometer
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	        admin_password "${CEILOMETER_PASS}"
+	else
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	        auth_uri http://${CONTROLLER}:5000
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	        auth_url http://${CONTROLLER}:35357
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	        ${AUTH_TYPE_PARAM} password
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	        ${PROJECT_DOMAIN_PARAM} default
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	        ${USER_DOMAIN_PARAM} default
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	        project_name service
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+		username ceilometer
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+		password "${CEILOMETER_PASS}"
+	fi
+	if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
+	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
+	        memcached_servers  ${CONTROLLER}:11211
+	fi
+
+	crudini --set /etc/ceilometer/ceilometer.conf notification \
+	    store_events true
+	crudini --set /etc/ceilometer/ceilometer.conf notification \
+	    disable_non_metric_meters false
+
+	if [ $OSVERSION -le $OSJUNO ]; then
+	    crudini --set /etc/ceilometer/ceilometer.conf publisher \
+	        metering_secret ${CEILOMETER_SECRET}
+	else
+	    crudini --set /etc/ceilometer/ceilometer.conf publisher \
+	        telemetry_secret ${CEILOMETER_SECRET}
+	fi
+
+	if [ ! -e /etc/ceilometer/event_pipeline.yaml ]; then
+	    cat <<EOF > /etc/ceilometer/event_pipeline.yaml
+sources:
+    - name: event_source
+      events:
+          - "*"
+      sinks:
+          - event_sink
+sinks:
+    - name: event_sink
+      transformers:
+      triggers:
+      publishers:
+          - notifier://
+EOF
+	fi
     fi
 
+    #
+    # These options apply whether we use Ceilometer or Gnocchi.
+    #
     if [ $OSVERSION -lt $OSMITAKA ]; then
 	crudini --set /etc/ceilometer/ceilometer.conf service_credentials \
 	    os_auth_url http://${CONTROLLER}:5000/${KAPISTR}
@@ -2841,52 +2966,80 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    memcached_servers ${CONTROLLER}:11211
     fi
 
-    crudini --set /etc/ceilometer/ceilometer.conf notification \
-	store_events true
-    crudini --set /etc/ceilometer/ceilometer.conf notification \
-	disable_non_metric_meters false
+    #
+    # These options are Gnocchi-specific.
+    #
+    if [ $USING_GNOCCHI -eq 1 ]; then
+	crudini --del /etc/gnocchi/gnocchi.conf keystone_authtoken auth_host
+	crudini --del /etc/gnocchi/gnocchi.conf keystone_authtoken auth_port
+	crudini --del /etc/gnocchi/gnocchi.conf keystone_authtoken auth_protocol
+	crudini --del /etc/gnocchi/gnocchi.conf keystone_authtoken admin_user
+	crudini --del /etc/gnocchi/gnocchi.conf keystone_authtoken admin_password
+	crudini --del /etc/gnocchi/gnocchi.conf keystone_authtoken admin_tenant_name
 
-    if [ $OSVERSION -le $OSJUNO ]; then
-	crudini --set /etc/ceilometer/ceilometer.conf publisher \
-	    metering_secret ${CEILOMETER_SECRET}
-    else
-	crudini --set /etc/ceilometer/ceilometer.conf publisher \
-	    telemetry_secret ${CEILOMETER_SECRET}
+	crudini --set /etc/ceilometer/ceilometer.conf dispatcher_gnocchi \
+	    filter_service_activity False
+	crudini --set /etc/ceilometer/ceilometer.conf dispatcher_gnocchi \
+	    archive_policy low
+	crudini --set /etc/ceilometer/ceilometer.conf DEFAULT \
+	    transport_url $RABBIT_URL
+
+	crudini --set /etc/gnocchi/gnocchi.conf api auth_mode keystone
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    auth_uri http://${CONTROLLER}:5000
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    auth_url http://${CONTROLLER}:35357
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    ${AUTH_TYPE_PARAM} password
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    ${PROJECT_DOMAIN_PARAM} default
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    ${USER_DOMAIN_PARAM} default
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    project_name service
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    username gnocchi
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    password "${GNOCCHI_PASS}"
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    interface internalURL
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    region_name $REGION
+	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
+	    memcached_servers ${CONTROLLER}:11211
+	crudini --set /etc/gnocchi/gnocchi.conf indexer \
+	    url "${DBDSTRING}://gnocchi:${GNOCCHI_DBPASS}@$CONTROLLER/gnocchi"
+	crudini --set /etc/gnocchi/gnocchi.conf storage driver file
+	crudini --set /etc/gnocchi/gnocchi.conf storage file_basepath /var/lib/gnocchi
     fi
 
-    crudini --del /etc/ceilometer/ceilometer.conf DEFAULT auth_host
-    crudini --del /etc/ceilometer/ceilometer.conf DEFAULT auth_port
-    crudini --del /etc/ceilometer/ceilometer.conf DEFAULT auth_protocol
-
-    if [ ! -e /etc/ceilometer/event_pipeline.yaml ]; then
-	cat <<EOF > /etc/ceilometer/event_pipeline.yaml
-sources:
-    - name: event_source
-      events:
-          - "*"
-      sinks:
-          - event_sink
-sinks:
-    - name: event_sink
-      transformers:
-      triggers:
-      publishers:
-          - notifier://
-EOF
-    fi
-
-    if [ $OSVERSION -lt $OSOCATA ]; then
+    #
+    # Update the database schemata.
+    #
+    if [ $USING_GNOCCHI -eq 0 ]; then
 	su -s /bin/sh -c "ceilometer-dbsync" ceilometer
     else
-	ceilometer-upgrade
+	mkdir -p /var/lib/gnocchi
+	chown -R gnocchi:gnocchi /var/lib/gnocchi
+	usermod -a -G gnocchi ceilometer
+	chmod -R 770 /var/lib/gnocchi
+
+	gnocchi-upgrade
+	ceilometer-upgrade --skip-metering-database
     fi
 
+    #
+    # Restart the services used in either case.
+    #
     service_restart ceilometer-agent-central
     service_enable ceilometer-agent-central
     service_restart ceilometer-agent-notification
     service_enable ceilometer-agent-notification
 
-    if [ $CEILOMETER_USE_WSGI -eq 1 -a $OSVERSION -lt $OSOCATA ]; then
+    #
+    # Make sure the API endpoint server is setup and running, if not Gnocchi.
+    #
+    if [ $CEILOMETER_USE_WSGI -eq 1 -a $USING_GNOCCHI -eq 0 ]; then
 	cat <<EOF > /etc/apache2/sites-available/ceilometer-api.conf
 Listen 8777
 
@@ -2921,29 +3074,56 @@ EOF
 	fi
 	
 	service apache2 reload
-    elif [ $OSVERSION -ge $OSOCATA ]; then
-	a2ensite ceilometer-api.conf
-	service_restart apache2
-    else
+    #elif [ $OSVERSION -ge $OSOCATA ]; then
+    #	a2ensite ceilometer-api.conf
+    #	service_restart apache2
+    elif [ $USING_GNOCCHI -eq 0 ]; then
 	service_restart ceilometer-api
 	service_enable ceilometer-api
+    else
+	grep -qi 'allow from' /etc/apache2/sites-available/gnocchi-api.conf
+	if [ ! $? -eq 0 -a -f /etc/apache2/sites-available/gnocchi-api.conf -a -f /usr/lib/python2.7/dist-packages/gnocchi/rest/app.wsgi ]; then
+	    cat <<EOF >/etc/apache2/sites-available/gnocchi-api.conf
+Listen 8041
+
+<VirtualHost *:8041>
+    WSGIDaemonProcess gnocchi-api processes=2 threads=10 user=gnocchi display-name=%{GROUP}
+    WSGIProcessGroup gnocchi-api
+    WSGIScriptAlias / /usr/lib/python2.7/dist-packages/gnocchi/rest/app.wsgi
+    WSGIApplicationGroup %{GLOBAL}
+    <IfVersion >= 2.4>
+        ErrorLogFormat "%{cu}t %M"
+    </IfVersion>
+    <Directory /usr/lib/python2.7/dist-packages/gnocchi/rest>
+       <IfVersion >= 2.4>
+          Require all granted
+       </IfVersion>
+       <IfVersion < 2.4>
+          Order allow,deny
+          Allow from all
+       </IfVersion>
+    </Directory>
+    ErrorLog /var/log/apache2/gnocchi_error.log
+    CustomLog /var/log/apache2/gnocchi_access.log combined
+</VirtualHost>
+EOF
+	fi
+	a2ensite gnocchi-api
+	service apache2 reload
     fi
 
-    #
-    # Patch for https://bugs.launchpad.net/python-ceilometerclient/+bug/1679934 ;
-    # hasn't hit Ubuntu Ocata cloud archive packages yet.
-    #
-    if [ $OSVERSION -eq $OSOCATA ]; then
-	patch -p1 -d / < $DIRNAME/etc/ceilometer-ocata-client-bug-1679934.patch
-    fi
-
-    service_restart ceilometer-collector
-    service_enable ceilometer-collector
-    if [ $OSVERSION -lt $OSMITAKA ]; then
-	service_restart ceilometer-alarm-evaluator
-	service_enable ceilometer-alarm-evaluator
-	service_restart ceilometer-alarm-notifier
-	service_enable ceilometer-alarm-notifier
+    if [ $USING_GNOCCHI -eq 0 ]; then
+	service_restart ceilometer-collector
+	service_enable ceilometer-collector
+	if [ $OSVERSION -lt $OSMITAKA ]; then
+	    service_restart ceilometer-alarm-evaluator
+	    service_enable ceilometer-alarm-evaluator
+	    service_restart ceilometer-alarm-notifier
+	    service_enable ceilometer-alarm-notifier
+	fi
+    else
+	service_restart gnocchi-metricd
+	service_enable gnocchi-metricd
     fi
 
     # NB: restart the neutron ceilometer agent too
@@ -2957,6 +3137,11 @@ EOF
     echo "CEILOMETER_DBPASS=\"${CEILOMETER_DBPASS}\"" >> $SETTINGS
     echo "CEILOMETER_PASS=\"${CEILOMETER_PASS}\"" >> $SETTINGS
     echo "CEILOMETER_SECRET=\"${CEILOMETER_SECRET}\"" >> $SETTINGS
+    echo "USING_GNOCCHI=\"${USING_GNOCCHI}\"" >> $SETTINGS
+    if [ $USING_GNOCCHI -eq 1 ]; then
+	echo "GNOCCHI_DBPASS=\"${GNOCCHI_DBPASS}\"" >> $SETTINGS
+	echo "GNOCCHI_PASS=\"${GNOCCHI_PASS}\"" >> $SETTINGS
+    fi
     logtend "ceilometer"
 fi
 
@@ -3044,7 +3229,7 @@ if [ -z "${TELEMETRY_GLANCE_DONE}" ]; then
 	crudini --set /etc/glance/glance-registry.conf $RIS \
 	    rabbit_password ${RABBIT_PASS}
     else
-	crudini --set /etc/glance/glance-api.conf DEFAULT transport_url $RABBIT_URL
+	crudini --set /etc/glance/glance-registry.conf DEFAULT transport_url $RABBIT_URL
     fi
 
     service_restart glance-registry
@@ -3091,7 +3276,10 @@ if [ -z "${TELEMETRY_SWIFT_DONE}" ]; then
 
     chmod g+w /var/log/ceilometer
 
-    maybe_install_packages python-ceilometerclient python-ceilometermiddleware
+    if [ ! $USING_GNOCCHI -eq 1 ]; then
+	maybe_install_packages python-ceilometerclient
+    fi
+    maybe_install_packages python-ceilometermiddleware
 
     if [ $OSVERSION -le $OSJUNO ]; then
 	keystone role-create --name ResellerAdmin
@@ -3753,6 +3941,269 @@ if [ 0 = 1 -a "$OSCODENAME" = "kilo" -a -n "$BAREMETALNODES" -a -z "${IRONIC_DBP
 fi
 
 #
+# Maybe install Designate.
+#
+if [ $OSVERSION -ge $OSNEWTON -a -z "${DESIGNATE_DBPASS}" ]; then
+    logtstart "designate"
+    DESIGNATE_DBPASS=`$PSWDGEN`
+    DESIGNATE_PASS=`$PSWDGEN`
+
+    echo "create database designate" | mysql -u root --password="$DB_ROOT_PASS"
+    echo "grant all privileges on designate.* to 'designate'@'localhost' identified by '$DESIGNATE_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+    echo "grant all privileges on designate.* to 'designate'@'%' identified by '$DESIGNATE_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+
+    __openstack user create $DOMARG --password $DESIGNATE_PASS designate
+    __openstack role add --user designate --project service admin
+    __openstack service create --name designate \
+	--description "OpenStack Domain Name Service" dns
+
+    if [ $KEYSTONEAPIVERSION -lt 3 ]; then
+	__openstack endpoint create \
+	    --publicurl http://${CONTROLLER}:9001/v2 \
+	    --internalurl http://${CONTROLLER}:9001/v2 \
+	    --adminurl http://${CONTROLLER}:9001/v2 \
+	    --region $REGION \
+	    dns
+    else
+	__openstack endpoint create --region $REGION \
+	    dns public http://${CONTROLLER}:9001/v2
+	__openstack endpoint create --region $REGION \
+	    dns internal http://${CONTROLLER}:9001/v2
+	__openstack endpoint create --region $REGION \
+	    dns admin http://${CONTROLLER}:9001/v2
+    fi
+
+    maybe_install_packages designate bind9 bind9utils bind9-doc
+    rndc-confgen -a -k designate -c /etc/designate/rndc.key
+    chgrp bind /etc/designate/rndc.key
+    chmod g+r /etc/designate/rndc.key
+
+    mydomain=`hostname | sed -n -e 's/[^\.]*\.\(.*\)$/\1/p'`
+    mynameserver=`sed -n -e 's/^nameserver \([0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\).*$/\1/p' < /etc/resolv.conf | head -1`
+    if [ -z "$mynameserver" ]; then
+	mynameserver=`dig +short boss.$mydomain A`
+    fi
+    if [ -z "$mynameserver" ]; then
+	echo "WARNING: cannot find current nameserver; not configuring Designate"
+	echo "forwarder recursive resolver!"
+	fstr=
+    else
+	fstr="forwarders { $mynameserver; };"
+    fi
+    cat <<EOF >/etc/bind/named.conf.options
+include "/etc/designate/rndc.key";
+
+options {
+    directory "/var/cache/bind";
+    $fstr
+    dnssec-validation auto;
+    auth-nxdomain no;    # conform to RFC1035
+    listen-on-v6 { any; };
+
+    allow-new-zones yes;
+    request-ixfr no;
+    listen-on port 53 { 127.0.0.1; ${MGMTIP}; };
+    recursion yes;
+    allow-query { 127.0.0.1; ${MGMTIP}/${MGMTPREFIX}; };
+};
+
+controls {
+  inet 127.0.0.1 port 953
+    allow { 127.0.0.1; } keys { "designate"; };
+};
+EOF
+
+    service_enable bind9
+    service_restart bind9
+
+    crudini --set /etc/designate/designate.conf storage:sqlalchemy \
+	connection "${DBDSTRING}://designate:$DESIGNATE_DBPASS@$CONTROLLER/designate"
+
+    crudini --del /etc/designate/designate.conf keystone_authtoken auth_host
+    crudini --del /etc/designate/designate.conf keystone_authtoken auth_port
+    crudini --del /etc/designate/designate.conf keystone_authtoken auth_protocol
+
+    crudini --set /etc/designate/designate.conf service:api auth_strategy keystone
+    #crudini --set /etc/designate/designate.conf service:api api_host $MGMTIP
+    crudini --set /etc/designate/designate.conf service:api api_host 0.0.0.0
+    crudini --set /etc/designate/designate.conf service:api api_port 9001
+    #crudini --set /etc/designate/designate.conf service:api listen ${MGMTIP}:9001
+    crudini --set /etc/designate/designate.conf service:api listen 0.0.0.0:9001
+    crudini --set /etc/designate/designate.conf service:api enable_api_v1 True
+    crudini --set /etc/designate/designate.conf service:api \
+	api_base_url http://${CONTROLLER}:9001/
+    crudini --set /etc/designate/designate.conf service:api \
+	enabled_extensions_v1 quotas,reports
+    crudini --set /etc/designate/designate.conf service:api enable_api_v2 True
+    crudini --set /etc/designate/designate.conf service:api \
+	enabled_extensions_v2 quotas,reports
+    #crudini --set /etc/designate/designate.conf service:mdns listen ${MGMTIP}:9001
+    #crudini --set /etc/designate/designate.conf service:agent listen ${MGMTIP}:9001
+    crudini --set /etc/designate/designate.conf service:worker enabled True
+    crudini --set /etc/designate/designate.conf service:worker notify True
+    crudini --set /etc/designate/designate.conf DEFAULT verbose ${VERBOSE_LOGGING}
+    crudini --set /etc/designate/designate.conf DEFAULT debug ${DEBUG_LOGGING}
+
+    if [ $OSVERSION -lt $OSNEWTON ]; then
+	crudini --set /etc/designate/designate.conf DEFAULT rpc_backend rabbit
+	crudini --set /etc/designate/designate.conf oslo_messaging_rabbit \
+	    rabbit_host $CONTROLLER
+	crudini --set /etc/designate/designate.conf oslo_messaging_rabbit \
+	    rabbit_userid ${RABBIT_USER}
+	crudini --set /etc/designate/designate.conf oslo_messaging_rabbit \
+	    rabbit_password "${RABBIT_PASS}"
+    else
+	crudini --set /etc/designate/designate.conf DEFAULT \
+	    transport_url $RABBIT_URL
+    fi
+
+    crudini --del /etc/designate/designate.conf keystone_authtoken \
+	project_domain_id
+    crudini --del /etc/designate/designate.conf keystone_authtoken \
+	user_domain_id
+    crudini --set /etc/designate/designate.conf keystone_authtoken \
+	auth_uri http://${CONTROLLER}:5000
+    crudini --set /etc/designate/designate.conf keystone_authtoken \
+	auth_url http://${CONTROLLER}:35357
+    crudini --set /etc/designate/designate.conf keystone_authtoken \
+	${AUTH_TYPE_PARAM} password
+    crudini --set /etc/designate/designate.conf keystone_authtoken \
+	${PROJECT_DOMAIN_PARAM} default
+    crudini --set /etc/designate/designate.conf keystone_authtoken \
+	${USER_DOMAIN_PARAM} default
+    crudini --set /etc/designate/designate.conf keystone_authtoken \
+	project_name service
+    crudini --set /etc/designate/designate.conf keystone_authtoken \
+	username designate
+    crudini --set /etc/designate/designate.conf keystone_authtoken \
+	password "${DESIGNATE_PASS}"
+    crudini --set /etc/designate/designate.conf keystone_authtoken \
+	region_name $REGION
+    crudini --set /etc/designate/designate.conf keystone_authtoken \
+	memcached_servers ${CONTROLLER}:11211
+
+    crudini --set /etc/designate/designate.conf 
+
+    su -s /bin/sh -c "designate-manage database sync" designate
+
+    service_restart designate-central
+    service_enable designate-central
+    service_restart designate-api
+    service_enable designate-api
+
+    cat <<EOF > /etc/designate/pools.yaml
+- name: default
+  # The name is immutable. There will be no option to change the name after
+  # creation and the only way will to change it will be to delete it
+  # (and all zones associated with it) and recreate it.
+  description: Default Pool
+
+  attributes: {}
+
+  # List out the NS records for zones hosted within this pool
+  # This should be a record that is created outside of designate, that
+  # points to the public IP of the controller node.
+  ns_records:
+    - hostname: ns1-1.example.org.
+      priority: 1
+
+  # List out the nameservers for this pool. These are the actual BIND servers.
+  # We use these to verify changes have propagated to all nameservers.
+  nameservers:
+    - host: 127.0.0.1
+      port: 53
+
+  # List out the targets for this pool. For BIND there will be one
+  # entry for each BIND server, as we have to run rndc command on each server
+  targets:
+    - type: bind9
+      description: BIND9 Server 1
+
+      # List out the designate-mdns servers from which BIND servers should
+      # request zone transfers (AXFRs) from.
+      # This should be the IP of the controller node.
+      # If you have multiple controllers you can add multiple masters
+      # by running designate-mdns on them, and adding them here.
+      masters:
+        - host: 127.0.0.1
+          port: 5354
+
+      # BIND Configuration options
+      options:
+        host: 127.0.0.1
+        port: 53
+        rndc_host: 127.0.0.1
+        rndc_port: 953
+        rndc_key_file: /etc/designate/rndc.key
+EOF
+    chown designate /etc/designate/pools.yaml
+
+    su -s /bin/sh -c "designate-manage pool update" designate
+
+    maybe_install_packages designate-worker designate-producer designate-mdns
+
+    service_restart designate-worker
+    service_enable designate-worker
+    service_restart designate-producer
+    service_enable designate-producer
+    service_restart designate-mdns
+    service_enable designate-mdns
+
+    rm -f /var/lib/designate/designate.sqlite
+
+    crudini --set /etc/neutron/neutron.conf DEFAULT dns_domain "${mydomain}."
+    # NB, we do this in the setup-network-plugin-*.sh scripts, because
+    # they might also set the extension_drivers key -- but they might do
+    # it in the mechanism driver's file instead of neutron.conf.  Can't
+    # have it both places, ugh.
+    #plugins=`crudini --get /etc/neutron/neutron.conf ml2 extension_drivers`
+    #if [ -n "$plugins" ]; then
+    #	crudini --set /etc/neutron/neutron.conf ml2 \
+    #	    extension_drivers ${plugins},dns
+    #else
+    #	crudini --set /etc/neutron/neutron.conf ml2 \
+    #	    extension_drivers dns
+    #fi
+    crudini --set /etc/neutron/neutron.conf DEFAULT \
+	external_dns_driver designate
+    crudini --set /etc/neutron/neutron.conf designate \
+	url http://${CONTROLLER}:9001/v2
+    crudini --set /etc/neutron/neutron.conf designate \
+        auth_url http://$CONTROLLER:35357
+    crudini --set /etc/neutron/neutron.conf designate \
+	allow_reverse_dns_lookup True
+    crudini --set /etc/neutron/neutron.conf designate \
+	ipv4_ptr_zone_prefix_size 24
+    crudini --set /etc/neutron/neutron.conf designate \
+	ipv6_ptr_zone_prefix_size 116
+
+    crudini --set /etc/neutron/neutron.conf designate \
+	${PROJECT_DOMAIN_PARAM} default
+    crudini --set /etc/neutron/neutron.conf designate \
+	${USER_DOMAIN_PARAM} default
+    crudini --set /etc/neutron/neutron.conf designate \
+	auth_type password
+    crudini --set /etc/neutron/neutron.conf designate \
+	project_name service
+    crudini --set /etc/neutron/neutron.conf designate \
+	username designate
+    crudini --set /etc/neutron/neutron.conf designate \
+	password ${DESIGNATE_PASS}
+    crudini --set /etc/neutron/neutron.conf designate \
+	region_name $REGION
+    crudini --set /etc/neutron/neutron.conf designate \
+	memcached_servers ${CONTROLLER}:11211
+    crudini --set /etc/neutron/neutron.conf designate \
+	insecure True
+
+    service_restart neutron-server
+
+    echo "DESIGNATE_DBPASS=\"${DESIGNATE_DBPASS}\"" >> $SETTINGS
+    echo "DESIGNATE_PASS=\"${DESIGNATE_PASS}\"" >> $SETTINGS
+    logtend "designate"
+fi
+
+#
 # Setup some basic images and networks
 #
 if [ -z "${SETUP_BASIC_DONE}" ]; then
@@ -3839,6 +4290,64 @@ if [ ! -z "$EXTDIRS" ]; then
     done
 fi
 logtend "ext"
+
+#
+# At the very end, we tweak the resolv.conf file to use Designate if we
+# configured it, and if user wants it as the phys host resolver.  We
+# cannot modify resolv.conf in the middle of things, especially if
+# Designate setup happens to fail or bind doesn't start.
+#
+if [ -n "$DESIGNATE_PASS" -a "${USE_DESIGNATE_AS_RESOLVER}" = "1" ]; then
+    mydomain=`hostname | sed -n -e 's/[^\.]*\.\(.*\)$/\1/p'`
+    mynameserver=`sed -n -e 's/^nameserver \([0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\).*$/\1/p' < /etc/resolv.conf | head -1`
+    if [ -z "$mynameserver" ]; then
+	mynameserver=`dig +short boss.$mydomain A`
+    fi
+    cp -p /etc/resolv.conf /etc/resolv.conf.orig
+    grep -q forwarders /etc/bind/named.conf.options
+    if [ $? -eq 0 -a -n "$mynameserver" ]; then
+	outerdomain=`cat /var/emulab/boot/mydomain`
+	dig @127.0.0.1 $mydomain
+	if [ $? -eq 0 ]; then
+	    echo nameserver ${MGMTIP} >/etc/resolv.conf
+	    echo nameserver $mynameserver >>/etc/resolv.conf
+	    echo search $mydomain $outerdomain >>/etc/resolv.conf
+
+	    dig @${MGMTIP} boss.$outerdomain
+	    if [ ! $? -eq 0 ]; then
+	       echo "WARNING: cannot lookup boss.$outerdomain using Designate;"
+	       echo "reverting back to non-Designate phys host configuration!"
+	       cp -p /etc/resolv.conf.orig /etc/resolv.conf
+	    else
+		mkdir -p $OURDIR/pssh.setup-designate.stdout
+		mkdir -p $OURDIR/pssh.setup-designate.stderr
+
+		cat $OURDIR/fqdn.map | cut -f1 | grep -v ^$CONTROLLER$ > /tmp/pssh.hosts
+
+		echo "*** Saving original /etc/resolv.conf on all hosts..."
+		$PSSH -h /tmp/pssh.hosts \
+		    -o $OURDIR/pssh.setup-designate.stdout \
+		    -e $OURDIR/pssh.setup-designate.stderr \
+		    /bin/cp -p /etc/resolv.conf /etc/resolv.conf.pre-designate
+		echo "*** Copying Designate /etc/resolv.conf on all hosts..."
+		$PSCP -h /tmp/pssh.hosts \
+		    -o $OURDIR/pssh.setup-designate.stdout \
+		    -e $OURDIR/pssh.setup-designate.stderr \
+		    /etc/resolv.conf /etc/resolv.conf
+	    fi
+	else
+	    echo "WARNING: could not redirect phys host DNS to Designate;"
+	    echo "bind is not responding; the configuration must be incorrect;"
+	    echo "reverting back to non-Designate phys host configuration!"
+	    cp -p /etc/resolv.conf.orig /etc/resolv.conf
+	fi
+    else
+	echo "WARNING: could not find nameserver in /etc/resolv.conf or as"
+	echo "boss.$mydomain; reverting back to non-Designate phys host"
+	echo "configuration!"
+	cp -p /etc/resolv.conf.orig /etc/resolv.conf
+    fi
+fi
 
 echo "***"
 echo "*** Done with OpenStack Setup!"

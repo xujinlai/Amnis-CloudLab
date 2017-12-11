@@ -43,12 +43,6 @@ echo "*** Backgrounding user setup..."
 $DIRNAME/setup-basic-users.sh  >> $OURDIR/setup-basic-users.log 2>&1 &
 userspid=$!
 
-if [ ${DEFAULT_SECGROUP_ENABLE_SSH_ICMP} -eq 1 ]; then
-    echo "*** Setting up security group default rules..."
-    nova secgroup-add-rule default icmp -1 -1 0.0.0.0/0
-    nova secgroup-add-rule default tcp 22 22 0.0.0.0/0
-fi
-
 . $DIRNAME/setup-images-lib.sh
 $LOCKFILE $IMAGESETUPLOCKFILE
 if [ -f $IMAGEUPLOADCMDFILE ]; then

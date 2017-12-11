@@ -29,27 +29,38 @@ fi
 
 . $OURDIR/admin-openrc.sh
 
-
 if [ ${DEFAULT_SECGROUP_ENABLE_SSH_ICMP} -eq 1 ]; then
-    nova secgroup-add-rule default icmp -1 -1 0.0.0.0/0
-    nova secgroup-add-rule default tcp 22 22 0.0.0.0/0
+    echo "*** Setting up security group default rules..."
+    if [ $OSVERSION -le $OSMITAKA ]; then
+	nova secgroup-add-rule default icmp -1 -1 0.0.0.0/0
+	nova secgroup-add-rule default tcp 22 22 0.0.0.0/0
+    else
+	ADMIN_PROJECT_ID=`openstack project list | awk '/ admin / {print $2}'`
+	ADMIN_SEC_GROUP=`openstack security group list --project ${ADMIN_PROJECT_ID} | awk '/ default / {print $2}'`
+        openstack security group rule create \
+	    --protocol tcp --dst-port 22:22 ${ADMIN_SEC_GROUP}
+	openstack security group rule create \
+	    --protocol icmp ${ADMIN_SEC_GROUP}
+    fi
 fi
 
 if [ $QUOTASOFF -eq 1 ]; then
     nova quota-class-update --instances -1 default
     nova quota-class-update --cores -1 default
     nova quota-class-update --ram -1 default
-    nova quota-class-update --floating-ips -1 default
-    nova quota-class-update --fixed-ips -1 default
     nova quota-class-update --metadata-items -1 default
     nova quota-class-update --injected-files -1 default
     nova quota-class-update --injected-file-content-bytes -1 default
     nova quota-class-update --injected-file-path-bytes -1 default
     nova quota-class-update --key-pairs -1 default
-    nova quota-class-update --security-groups -1 default
-    nova quota-class-update --security-group-rules -1 default
     nova quota-class-update --server-groups -1 default
     nova quota-class-update --server-group-members -1 default
+    if [ $OSVERSION -le $OSMITAKA ]; then
+	nova quota-class-update --floating-ips -1 default
+	nova quota-class-update --fixed-ips -1 default
+	nova quota-class-update --security-groups -1 default
+	nova quota-class-update --security-group-rules -1 default
+    fi
 
     neutron quota-update --network -1
     neutron quota-update --subnet -1

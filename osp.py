@@ -35,8 +35,8 @@ pc = portal.Context()
 # Define *many* parameters; see the help docs in geni-lib to learn how to modify.
 #
 pc.defineParameter("release","OpenStack Release",
-                   portal.ParameterType.STRING,"ocata",[("ocata","Ocata"),("newton","Newton"),("mitaka","Mitaka"),("liberty","Liberty"),("kilo","Kilo (deprecated)"),("juno","Juno (deprecated)")],
-                   longDescription="We provide OpenStack Ocata, Newton, Mitaka (Ubuntu 16.04); Liberty (Ubuntu 15.10); Kilo (Ubuntu 15.04); or Juno (Ubuntu 14.10).  OpenStack is installed from packages available on these distributions.")
+                   portal.ParameterType.STRING,"pike",[("pike","Pike"),("ocata","Ocata"),("newton","Newton"),("mitaka","Mitaka"),("liberty","Liberty"),("kilo","Kilo (deprecated)"),("juno","Juno (deprecated)")],
+                   longDescription="We provide OpenStack Pike, Ocata, Newton, Mitaka (Ubuntu 16.04); Liberty (Ubuntu 15.10); Kilo (Ubuntu 15.04); or Juno (Ubuntu 14.10).  OpenStack is installed from packages available on these distributions.")
 pc.defineParameter("computeNodeCount", "Number of compute nodes (at Site 1)",
                    portal.ParameterType.INTEGER, 1)
 pc.defineParameter("osNodeType", "Hardware Type",
@@ -65,6 +65,12 @@ pc.defineParameter("ubuntuMirrorPath","Ubuntu Package Mirror Path",
 pc.defineParameter("doAptUpgrade","Upgrade OpenStack packages and dependencies to the latest versions",
                    portal.ParameterType.BOOLEAN, False,advanced=True,
                    longDescription="The default images this profile uses have OpenStack and dependent packages preloaded.  To guarantee that these scripts always work, we no longer upgrade to the latest packages by default, to avoid changes.  If you want to ensure you have the latest packages, you should enable this option -- but if there are setup failures, we can't guarantee support.  NOTE: selecting this option requires that you also select the option to update the Apt package cache!")
+pc.defineParameter("doAptDistUpgrade","Upgrade all packages to their latest versions",
+                   portal.ParameterType.BOOLEAN, False,advanced=True,
+                   longDescription="Sometimes, if you install using the fromScratch option, you'll need to update some of the base distro packages via apt-get dist-upgrade; this option handles that.  NOTE: selecting this option requires that you also select the option to update the Apt package cache!")
+pc.defineParameter("doCloudArchiveStaging","Enable Ubuntu Cloud Archive staging repo",
+                   portal.ParameterType.BOOLEAN, False,advanced=True,
+                   longDescription="If the base Ubuntu version is an LTS release, we enable package installation from the Ubuntu Cloud Archive.  If you want the latest packages, you must enable the staging repository.  This option does that.  Of course, it only matters if you have selected either a fromScratch install, or if you have selected the option to upgrade installed packages.")
 pc.defineParameter("doAptInstall","Install required OpenStack packages and dependencies",
                    portal.ParameterType.BOOLEAN, True,advanced=True,
                    longDescription="This option allows you to tell the setup scripts not to install or upgrade any packages (other than the absolute dependencies without which the scripts cannot run).  If you start from bare images, or select a profile option that may trigger a package to be installed, we may need to install packages for you; and if you have disabled it, we might not be able to configure these features.  This option is really only for people who want to configure only the openstack packages that are already installed on their disk images, and not be surprised by package or database schema upgrades.  NOTE: this option requires that you also select the option to update the Apt package cache!")
@@ -90,7 +96,11 @@ pc.defineParameter("vxlanDataLanCount","Number of VXLAN Data Networks",
                    portal.ParameterType.INTEGER,0,
                    longDescription="To use VXLAN networks, you must have at least one flat data network; all tunnels are implemented using the first flat network!",
                    advanced=True)
-
+pc.defineParameter("useDesignateAsResolver",
+                   "Use Designate as physical host nameserver",
+                   portal.ParameterType.BOOLEAN,True,
+                   longDescription="If using OpenStack Newton or greater, use the Designate nameserver as the primary nameserver for each physical machine.  This will allow you to resolve virtual IPs for instances from the physical machines.",
+                   advanced=True)
 pc.defineParameter("managementLanType","Management Network Type",
                    portal.ParameterType.STRING,"vpn",[("vpn","VPN"),("flat","Flat")],
                    advanced=True,longDescription="This profile creates a classic OpenStack setup, where services communicate not over the public network, but over an isolated private management network.  By default, that management network is implemented as a VPN hosted on the public network; this allows us to not use up a physical experiment network interface just to host the management network, and leaves that unused interface available for OpenStack data networks.  However, if you are using multiplexed Flat networks, you can also make this a Flat network, and it will be multiplexed along with your other flat networks---isolated by VLAN tags.  These VLAN tags are internal to CloudLab, and are invisible to OpenStack.")
@@ -175,7 +185,7 @@ pc.defineParameter("enableNewSerialSupport","Enable new Juno serial consoles",
 
 pc.defineParameter("ceilometerUseMongoDB","Use MongoDB in Ceilometer",
                    portal.ParameterType.BOOLEAN,False,advanced=True,
-                   longDescription="Use MongoDB for Ceilometer instead of MySQL (with Ubuntu 14 and Juno, we have observed crashy behavior with MongoDB, so the default is MySQL; YMMV.")
+                   longDescription="Use MongoDB for Ceilometer instead of MySQL (with Ubuntu 14 and Juno, we have observed crashy behavior with MongoDB, so the default is MySQL; YMMV.  Also, this option only applies to OpenStack releases < Ocata.")
 
 pc.defineParameter("enableVerboseLogging","Enable Verbose Logging",
                    portal.ParameterType.BOOLEAN,False,advanced=True,
@@ -303,6 +313,10 @@ if params.fromScratch and not params.doAptInstall:
     pass
 if params.doAptUpgrade and not params.doAptInstall:
     perr = portal.ParameterWarning("If you disable package installation, and request package upgrades, nothing will happen; you'll have to comb through the setup script logfiles to see what packages would have been upgraded.",['doAptUpgrade','doAptInstall'])
+    pc.reportWarning(perr)
+    pass
+if params.doAptDistUpgrade and not params.doAptInstall:
+    perr = portal.ParameterWarning("If you disable package installation, and request all packages to be upgraded, nothing will happen; so you need to change your parameter values.",['doAptDistUpgrade','doAptInstall'])
     pc.reportWarning(perr)
     pass
 
@@ -535,6 +549,7 @@ else:
 #
 image_project = 'emulab-ops'
 image_urn = 'utah.cloudlab.us'
+image_tag_rel = ''
 if params.release == "juno":
     image_os = 'UBUNTU14-10-64'
 elif params.release == "kilo":
@@ -543,15 +558,27 @@ elif params.release == 'liberty':
     image_os = 'UBUNTU15-10-64'
 elif params.release == 'mitaka':
     image_os = 'UBUNTU16-64'
+elif params.release == 'newton':
+    image_os = 'UBUNTU16-64'
+    image_tag_rel = '-N'
+elif params.release == 'ocata':
+    image_os = 'UBUNTU16-64'
+    image_tag_rel = '-O'
+elif params.release == 'pike':
+    image_os = 'UBUNTU16-64'
+    image_tag_rel = '-P'
 else:
     image_os = 'UBUNTU16-64'
     params.fromScratch = True
+    params.doAptDistUpgrade = True
+    params.doAptUpdate = True
     pass
 
 if params.fromScratch:
     image_tag_cn = 'STD'
     image_tag_nm = 'STD'
     image_tag_cp = 'STD'
+    image_tag_rel = ''
 else:
     image_tag_cn = 'OSCN'
     image_tag_nm = 'OSNM'
@@ -569,7 +596,7 @@ if params.osNodeType:
     controller.hardware_type = params.osNodeType
     pass
 controller.Site("1")
-controller.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s" % (image_urn,image_project,image_os,image_tag_cn)
+controller.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s%s" % (image_urn,image_project,image_os,image_tag_cn,image_tag_rel)
 i = 0
 for datalan in alllans:
     iface = controller.addInterface("if%d" % (i,))
@@ -604,7 +631,7 @@ if params.controllerHost != params.networkManagerHost:
         networkManager.hardware_type = params.osNodeType
         pass
     networkManager.Site("1")
-    networkManager.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s" % (image_urn,image_project,image_os,image_tag_nm)
+    networkManager.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s%s" % (image_urn,image_project,image_os,image_tag_nm,image_tag_rel)
     i = 0
     for datalan in alllans:
         iface = networkManager.addInterface("if%d" % (i,))
@@ -661,7 +688,7 @@ for (siteNumber,cpnameList) in computeNodeNamesBySite.iteritems():
             cpnode.hardware_type = params.osNodeType
         pass
         cpnode.Site(str(siteNumber))
-        cpnode.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s" % (image_urn,image_project,image_os,image_tag_cp)
+        cpnode.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s%s" % (image_urn,image_project,image_os,image_tag_cp,image_tag_rel)
         i = 0
         for datalan in alllans:
             iface = cpnode.addInterface("if%d" % (i,))
@@ -832,6 +859,10 @@ class Parameters(RSpec.Resource):
         param = ET.SubElement(el,paramXML)
         param.text = 'DO_APT_UPGRADE=%d' % (int(params.doAptUpgrade),)
         param = ET.SubElement(el,paramXML)
+        param.text = 'DO_APT_DIST_UPGRADE=%d' % (int(params.doAptDistUpgrade),)
+        param = ET.SubElement(el,paramXML)
+        param.text = 'DO_UBUNTU_CLOUDARCHIVE_STAGING=%d' % (int(params.doCloudArchiveStaging),)
+        param = ET.SubElement(el,paramXML)
         param.text = 'DO_APT_UPDATE=%d' % (int(params.doAptUpdate),)
 
 ###        if params.adminPass and len(params.adminPass) > 0:
@@ -905,6 +936,9 @@ class Parameters(RSpec.Resource):
 
         param = ET.SubElement(el,paramXML)
         param.text = "ML2PLUGIN=%s" % (str(params.ml2plugin))
+
+        param = ET.SubElement(el,paramXML)
+        param.text = "USE_DESIGNATE_AS_RESOLVER=%d" % (int(bool(params.useDesignateAsResolver)))
 
         param = ET.SubElement(el,paramXML)
         param.text = "EXTRAIMAGEURLS='%s'" % (str(params.extraImageURLs))

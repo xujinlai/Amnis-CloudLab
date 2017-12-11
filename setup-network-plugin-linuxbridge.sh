@@ -149,6 +149,24 @@ if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
     crudini --set /etc/neutron/neutron.conf nova \
 	memcached_servers ${CONTROLLER}:11211
 fi
+if [ $OSVERSION -ge $OSOCATA ]; then
+    crudini --set /etc/neutron/neutron.conf placement \
+	os_region_name $REGION
+    crudini --set /etc/neutron/neutron.conf placement \
+	auth_url http://${CONTROLLER}:35357/v3
+    crudini --set /etc/neutron/neutron.conf placement \
+	${AUTH_TYPE_PARAM} password
+    crudini --set /etc/neutron/neutron.conf placement \
+	${PROJECT_DOMAIN_PARAM} default
+    crudini --set /etc/neutron/neutron.conf placement \
+	${USER_DOMAIN_PARAM} default
+    crudini --set /etc/neutron/neutron.conf placement \
+	project_name service
+    crudini --set /etc/neutron/neutron.conf placement \
+	username placement
+    crudini --set /etc/neutron/neutron.conf placement \
+	password "${PLACEMENT_PASS}"
+fi
 
 crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
     type_drivers ${network_types}
@@ -156,8 +174,12 @@ crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
     tenant_network_types ${network_types}
 crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
     mechanism_drivers 'linuxbridge,l2population'
+extdrivers=port_security
+if [ $OSVERSION -ge $OSNEWTON ]; then
+    extdrivers="${extdrivers},dns"
+fi
 crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
-    extension_drivers port_security
+    extension_drivers $extdrivers
 crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat \
     flat_networks ${flat_networks}
 #crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_gre \
