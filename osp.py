@@ -600,6 +600,8 @@ if params.firewallStyle in ('open','closed','basic'):
     fw = rspec.ExperimentFirewall('fw',params.firewallStyle)
     fw.disk_image = 'urn:publicid:IDN+emulab.net+image+emulab-ops//UBUNTU16-64-STD'
     fw.Site("1")
+    if params.osNodeType:
+        fw.hardware_type = params.osNodeType
 if params.computeNodeCountSite2 > 0:
     # Firewall node, Site 2.
     if params.firewallStyle in ('open','closed','basic'):
