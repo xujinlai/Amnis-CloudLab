@@ -601,7 +601,9 @@ fwrules = [
 ]
 
 # Firewall node, Site 1.
+firewalling = False
 if params.firewallStyle in ('open','closed','basic'):
+    firewalling = True
     fw = rspec.ExperimentFirewall('fw',params.firewallStyle)
     fw.disk_image = 'urn:publicid:IDN+emulab.net+image+emulab-ops//UBUNTU16-64-STD'
     fw.Site("1")
@@ -629,6 +631,8 @@ if params.osNodeType:
     pass
 controller.Site("1")
 controller.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s%s" % (image_urn,image_project,image_os,image_tag_cn,image_tag_rel)
+if firewalling:
+    controller.Desire('firewallable','1.0')
 i = 0
 for datalan in alllans:
     iface = controller.addInterface("if%d" % (i,))
@@ -664,6 +668,8 @@ if params.controllerHost != params.networkManagerHost:
         pass
     networkManager.Site("1")
     networkManager.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s%s" % (image_urn,image_project,image_os,image_tag_nm,image_tag_rel)
+    if firewalling:
+        networkManager.Desire('firewallable','1.0')
     i = 0
     for datalan in alllans:
         iface = networkManager.addInterface("if%d" % (i,))
@@ -721,6 +727,8 @@ for (siteNumber,cpnameList) in computeNodeNamesBySite.iteritems():
         pass
         cpnode.Site(str(siteNumber))
         cpnode.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s%s" % (image_urn,image_project,image_os,image_tag_cp,image_tag_rel)
+        if firewalling:
+            cpnode.Desire('firewallable','1.0')
         i = 0
         for datalan in alllans:
             iface = cpnode.addInterface("if%d" % (i,))
@@ -769,6 +777,8 @@ if params.blockstoreURN != "":
     
     bsnode = IG.RemoteBlockstore("bsnode",params.blockstoreMountPoint)
     bsnode.Site("1")
+    if firewalling:
+        bsnode.Desire('firewallable','1.0')
     bsintf = bsnode.interface
     bsnode.dataset = params.blockstoreURN
     #bsnode.size = params.N
