@@ -512,6 +512,10 @@ if [ \( -s $OURDIR/manifests.xml \) -a \( ! \( -s $OURDIR/fqdn.map \) \) ]; then
     #cat $OURDIR/fqdn.map | grep -v '^bsnode'$'\t' > $OURDIR/fqdn.map.tmp
     cat $OURDIR/fqdn.map | grep -v '^bsnode' > $OURDIR/fqdn.map.tmp
     mv $OURDIR/fqdn.map.tmp $OURDIR/fqdn.map
+    cat $OURDIR/fqdn.map | grep -v '^fw[ \t]*' > $OURDIR/fqdn.map.tmp
+    mv $OURDIR/fqdn.map.tmp $OURDIR/fqdn.map
+    cat $OURDIR/fqdn.map | grep -v '^fw-s2[ \t]*' > $OURDIR/fqdn.map.tmp
+    mv $OURDIR/fqdn.map.tmp $OURDIR/fqdn.map
 
     cat manifests.xml | tr -d '\n' | sed -e 's/<node /\n<node /g'  | sed -n -e "s/^<node [^>]*component_id=['\"]*[a-zA-Z0-9:\+\.]*node+\([^'\"]*\)['\"].*<host name=['\"]\([^'\"]*\)['\"].*$/\1\t\2/p" > $OURDIR/fqdn.physical.map
     # Add a newline if we wrote anything.
@@ -519,7 +523,12 @@ if [ \( -s $OURDIR/manifests.xml \) -a \( ! \( -s $OURDIR/fqdn.map \) \) ]; then
 	echo '' >> $OURDIR/fqdn.physical.map
     fi
     # Filter out any blockstore nodes
-    cat $OURDIR/fqdn.physical.map | grep -v '^bsnode' > $OURDIR/fqdn.physical.map.tmp
+    cat $OURDIR/fqdn.physical.map | grep -v '[ \t]bsnode\.' > $OURDIR/fqdn.physical.map.tmp
+    mv $OURDIR/fqdn.physical.map.tmp $OURDIR/fqdn.physical.map
+    # Filter out any firewall nodes
+    cat $OURDIR/fqdn.physical.map | grep -v '[ \t]*fw\.' > $OURDIR/fqdn.physical.map.tmp
+    mv $OURDIR/fqdn.physical.map.tmp $OURDIR/fqdn.physical.map
+    cat $OURDIR/fqdn.physical.map | grep -v '[ \t]*fw-s2\.' > $OURDIR/fqdn.physical.map.tmp
     mv $OURDIR/fqdn.physical.map.tmp $OURDIR/fqdn.physical.map
 fi
 
@@ -536,7 +545,11 @@ if [ ! -s $OURDIR/fqdn.map ]; then
 	if [ $? -eq 0 ] ; then
 	    continue
 	fi
-	
+	# Filter out any firewall nodes
+	if [ "$n" = "fw" -o "$n" = "fw-s2" ]; then
+	    continue
+	fi
+
 	fqdn="$n.$EEID.$EPID.$OURDOMAIN"
 	FQDNS="${FQDNS} $fqdn"
 	NODES="${NODES} $n"
