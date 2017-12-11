@@ -595,6 +595,11 @@ else:
 
 nodes = dict({})
 
+fwrules = [
+    "iptables -A INSIDE -p tcp --dport 12369 -j ACCEPT",
+    "iptables -A INSIDE -p tcp --dport 12370 -j ACCEPT",
+]
+
 # Firewall node, Site 1.
 if params.firewallStyle in ('open','closed','basic'):
     fw = rspec.ExperimentFirewall('fw',params.firewallStyle)
@@ -602,12 +607,16 @@ if params.firewallStyle in ('open','closed','basic'):
     fw.Site("1")
     if params.osNodeType:
         fw.hardware_type = params.osNodeType
+    for rule in fwrules:
+        fw.addRule(rule)
 if params.computeNodeCountSite2 > 0:
     # Firewall node, Site 2.
     if params.firewallStyle in ('open','closed','basic'):
         fw2 = rspec.ExperimentFirewall('fw-s2',params.firewallStyle)
         fw2.disk_image = 'urn:publicid:IDN+emulab.net+image+emulab-ops//UBUNTU16-64-STD'
-        fw.Site("2")
+        fw2.Site("2")
+        for rule in fwrules:
+            fw2.addRule(rule)
     pass
 
 #
