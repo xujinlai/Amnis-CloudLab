@@ -35,7 +35,7 @@ pc = portal.Context()
 # Define *many* parameters; see the help docs in geni-lib to learn how to modify.
 #
 pc.defineParameter("release","OpenStack Release",
-                   portal.ParameterType.STRING,"pike",[("pike","Pike"),("ocata","Ocata"),("newton","Newton"),("mitaka","Mitaka"),("liberty","Liberty"),("kilo","Kilo (deprecated)"),("juno","Juno (deprecated)")],
+                   portal.ParameterType.STRING,"pike",[("pike","Pike"),("ocata","Ocata"),("newton","Newton"),("mitaka","Mitaka"),("liberty","Liberty (deprecated)"),("kilo","Kilo (deprecated)"),("juno","Juno (deprecated)")],
                    longDescription="We provide OpenStack Pike, Ocata, Newton, Mitaka (Ubuntu 16.04); Liberty (Ubuntu 15.10); Kilo (Ubuntu 15.04); or Juno (Ubuntu 14.10).  OpenStack is installed from packages available on these distributions.")
 pc.defineParameter("computeNodeCount", "Number of compute nodes (at Site 1)",
                    portal.ParameterType.INTEGER, 1)
@@ -54,7 +54,10 @@ pc.defineParameter("ml2plugin","ML2 Plugin",
 pc.defineParameter("extraImageURLs","Extra VM Image URLs",
                    portal.ParameterType.STRING,"",
                    longDescription="This parameter allows you to specify a space-separated list of URLs, each of which points to an OpenStack VM image, which we will download and slighty tweak before uploading to Glance in your OpenStack experiment.")
-
+pc.defineParameter("firewallStyle","Firewall Style",
+                   portal.ParameterType.STRING,"none",
+                   [("none","None"),("basic","Basic"),("closed","Closed")],
+                   longDescription="Optionally add a CloudLab infrastructure firewall between the public IP addresses of your nodes (and your floating IPs) and the Internet (and rest of CloudLab).  The choice you make for this parameter controls the firewall ruleset, if not None.  None means no firewall; Basic implies a simple firewall that allows inbound SSH and outbound HTTP/HTTPS traffic; Closed implies a firewall ruleset that allows *no* communication with the outside world or other experiments within CloudLab.  If you are unsure, the Basic style is the one that will work best for you.")
 
 pc.defineParameter("ubuntuMirrorHost","Ubuntu Package Mirror Hostname",
                    portal.ParameterType.STRING,"",advanced=True,
@@ -281,6 +284,11 @@ if params.controllerHost == params.networkManagerHost \
     perr = portal.ParameterWarning("We do not support use of the same physical node as both controller and networkmanager for older Juno and Kilo releases of this profile.  You can try it, but it may not work.  To revert to the old behavior, open the Advanced Parameters and change the networkManagerHost parameter to nm .",['release','controllerHost','networkManagerHost'])
     pc.reportWarning(perr)
     pass
+if params.release in [ 'juno','kilo','liberty' ] \
+  and params.firewallStyle == 'none':
+    perr = portal.ParameterError("To use deprecated OpenStack releases, you *must* place your nodes behind an infrastructure firewall, by setting the Firewall Style parameter to something other than None.  These releases rely on insecure, out-of-date software.",['release','firewallStyle'])
+    pc.reportError(perr)
+    pass
 if params.ml2plugin == 'linuxbridge' \
   and params.release in [ 'juno','kilo' ]:
     perr = portal.ParameterError("Kilo and Juno do not support the linuxbridge Neutron ML2 driver!",['release','ml2plugin'])
@@ -388,7 +396,7 @@ for param in pc._parameterOrder:
     pass
 
 tourDescription = \
-  "This profile provides a highly-configurable OpenStack instance with a controller and one or more compute nodes (potentially at multiple Cloudlab sites) (and optionally a network manager node, in a split configuration). This profile runs x86 or ARM64 nodes. It sets up OpenStack Mitaka, Liberty, Kilo, or Juno (on Ubuntu 16.04, 15.10, 15.04, or 14.10) according to your choice, and configures all OpenStack services, pulls in some VM disk images, and creates basic networks accessible via floating IPs.  You'll be able to create instances and access them over the Internet in just a few minutes. When you click the Instantiate button, you'll be presented with a list of parameters that you can change to control what your OpenStack instance will look like; **carefully** read the parameter documentation on that page (or in the Instructions) to understand the various features available to you."
+  "This profile provides a highly-configurable OpenStack instance with a controller and one or more compute nodes (potentially at multiple Cloudlab sites) (and optionally a network manager node, in a split configuration). This profile runs x86 or ARM64 nodes. It sets up OpenStack Pike, Ocata, Newton, or Mitaka on Ubuntu 16.04 (Liberty on 15.10, Kilo on 15.04, and Juno on 14.10 are *deprecated*) according to your choice, and configures all OpenStack services, pulls in some VM disk images, and creates basic networks accessible via floating IPs.  You'll be able to create instances and access them over the Internet in just a few minutes. When you click the Instantiate button, you'll be presented with a list of parameters that you can change to control what your OpenStack instance will look like; **carefully** read the parameter documentation on that page (or in the Instructions) to understand the various features available to you."
 
 ###if not params.adminPass or len(params.adminPass) == 0:
 passwdHelp = "Your OpenStack admin and instance VM password is randomly-generated by Cloudlab, and it is: `{password-adminPass}` ."
@@ -586,6 +594,12 @@ else:
     pass
 
 nodes = dict({})
+
+# Firewall node
+if params.firewallStyle in ('open','closed','basic'):
+    fw = rspec.ExperimentFirewall('fw',params.firewallStyle)
+    fw.disk_image = 'urn:publicid:IDN+emulab.net+image+emulab-ops//UBUNTU16-64-STD'
+    nodes['fw'] = fw
 
 #
 # Add the controller node.
