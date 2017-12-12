@@ -608,6 +608,7 @@ fwrules = [
 
 # Firewall node, Site 1.
 firewalling = False
+setfwdesire = False
 if params.firewallStyle in ('open','closed','basic'):
     firewalling = True
     fw = rspec.ExperimentFirewall('fw',params.firewallStyle)
@@ -637,7 +638,7 @@ if params.osNodeType:
     pass
 controller.Site("1")
 controller.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s%s" % (image_urn,image_project,image_os,image_tag_cn,image_tag_rel)
-if firewalling:
+if firewalling and setfwdesire:
     controller.Desire('firewallable','1.0')
 i = 0
 for datalan in alllans:
@@ -674,7 +675,7 @@ if params.controllerHost != params.networkManagerHost:
         pass
     networkManager.Site("1")
     networkManager.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s%s" % (image_urn,image_project,image_os,image_tag_nm,image_tag_rel)
-    if firewalling:
+    if firewalling and setfwdesire:
         networkManager.Desire('firewallable','1.0')
     i = 0
     for datalan in alllans:
@@ -733,7 +734,7 @@ for (siteNumber,cpnameList) in computeNodeNamesBySite.iteritems():
         pass
         cpnode.Site(str(siteNumber))
         cpnode.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s%s" % (image_urn,image_project,image_os,image_tag_cp,image_tag_rel)
-        if firewalling:
+        if firewalling and setfwdesire:
             cpnode.Desire('firewallable','1.0')
         i = 0
         for datalan in alllans:
@@ -783,7 +784,7 @@ if params.blockstoreURN != "":
     
     bsnode = IG.RemoteBlockstore("bsnode",params.blockstoreMountPoint)
     bsnode.Site("1")
-    if firewalling:
+    if firewalling and setfwdesire:
         bsnode.Desire('firewallable','1.0')
     bsintf = bsnode.interface
     bsnode.dataset = params.blockstoreURN
