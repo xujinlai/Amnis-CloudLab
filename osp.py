@@ -599,8 +599,8 @@ fwrules = [
     # Protogeni xmlrpc
     "iptables -A INSIDE -p tcp --dport 12369 -j ACCEPT",
     "iptables -A INSIDE -p tcp --dport 12370 -j ACCEPT",
-    # Inbound http to the controller node
-    #"iptables -A OUTSIDE -p tcp -d ctl.$EXPDOMAIN --dport 80 -j ACCEPT",
+    # Inbound http to the controller node.
+    "iptables -A OUTSIDE -p tcp -d ctl.EMULAB_EXPDOMAIN --dport 80 -j ACCEPT",
     # Inbound VNC to any host (only need for compute hosts, but hard to
     # specify that).
     "iptables -A OUTSIDE -p tcp --dport 6080 -j ACCEPT",
