@@ -55,7 +55,7 @@ pc.defineParameter("extraImageURLs","Extra VM Image URLs",
                    portal.ParameterType.STRING,"",
                    longDescription="This parameter allows you to specify a space-separated list of URLs, each of which points to an OpenStack VM image, which we will download and slighty tweak before uploading to Glance in your OpenStack experiment.")
 pc.defineParameter("firewallStyle","Firewall Style",
-                   portal.ParameterType.STRING,"basic",
+                   portal.ParameterType.STRING,"none",
                    [("none","None"),("basic","Basic"),("closed","Closed")],
                    longDescription="Optionally add a CloudLab infrastructure firewall between the public IP addresses of your nodes (and your floating IPs) and the Internet (and rest of CloudLab).  The choice you make for this parameter controls the firewall ruleset, if not None.  None means no firewall; Basic implies a simple firewall that allows inbound SSH and outbound HTTP/HTTPS traffic; Closed implies a firewall ruleset that allows *no* communication with the outside world or other experiments within CloudLab.  If you are unsure, the Basic style is the one that will work best for you.")
 
