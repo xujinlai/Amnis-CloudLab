@@ -258,6 +258,11 @@ if [ $OSVERSION -gt $OSLIBERTY ]; then
 	sleep 1
 	i=`expr $i - 1`
     done
+    # Restart the ovs-cleanup service to ensure it is using the patched
+    # code and thus will not delete our new cookie-based flows once we
+    # add them.
+    service_restart neutron-ovs-cleanup
+    service_enable neutron-ovs-cleanup
     if [ -f /var/lib/neutron/ovs-default-flows.reserved_cookie -a -f /etc/neutron/ovs-default-flows/br-ex ]; then
 	cookie=`cat /var/lib/neutron/ovs-default-flows.reserved_cookie`
 	for fl in `cat /etc/neutron/ovs-default-flows/br-ex`; do
