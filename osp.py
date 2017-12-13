@@ -55,7 +55,7 @@ pc.defineParameter("extraImageURLs","Extra VM Image URLs",
                    portal.ParameterType.STRING,"",
                    longDescription="This parameter allows you to specify a space-separated list of URLs, each of which points to an OpenStack VM image, which we will download and slighty tweak before uploading to Glance in your OpenStack experiment.")
 pc.defineParameter("firewallStyle","Firewall Style",
-                   portal.ParameterType.STRING,"none",
+                   portal.ParameterType.STRING,"basic",
                    [("none","None"),("basic","Basic"),("closed","Closed")],
                    longDescription="Optionally add a CloudLab infrastructure firewall between the public IP addresses of your nodes (and your floating IPs) and the Internet (and rest of CloudLab).  The choice you make for this parameter controls the firewall ruleset, if not None.  None means no firewall; Basic implies a simple firewall that allows inbound SSH and outbound HTTP/HTTPS traffic; Closed implies a firewall ruleset that allows *no* communication with the outside world or other experiments within CloudLab.  If you are unsure, the Basic style is the one that will work best for you.")
 
@@ -600,7 +600,8 @@ fwrules = [
     "iptables -A INSIDE -p tcp --dport 12369 -j ACCEPT",
     "iptables -A INSIDE -p tcp --dport 12370 -j ACCEPT",
     # Inbound http to the controller node.
-    "iptables -A OUTSIDE -p tcp -d ctl.EMULAB_EXPDOMAIN --dport 80 -j ACCEPT",
+    #"iptables -A OUTSIDE -p tcp -d ctl.EMULAB_EXPDOMAIN --dport 80 -j ACCEPT",
+    "iptables -A OUTSIDE -p tcp --dport 80 -j ACCEPT",
     # Inbound VNC to any host (only need for compute hosts, but hard to
     # specify that).
     "iptables -A OUTSIDE -p tcp --dport 6080 -j ACCEPT",
