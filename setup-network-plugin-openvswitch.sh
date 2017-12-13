@@ -218,7 +218,7 @@ echo "$MYIP    $NFQDN $PFQDN" >> /etc/hosts
 #
 if [ $OSVERSION -le $OSLIBERTY ]; then
     patch -d / -p0 < $DIRNAME/etc/neutron-${OSCODENAME}-openvswitch-remove-all-flows-except-system-flows.patch
-elif [ $OSVERSION -lt $OSPIKE ]; then
+else
     patch -d / -p0 < $DIRNAME/etc/neutron-${OSCODENAME}-ovs-reserved-cookies.patch
 fi
 
@@ -246,7 +246,7 @@ else
     service_enable neutron-openvswitch-agent
 fi
 
-if [ $OSVERSION -gt $OSLIBERTY -a $OSVERSION -lt $OSPIKE ]; then
+if [ $OSVERSION -gt $OSLIBERTY ]; then
     # If we are using the reserved cookies patch, we have to figure out
     # what our cookie is, read it, and then edit all the anti-spoofing
     # flows to have our reserved cookie -- and then re-insert them all.
