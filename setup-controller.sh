@@ -4235,8 +4235,10 @@ StandardError=journal+console
 WantedBy=multi-user.target
 EOF
 
-    systemctl enable openstack-slothd.service
-    systemctl restart openstack-slothd.service
+    if [ $ENABLE_OPENSTACK_SLOTHD -eq 1 ]; then
+	systemctl enable openstack-slothd.service
+	systemctl restart openstack-slothd.service
+    fi
 else
     cat <<EOF >/etc/init/openstack-slothd.conf
 # openstack-slothd - Cloudlab OpenStack Resource Usage Collector
@@ -4262,8 +4264,11 @@ end script
 
 exec /root/setup/openstack-slothd.py &
 EOF
-    service openstack-slothd enable
-    service openstack-slothd start
+
+    if [ $ENABLE_OPENSTACK_SLOTHD -eq 1 ]; then
+	service openstack-slothd enable
+	service openstack-slothd start
+    fi
 fi
 
 RANDPASSSTRING=""

@@ -117,6 +117,9 @@ LINUXBRIDGE_STATIC=0
 # control net DNS server).  The local domain will also be searched prior
 # to the cluster's domain.
 USE_DESIGNATE_AS_RESOLVER=1
+# We are not currently using the ceilometer stats, and they do not work
+# as of Pike due to the switch to Gnocchi as the measurement DB.
+ENABLE_OPENSTACK_SLOTHD=0
 # The input OpenStack release, if any, from profile params.
 OSRELEASE=""
 
