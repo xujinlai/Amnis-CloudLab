@@ -238,6 +238,10 @@ echo bridge >> /etc/modules
 service_restart openvswitch-switch
 service_enable openvswitch-switch
 service_restart nova-compute
+# Restart the ovs-cleanup service to ensure it is using the patched code
+# and thus will not delete our new cookie-based flows once we add them.
+service_restart neutron-ovs-cleanup
+service_enable neutron-ovs-cleanup
 if [ $OSVERSION -lt $OSMITAKA ]; then
     service_restart neutron-plugin-openvswitch-agent
     service_enable neutron-plugin-openvswitch-agent
@@ -258,15 +262,14 @@ if [ $OSVERSION -gt $OSLIBERTY ]; then
 	sleep 1
 	i=`expr $i - 1`
     done
-    # Restart the ovs-cleanup service to ensure it is using the patched
-    # code and thus will not delete our new cookie-based flows once we
-    # add them.
-    service_restart neutron-ovs-cleanup
-    service_enable neutron-ovs-cleanup
+    # Sleep to let the agent settle further.
+    sleep 5
     # Restart the ovs agent one more time; something in its first-time
     # startup doesn't catch the reserved/preserved cookies, and ends up
     # wiping our flows.
     service_restart neutron-openvswitch-agent
+    # Let the agent settle again...
+    sleep 5
     if [ -f /var/lib/neutron/ovs-default-flows.reserved_cookie -a -f /etc/neutron/ovs-default-flows/br-ex ]; then
 	cookie=`cat /var/lib/neutron/ovs-default-flows.reserved_cookie`
 	for fl in `cat /etc/neutron/ovs-default-flows/br-ex`; do
