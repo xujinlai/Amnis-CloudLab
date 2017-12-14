@@ -263,9 +263,10 @@ if [ $OSVERSION -gt $OSLIBERTY ]; then
     # add them.
     service_restart neutron-ovs-cleanup
     service_enable neutron-ovs-cleanup
-    # Wait a few more seconds to ensure the ovs agent is synch'ed up
-    # with the new reserved cookie...
-    sleep 8
+    # Restart the ovs agent one more time; something in its first-time
+    # startup doesn't catch the reserved/preserved cookies, and ends up
+    # wiping our flows.
+    service_restart neutron-ovs-cleanup
     if [ -f /var/lib/neutron/ovs-default-flows.reserved_cookie -a -f /etc/neutron/ovs-default-flows/br-ex ]; then
 	cookie=`cat /var/lib/neutron/ovs-default-flows.reserved_cookie`
 	for fl in `cat /etc/neutron/ovs-default-flows/br-ex`; do
