@@ -13,8 +13,8 @@
                                  cookie_mask)
 +            cookies = set([f.cookie for f in self.dump_flows()]) - \
 +                  self.preserved_cookies
-+            LOG.debug("Preserved cookies for %s: %s", self.br_name,
-+                      self.preserved_cookies)
++            LOG.warning("Preserved cookies for %s: %s", self.br_name,
++                        self.preserved_cookies)
 +            for c in cookies:
 +                cookie_masks.append((c,ovs_lib.UINT64_BITMASK))
          elif cookie == COOKIE_DEFAULT:
