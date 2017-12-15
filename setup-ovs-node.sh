@@ -423,6 +423,20 @@ FLOW="dl_type=0x0806,nw_proto=0x2,arp_spa=172.16.0.0/12,actions=drop"
 ovs-ofctl add-flow br-ex "$FLOW"
 echo "$FLOW" >> $FF
 
+#
+# A final hack.  These days (i.e. Pike), the neutron-openvswitch-agent
+# is very aggressive to delete the default NORMAL flow on the br-ex
+# bridge.  This causes problems for testbed.service on reboot, because
+# connectivity effectively flaps as the NORMAL flow gets deleted and
+# added.  So, we make a default NORMAL flow with our cookie, so it
+# effectively won't be deleted.  Once the agent has initialized, its
+# cookie will replace ours for this priority=0,actions=NORMAL flow, but
+# that is fine.
+#
+FLOW="priority=0,actions=NORMAL"
+ovs-ofctl add-flow br-ex "$FLOW"
+echo "$FLOW" >> $FF
+
 logtend "ovs-node"
 
 exit 0
