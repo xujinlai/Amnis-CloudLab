@@ -12,6 +12,11 @@ fi
 
 # Grab our libs
 . "$DIRNAME/setup-lib.sh"
+# Don't run setup-driver.sh twice
+if [ -f $OURDIR/setup-driver-done ]; then
+    echo "setup-driver already ran; not running again"
+    exit 0
+fi
 logtstart "driver"
 
 # Copy our source code into $OURDIR for future use:
@@ -110,6 +115,9 @@ if [ "$HOSTNAME" = "$NETWORKMANAGER" ]; then
 
     ssh -o StrictHostKeyChecking=no ${CONTROLLER} "/bin/touch $OURDIR/networkmanager-driver-done"
 fi
+
+# Mark things as done right here, it's safe.
+touch $OURDIR/setup-driver-done
 
 if [ "$HOSTNAME" = "$CONTROLLER" ]; then
     #
