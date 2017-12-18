@@ -3154,6 +3154,7 @@ if [ $OSVERSION -ge $OSPIKE -a -z "${TELEMETRY_GRAFANA_DONE}" ]; then
     echo deb https://packagecloud.io/grafana/stable/debian/ jessie main \
         >> /etc/apt/sources.list.d/grafana.list
     curl https://packagecloud.io/gpg.key | sudo apt-key add -
+    apt-get update
 
     $APTGETINSTALL grafana
     systemctl daemon-reload
