@@ -3146,6 +3146,87 @@ EOF
 fi
 
 #
+# Install Grafana and a simple configuration, if this is ceilometer on >= Pike.
+#
+if [ $OSVERSION -ge $OSPIKE -a -z "${TELEMETRY_GRAFANA_DONE}" ]; then
+    logtstart "grafana"
+
+    echo deb https://packagecloud.io/grafana/stable/debian/ jessie main \
+        >> /etc/apt/sources.list.d/grafana.list
+    curl https://packagecloud.io/gpg.key | sudo apt-key add -
+
+    $APTGETINSTALL grafana
+    systemctl daemon-reload
+    # grafana-cli doesn't have sane defaults that match the config, so
+    # run at least this so it can find the real database.
+    crudini --set /etc/grafana/grafana.ini paths data /var/lib/grafana
+
+    service_enable grafana-server
+    service_restart grafana-server
+
+    #
+    # Create the admin user and change its password.  Doesn't seem to be
+    # a way to create a user, so we do it manually with dummy passwd
+    # values, then change the password to the one shown to our user in
+    # the portal UI, same as for OpenStack.
+    #
+    if [ "x${ADMIN_PASS}" = "x" ]; then
+	GPASSWD=`cat /root/setup/decrypted_admin_pass`
+    else
+	GPASSWD="${ADMIN_PASS}"
+    fi
+    echo "REPLACE INTO \"user\" VALUES(1,0,'admin','admin@localhost','','38d481956ebbb14985a42acd18859630008cf879076492971a80d7d782a5e8149f87b19f706fc8c98a7329ee4e67c6802f11','knT2WLp6iP','WzhsbIERTc','',1,1,0,'',datetime('now'),datetime('now'),1,datetime('now'));" | sqlite3 /var/lib/grafana/grafana.db
+    grafana-cli admin reset-admin-password \
+        --config /etc/grafana/grafana.ini --homepath /usr/share/grafana \
+	$GPASSWD
+
+    # Install the gnocchi plugin
+    grafana-cli plugins install gnocchixyz-gnocchi-datasource
+    service_restart grafana-server
+
+    # Add the token-based datasource
+    TMPTOKEN=`openstack token issue | awk '/ id / { print $4 }'`
+    echo "INSERT INTO \"data_source\" VALUES(1,1,1,'gnocchixyz-gnocchi-datasource','gnocchi','proxy','http://localhost:8041/','','','',0,'','',1,'{\"mode\":\"token\",\"token\":\"$TMPTOKEN\"}',datetime('now'),datetime('now'),0,'{}');" | sqlite3 /var/lib/grafana/grafana.db
+
+    # Since the grafana gnocchi datasource is token-based (the user/pass
+    # path requires both the keystone and gnocchi endpoints to be on the
+    # same host, which isn't practical for us, since we follow the
+    # classic openstack docs, where each endpoint is on a separate
+    # host:port pair), we have to install a little token updater service
+    # (because there is no way to get an infinite openstack token).
+    cat <<'EOF' >/etc/systemd/system/grafana-gnocchi-openstack-token-renewer.service
+[Unit]
+Description=Grafana Gnocchi OpenStack Datasource Token Renewer
+After=grafana.service
+#DefaultDependencies=no
+
+[Service]
+Type=simple
+RemainAfterExit=no
+Restart=always
+ExecStart=/bin/sh -c '. /root/setup/admin-openrc.sh ; SLOP=900 ; TOKEXP=`crudini --get /etc/keystone/keystone.conf token expiration` ; NEXTRENEW=0 ; while true ; do CUR=`date +%%s` ; if [ $CUR -lt $NEXTRENEW ] ; then sleep 60 ; continue ; fi ; echo "Renewing gnocchi openstack token..." ; TOKEN=`openstack token issue | awk '"'"'/ id / { print $4 }'"'"'` ; if [ -n "$TOKEN" ] ; then echo "update data_source set json_data='"'"'{\\"mode\\":\\"token\\",\\"token\\":\\"$TOKEN\\"}'"'"',updated=datetime(\\"now\\") where name=\\"gnocchi\\";" | sqlite3 /var/lib/grafana/grafana.db ; if [ $? -eq 0 ]; then CUR=`date +%%s` ; NEXTRENEW=`expr $CUR + $TOKEXP - $SLOP` ; echo "Renewed gnocchi openstack token; next renew $NEXTRENEW" ; else echo "ERROR: could not renew token!" ; fi ; sleep 60 ; fi ; done'
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    service_enable grafana-gnocchi-openstack-token-renewer
+    service_restart grafana-gnocchi-openstack-token-renewer
+
+    ceilometer-upgrade --debug --skip-metering-database
+
+    # Finally, dump a simple default dashboard into place.
+    AUTHSTR=`echo "import base64; import sys; sys.stdout.write(base64.b64encode('admin:$GPASSWD'));" | python`
+    curl -X POST -H 'Content-type: application/json' \
+        -H "Authorization: Basic $AUTHSTR" \
+	-d "@$DIRNAME/etc/grafana-default-dashboard.json" \
+	http://localhost:3000/api/dashboards/import
+
+    echo "TELEMETRY_GRAFANA_DONE=\"1\"" >> $SETTINGS
+    logtend "grafana"
+fi
+
+#
 # Install the Telemetry service on the compute nodes
 #
 if [ -z "${TELEMETRY_COMPUTENODES_DONE}" ]; then
