@@ -3019,7 +3019,9 @@ EOF
     if [ $USING_GNOCCHI -eq 0 ]; then
 	su -s /bin/sh -c "ceilometer-dbsync" ceilometer
     else
-	mkdir -p /var/lib/gnocchi/{cache,measure,tmp}
+	mkdir -p /var/lib/gnocchi/cache
+	mkdir -p /var/lib/gnocchi/measure
+	mkdir -p /var/lib/gnocchi/tmp
 	chown -R gnocchi:gnocchi /var/lib/gnocchi
 	usermod -a -G gnocchi ceilometer
 	chmod -R 770 /var/lib/gnocchi
