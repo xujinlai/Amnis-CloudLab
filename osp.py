@@ -294,7 +294,7 @@ if params.controllerHost == params.networkManagerHost \
     pass
 if params.release in [ 'juno','kilo','liberty' ] \
   and (not params.firewall or params.firewallStyle == 'none'):
-    perr = portal.ParameterError("To use deprecated OpenStack releases, you *must* place your nodes behind an infrastructure firewall, by setting the Firewall Style parameter to something other than None.  These releases rely on insecure, out-of-date software.",['release','firewall'])
+    perr = portal.ParameterError("To use deprecated OpenStack releases, you *must* place your nodes behind an infrastructure firewall, by enabling the Firewall parameter.  These releases rely on insecure, out-of-date software.",['release','firewall'])
     pc.reportError(perr)
     pass
 if params.ml2plugin == 'linuxbridge' \
