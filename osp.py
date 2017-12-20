@@ -54,10 +54,9 @@ pc.defineParameter("ml2plugin","ML2 Plugin",
 pc.defineParameter("extraImageURLs","Extra VM Image URLs",
                    portal.ParameterType.STRING,"",
                    longDescription="This parameter allows you to specify a space-separated list of URLs, each of which points to an OpenStack VM image, which we will download and slighty tweak before uploading to Glance in your OpenStack experiment.")
-pc.defineParameter("firewallStyle","Firewall Style",
-                   portal.ParameterType.STRING,"none",
-                   [("none","None"),("basic","Basic"),("closed","Closed")],
-                   longDescription="Optionally add a CloudLab infrastructure firewall between the public IP addresses of your nodes (and your floating IPs) and the Internet (and rest of CloudLab).  The choice you make for this parameter controls the firewall ruleset, if not None.  None means no firewall; Basic implies a simple firewall that allows inbound SSH and outbound HTTP/HTTPS traffic; Closed implies a firewall ruleset that allows *no* communication with the outside world or other experiments within CloudLab.  If you are unsure, the Basic style is the one that will work best for you.")
+pc.defineParameter("firewall","Experiment Firewall",
+                   portal.ParameterType.BOOLEAN,False,
+                   longDescription="Optionally add a CloudLab infrastructure firewall between the public IP addresses of your nodes (and your floating IPs) and the Internet (and rest of CloudLab).")
 
 pc.defineParameter("ubuntuMirrorHost","Ubuntu Package Mirror Hostname",
                    portal.ParameterType.STRING,"",advanced=True,
@@ -206,6 +205,11 @@ pc.defineParameter("networkManagerHost", "Name of network manager node",
 pc.defineParameter("computeHostBaseName", "Base name of compute node(s)",
                    portal.ParameterType.STRING, "cp", advanced=True,
                    longDescription="The base string of the short name of the compute nodes (node names will look like cp-1, cp-2, ... or cp-s2-1, cp-s2-2, ... (for nodes at Site 2, if you request those)).  You shold leave this alone unless you really want the hostname to change.")
+pc.defineParameter("firewallStyle","Firewall Style",
+                   portal.ParameterType.STRING,"none",
+                   [("none","None"),("basic","Basic"),("closed","Closed")],
+                   advanced=True,
+                   longDescription="Optionally add a CloudLab infrastructure firewall between the public IP addresses of your nodes (and your floating IPs) and the Internet (and rest of CloudLab).  The choice you make for this parameter controls the firewall ruleset, if not None.  None means no firewall; Basic implies a simple firewall that allows inbound SSH and outbound HTTP/HTTPS traffic; Closed implies a firewall ruleset that allows *no* communication with the outside world or other experiments within CloudLab.  If you are unsure, the Basic style is the one that will work best for you.")
 #pc.defineParameter("blockStorageHost", "Name of block storage server node",
 #                   portal.ParameterType.STRING, "ctl")
 #pc.defineParameter("objectStorageHost", "Name of object storage server node",
@@ -278,6 +282,10 @@ params = pc.bindParameters()
 ###    # eventually change to the above code.
 ###    #
 ###    pass
+
+# Just set the firewall style to something sane if they want a firewall.
+if params.firewall == True and params.firewallStyle == 'none':
+    params.firewallStyle = 'basic'
 
 if params.controllerHost == params.networkManagerHost \
   and params.release in [ 'juno','kilo' ]:
