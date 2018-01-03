@@ -51,7 +51,29 @@ maybe_install_packages libguestfs-tools libguestfs0 python-guestfs
 #
 if [ "$COMPUTE_EXTRA_NOVA_DISK_SPACE" = "1" ]; then
     mkdir -p /mnt/var-lib-nova
-    /usr/local/etc/emulab/mkextrafs.pl -r sda -s 4 /mnt/var-lib-nova
+    FORCEARG=""
+    if [ ! -e /dev/sda4 ]; then
+	echo "*** WARNING: attempting to create max-size sda4 from free space!"
+	START=`sfdisk -F /dev/sda | tail -1 | awk '{ print $1; }'`
+	SIZE=`sfdisk -F /dev/sda | tail -1 | awk '{ print $3; }'`
+	sfdisk -d /dev/sda > /tmp/nparts.out
+	if [ $? -eq 0 -a -s /tmp/nparts.out ]; then
+	    echo "/dev/sda4 : start=$START,size=$SIZE" >>/tmp/nparts.out
+	    cat /tmp/nparts.out | sfdisk /dev/sda --force
+	    if [ ! $? -eq 0 ]; then
+		echo "*** ERROR: failed to create new /dev/sda4!"
+	    else
+		# Need to force mkextrafs.pl because sfdisk cannot set a
+		# partition type of 0, and mkextrafs.pl will only work
+		# normally with part-type 0.
+		FORCEARG="-f"
+		partprobe
+	    fi
+	else
+	    echo "*** ERROR: could not dump sda4 partitions!"
+	fi
+    fi
+    /usr/local/etc/emulab/mkextrafs.pl $FORCEARG -r sda -s 4 /mnt/var-lib-nova
     if [ $? = 0 ]; then
 	chown nova:nova /mnt/var-lib-nova
 	rsync -avz /var/lib/nova/ /mnt/var-lib-nova/
