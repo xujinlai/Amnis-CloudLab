@@ -239,9 +239,12 @@ if [ "$ARCH" = "aarch64" ] ; then
     crudini --set /etc/nova/nova-compute.conf libvirt cpu_mode custom
     crudini --set /etc/nova/nova-compute.conf libvirt cpu_model host
 
-    if [ $OSVERSION -ge $OSLIBERTY ]; then
+    if [ $OSVERSION -ge $OSLIBERTY -a $OSVERSION -le $OSMITAKA ]; then
 	crudini --set /etc/nova/nova-compute.conf libvirt video_type vga
 	crudini --set /etc/nova/nova-compute.conf libvirt use_usb_tablet False
+    elif [ $OSVERSIONN -gt $OSMITAKA ]; then
+	crudini --set /etc/nova/nova-compute.conf libvirt video_type vga
+	crudini --set /etc/nova/nova-compute.conf DEFAULT pointer_model ps2mouse
     fi
 fi
 
