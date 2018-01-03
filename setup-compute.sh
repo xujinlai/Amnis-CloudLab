@@ -242,8 +242,13 @@ if [ "$ARCH" = "aarch64" ] ; then
     if [ $OSVERSION -ge $OSLIBERTY -a $OSVERSION -le $OSMITAKA ]; then
 	crudini --set /etc/nova/nova-compute.conf libvirt video_type vga
 	crudini --set /etc/nova/nova-compute.conf libvirt use_usb_tablet False
-    elif [ $OSVERSIONN -gt $OSMITAKA ]; then
+    elif [ $OSVERSION -gt $OSMITAKA -a $OSVERSION -lt $OSPIKE ]; then
 	crudini --set /etc/nova/nova-compute.conf libvirt video_type vga
+	crudini --set /etc/nova/nova-compute.conf libvirt use_usb_tablet False
+	crudini --set /etc/nova/nova-compute.conf DEFAULT pointer_model ps2mouse
+    elif [ $OSVERSION -eq $OSPIKE ]; then
+	patch -d / -p0 < $DIRNAME/etc/nova-pike-aarch64-virtio-video.patch
+	crudini --set /etc/nova/nova-compute.conf libvirt video_type virtio
 	crudini --set /etc/nova/nova-compute.conf DEFAULT pointer_model ps2mouse
     fi
 fi

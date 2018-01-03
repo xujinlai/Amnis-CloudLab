@@ -1154,6 +1154,12 @@ EOF
     fi
     su -s /bin/sh -c "nova-manage db sync" nova
 
+    # For aarch64 on Pike, we start using the virtio driver, but we
+    # still have to patch it.
+    if [ $OSVERSION -eq $OSPIKE ]; then
+	patch -d / -p0 < $DIRNAME/etc/nova-pike-aarch64-virtio-video.patch
+    fi
+
     service_restart memcached
     service_restart nova-api
     service_enable nova-api

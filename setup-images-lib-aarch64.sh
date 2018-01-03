@@ -100,7 +100,6 @@ if [ ! $? -eq 0 ]; then
 fi
 IMAGEID=`glance image-list | awk "/ ${_imgname} / { print \\$2 }"`
 glance image-update --property kernel_args=console=ttyAMA0 $IMAGEID
-glance image-update --property hw_video_model=vga $IMAGEID
 glance image-update --property root_device_name=/dev/vda1 $IMAGEID
 glance image-create --name ${_imgname}-vmlinuz --progress --file ${_imgfile}-vmlinuz --disk-format aki --container-format aki
 KERNELID=`glance image-list | awk "/ ${_imgname}-vmlinuz / { print \\$2 }"`
@@ -109,6 +108,11 @@ glance image-create --name ${_imgname}-initrd --progress --file ${_imgfile}-init
 RAMDISKID=`glance image-list | awk "/ ${_imgname}-initrd / { print \\$2 }"`
 glance image-update --property ramdisk_id=$RAMDISKID $IMAGEID
 EOF
+    if [ $OSVERSION -lt $OSPIKE ]; then
+	cat <<'EOF' >> $IMAGEUPLOADCMDFILE
+glance image-update --property hw_video_model=vga $IMAGEID
+EOF
+    fi
 }
 
 upload_image() {
@@ -132,7 +136,9 @@ upload_image() {
     fi
     IMAGEID=`glance image-list | awk "/ ${_imgname} / { print \\$2 }"`
     glance image-update --property kernel_args=console=ttyAMA0 $IMAGEID
-    glance image-update --property hw_video_model=vga $IMAGEID
+    if [ $OSVERSION -lt $OSPIKE ]; then
+	glance image-update --property hw_video_model=vga $IMAGEID
+    fi
     glance image-update --property root_device_name=/dev/vda1 $IMAGEID
     glance image-create --name ${_imgname}-vmlinuz --progress --file ${_imgfile}-vmlinuz --disk-format aki --container-format aki
     KERNELID=`glance image-list | awk "/ ${_imgname}-vmlinuz / { print \\$2 }"`
