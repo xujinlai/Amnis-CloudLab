@@ -3195,7 +3195,7 @@ if [ $OSVERSION -ge $OSPIKE -a -z "${TELEMETRY_GRAFANA_DONE}" ]; then
 
     # Add the token-based datasource
     TMPTOKEN=`openstack token issue | awk '/ id / { print $4 }'`
-    echo "INSERT INTO \"data_source\" VALUES(1,1,1,'gnocchixyz-gnocchi-datasource','gnocchi','proxy','http://localhost:8041/','','','',0,'','',1,'{\"mode\":\"token\",\"token\":\"$TMPTOKEN\"}',datetime('now'),datetime('now'),0,'{}');" | sqlite3 /var/lib/grafana/grafana.db
+    echo "INSERT INTO \"data_source\" (id,org_id,version,type,name,access,url,password,user,database,basic_auth,basic_auth_user,basic_auth_password,is_default,json_data,created,updated,with_credentials,secure_json_data) VALUES(1,1,1,'gnocchixyz-gnocchi-datasource','gnocchi','proxy','http://localhost:8041/','','','',0,'','',1,'{\"mode\":\"token\",\"token\":\"$TMPTOKEN\"}',datetime('now'),datetime('now'),0,'{}');" | sqlite3 /var/lib/grafana/grafana.db
 
     # Since the grafana gnocchi datasource is token-based (the user/pass
     # path requires both the keystone and gnocchi endpoints to be on the
