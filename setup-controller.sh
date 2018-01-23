@@ -1303,7 +1303,7 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	fi
     fi
 
-    maybe_install_packages neutron-server neutron-plugin-ml2 python-neutronclient
+    maybe_install_packages neutron-server neutron-plugin-ml2 python-neutron-lbaas python-neutronclient
 
     #
     # Install a patch to make manual router interfaces less likely to hijack
@@ -1325,7 +1325,8 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
     crudini --set /etc/neutron/neutron.conf DEFAULT verbose ${VERBOSE_LOGGING}
     crudini --set /etc/neutron/neutron.conf DEFAULT debug ${DEBUG_LOGGING}
     crudini --set /etc/neutron/neutron.conf DEFAULT core_plugin ml2
-    crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins 'router,metering'
+    crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins \
+    'router,metering,neutron_lbaas.services.loadbalancer.plugin.LoadBalancerPluginv2'
     crudini --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips True
 
     if [ $OSVERSION -le $OSKILO ]; then
@@ -1478,6 +1479,9 @@ EOF
 	crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup \
 	    firewall_driver $fwdriver
     fi
+
+    crudini --set /etc/neutron/neutron_lbaas.conf service_providers \
+    service_provider "LOADBALANCERV2:Haproxy:neutron_lbaas.drivers.haproxy.plugin_driver.HaproxyOnHostPluginDriver:default"
 
     crudini --set /etc/nova/nova.conf DEFAULT \
 	network_api_class nova.network.neutronv2.api.API

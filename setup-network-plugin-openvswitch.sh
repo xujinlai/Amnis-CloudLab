@@ -55,7 +55,8 @@ crudini --set /etc/neutron/neutron.conf DEFAULT auth_strategy keystone
 crudini --set /etc/neutron/neutron.conf DEFAULT verbose ${VERBOSE_LOGGING}
 crudini --set /etc/neutron/neutron.conf DEFAULT debug ${DEBUG_LOGGING}
 crudini --set /etc/neutron/neutron.conf DEFAULT core_plugin ml2
-crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins 'router,metering'
+crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins \
+    'router,metering,neutron_lbaas.services.loadbalancer.plugin.LoadBalancerPluginv2'
 crudini --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips True
 crudini --set /etc/neutron/neutron.conf DEFAULT notification_driver messagingv2
 

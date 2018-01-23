@@ -52,7 +52,7 @@ EOF
 
 sysctl -p
 
-maybe_install_packages neutron-l3-agent neutron-dhcp-agent neutron-metering-agent
+maybe_install_packages neutron-l3-agent neutron-dhcp-agent neutron-metering-agent neutron-lbaasv2-agent
 
 # Configure the L3 agent.
 crudini --set /etc/neutron/l3_agent.ini DEFAULT \
@@ -158,6 +158,16 @@ crudini --set /etc/neutron/metering_agent.ini DEFAULT \
 crudini --set /etc/neutron/metering_agent.ini DEFAULT \
     use_namespaces True
 
+crudini --set /etc/neutron/lbaas_agent.ini DEFAULT \
+    device_driver "neutron_lbaas.drivers.haproxy.namespace_driver.HaproxyNSDriver"
+crudini --set /etc/neutron/lbaas_agent.ini DEFAULT \
+    interface_driver "neutron.agent.linux.interface.OVSInterfaceDriver"
+crudini --set /etc/neutron/lbaas_agent.ini haproxy \
+    user_group "haproxy"
+
+crudini --set /etc/neutron/neutron_lbaas.conf service_providers \
+    service_provider "LOADBALANCERV2:Haproxy:neutron_lbaas.drivers.haproxy.plugin_driver.HaproxyOnHostPluginDriver:default"
+
 service_restart neutron-l3-agent
 service_enable neutron-l3-agent
 service_restart neutron-dhcp-agent
@@ -166,6 +176,7 @@ service_restart neutron-metadata-agent
 service_enable neutron-metadata-agent
 service_restart neutron-metering-agent
 service_enable neutron-metering-agent
+service_enable neutron-lbaasv2-agent
 
 touch $OURDIR/setup-networkmanager-done
 
