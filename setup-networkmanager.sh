@@ -160,8 +160,13 @@ crudini --set /etc/neutron/metering_agent.ini DEFAULT \
 
 crudini --set /etc/neutron/lbaas_agent.ini DEFAULT \
     device_driver "neutron_lbaas.drivers.haproxy.namespace_driver.HaproxyNSDriver"
-crudini --set /etc/neutron/lbaas_agent.ini DEFAULT \
-    interface_driver "neutron.agent.linux.interface.OVSInterfaceDriver"
+if [ "${ML2PLUGIN}" = "linuxbridge" ]; then
+    crudini --set /etc/neutron/lbaas_agent.ini DEFAULT \
+	interface_driver "neutron.agent.linux.interface.BridgeInterfaceDriver"
+else
+    crudini --set /etc/neutron/lbaas_agent.ini DEFAULT \
+	interface_driver "neutron.agent.linux.interface.OVSInterfaceDriver"
+fi
 crudini --set /etc/neutron/lbaas_agent.ini haproxy \
     user_group "haproxy"
 
