@@ -49,19 +49,28 @@ maybe_install_packages libguestfs-tools libguestfs0 python-guestfs
 # may include stuff that was just installed).  Then we bind mount it to
 # /var/lib/nova .
 #
-if [ "$COMPUTE_EXTRA_NOVA_DISK_SPACE" = "1" ]; then
+ROOTDISK=
+if [ -e /dev/sda ]; then
+    ROOTDISK=/dev/sda
+    ROOTDEV=sda
+elif [ -e /dev/nvme0n1 ]; then
+    ROOTDISK=/dev/nvme0n1
+    ROOTDEV=nvme0n1
+fi
+if [ -e $ROOTDISK -a "$COMPUTE_EXTRA_NOVA_DISK_SPACE" = "1" ]; then
+    PART="${ROOTDISK}4"
     mkdir -p /mnt/var-lib-nova
     FORCEARG=""
-    if [ ! -e /dev/sda4 ]; then
-	echo "*** WARNING: attempting to create max-size sda4 from free space!"
-	START=`sfdisk -F /dev/sda | tail -1 | awk '{ print $1; }'`
-	SIZE=`sfdisk -F /dev/sda | tail -1 | awk '{ print $3; }'`
-	sfdisk -d /dev/sda > /tmp/nparts.out
+    if [ ! -e $PART ]; then
+	echo "*** WARNING: attempting to create max-size $PART from free space!"
+	START=`sfdisk -F $ROOTDISK | tail -1 | awk '{ print $1; }'`
+	SIZE=`sfdisk -F $ROOTDISK | tail -1 | awk '{ print $3; }'`
+	sfdisk -d $ROOTDISK > /tmp/nparts.out
 	if [ $? -eq 0 -a -s /tmp/nparts.out ]; then
-	    echo "/dev/sda4 : start=$START,size=$SIZE" >>/tmp/nparts.out
-	    cat /tmp/nparts.out | sfdisk /dev/sda --force
+	    echo "$PART : start=$START,size=$SIZE" >>/tmp/nparts.out
+	    cat /tmp/nparts.out | sfdisk $ROOTDISK --force
 	    if [ ! $? -eq 0 ]; then
-		echo "*** ERROR: failed to create new /dev/sda4!"
+		echo "*** ERROR: failed to create new $PART!"
 	    else
 		# Need to force mkextrafs.pl because sfdisk cannot set a
 		# partition type of 0, and mkextrafs.pl will only work
@@ -70,10 +79,10 @@ if [ "$COMPUTE_EXTRA_NOVA_DISK_SPACE" = "1" ]; then
 		partprobe
 	    fi
 	else
-	    echo "*** ERROR: could not dump sda4 partitions!"
+	    echo "*** ERROR: could not dump $PART partitions!"
 	fi
     fi
-    /usr/local/etc/emulab/mkextrafs.pl $FORCEARG -r sda -s 4 /mnt/var-lib-nova
+    /usr/local/etc/emulab/mkextrafs.pl $FORCEARG -r $ROOTDEV -s 4 /mnt/var-lib-nova
     if [ $? = 0 ]; then
 	chown nova:nova /mnt/var-lib-nova
 	rsync -avz /var/lib/nova/ /mnt/var-lib-nova/
