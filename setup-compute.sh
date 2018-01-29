@@ -53,12 +53,14 @@ ROOTDISK=
 if [ -e /dev/sda ]; then
     ROOTDISK=/dev/sda
     ROOTDEV=sda
+    ROOTPART=4
 elif [ -e /dev/nvme0n1 ]; then
     ROOTDISK=/dev/nvme0n1
     ROOTDEV=nvme0n1
+    ROOTPART=p4
 fi
 if [ -e $ROOTDISK -a "$COMPUTE_EXTRA_NOVA_DISK_SPACE" = "1" ]; then
-    PART="${ROOTDISK}4"
+    PART="${ROOTDISK}${ROOTPART}"
     mkdir -p /mnt/var-lib-nova
     FORCEARG=""
     if [ ! -e $PART ]; then
@@ -77,6 +79,7 @@ if [ -e $ROOTDISK -a "$COMPUTE_EXTRA_NOVA_DISK_SPACE" = "1" ]; then
 		# normally with part-type 0.
 		FORCEARG="-f"
 		partprobe
+		sleep 10
 	    fi
 	else
 	    echo "*** ERROR: could not dump $PART partitions!"
