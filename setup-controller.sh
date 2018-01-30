@@ -1303,7 +1303,7 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	fi
     fi
 
-    maybe_install_packages neutron-server neutron-plugin-ml2 python-neutronclient
+    maybe_install_packages neutron-server neutron-plugin-ml2 python-neutron-lbaas python-neutronclient
 
     #
     # Install a patch to make manual router interfaces less likely to hijack
@@ -1325,7 +1325,12 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
     crudini --set /etc/neutron/neutron.conf DEFAULT verbose ${VERBOSE_LOGGING}
     crudini --set /etc/neutron/neutron.conf DEFAULT debug ${DEBUG_LOGGING}
     crudini --set /etc/neutron/neutron.conf DEFAULT core_plugin ml2
-    crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins 'router,metering'
+    if [ $OSVERSION -lt $OSNEWTON ]; then
+	crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins 'router,metering'
+    else
+	crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins \
+	    'router,metering,neutron_lbaas.services.loadbalancer.plugin.LoadBalancerPluginv2'
+    fi
     crudini --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips True
 
     if [ $OSVERSION -le $OSKILO ]; then
@@ -1479,6 +1484,11 @@ EOF
 	    firewall_driver $fwdriver
     fi
 
+    if [ $OSVERSION -ge $OSNEWTON ]; then
+	crudini --set /etc/neutron/neutron_lbaas.conf service_providers \
+	    service_provider "LOADBALANCERV2:Haproxy:neutron_lbaas.drivers.haproxy.plugin_driver.HaproxyOnHostPluginDriver:default"
+    fi
+
     crudini --set /etc/nova/nova.conf DEFAULT \
 	network_api_class nova.network.neutronv2.api.API
     crudini --set /etc/nova/nova.conf DEFAULT \
@@ -1545,6 +1555,24 @@ EOF
 	su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade head" neutron
     else
 	su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade ${OSCODENAME}" neutron
+    fi
+
+    # Install the neutron lbaas dashboard panel, and update the neutron
+    # db for lbaas.
+    if [ $OSVERSION -ge $OSNEWTON ]; then
+	git clone https://git.openstack.org/openstack/neutron-lbaas-dashboard
+	cd neutron-lbaas-dashboard
+	git checkout stable/${OSRELEASE}
+	python setup.py install
+	cp -p neutron_lbaas_dashboard/enabled/_1481_project_ng_loadbalancersv2_panel.py \
+	   /usr/share/openstack-dashboard/openstack_dashboard/local/enabled/
+	echo "OPENSTACK_NEUTRON_NETWORK['enable_lb'] = True" \
+	     >> /etc/openstack-dashboard/local_settings.py
+	/usr/share/openstack-dashboard/manage.py collectstatic --noinput \
+	    && /usr/share/openstack-dashboard/manage.py compress
+	service_restart apache2
+
+	su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --subproject neutron-lbaas upgrade head" neutron
     fi
 
     service_restart nova-api
