@@ -52,7 +52,10 @@ EOF
 
 sysctl -p
 
-maybe_install_packages neutron-l3-agent neutron-dhcp-agent neutron-metering-agent neutron-lbaasv2-agent
+maybe_install_packages neutron-l3-agent neutron-dhcp-agent neutron-metering-agent
+if [ $OSVERSION -ge $OSNEWTON ]; then
+    maybe_install_packages neutron-lbaasv2-agent
+fi
 
 # Configure the L3 agent.
 crudini --set /etc/neutron/l3_agent.ini DEFAULT \
@@ -158,20 +161,22 @@ crudini --set /etc/neutron/metering_agent.ini DEFAULT \
 crudini --set /etc/neutron/metering_agent.ini DEFAULT \
     use_namespaces True
 
-crudini --set /etc/neutron/lbaas_agent.ini DEFAULT \
-    device_driver "neutron_lbaas.drivers.haproxy.namespace_driver.HaproxyNSDriver"
-if [ "${ML2PLUGIN}" = "linuxbridge" ]; then
+if [ $OSVERSION -ge $OSNEWTON ]; then
     crudini --set /etc/neutron/lbaas_agent.ini DEFAULT \
-	interface_driver "neutron.agent.linux.interface.BridgeInterfaceDriver"
-else
-    crudini --set /etc/neutron/lbaas_agent.ini DEFAULT \
-	interface_driver "neutron.agent.linux.interface.OVSInterfaceDriver"
-fi
-crudini --set /etc/neutron/lbaas_agent.ini haproxy \
-    user_group "haproxy"
+	device_driver "neutron_lbaas.drivers.haproxy.namespace_driver.HaproxyNSDriver"
+    if [ "${ML2PLUGIN}" = "linuxbridge" ]; then
+	crudini --set /etc/neutron/lbaas_agent.ini DEFAULT \
+            interface_driver "neutron.agent.linux.interface.BridgeInterfaceDriver"
+    else
+	crudini --set /etc/neutron/lbaas_agent.ini DEFAULT \
+	    interface_driver "neutron.agent.linux.interface.OVSInterfaceDriver"
+    fi
+    crudini --set /etc/neutron/lbaas_agent.ini haproxy \
+	user_group "haproxy"
 
-crudini --set /etc/neutron/neutron_lbaas.conf service_providers \
-    service_provider "LOADBALANCERV2:Haproxy:neutron_lbaas.drivers.haproxy.plugin_driver.HaproxyOnHostPluginDriver:default"
+    crudini --set /etc/neutron/neutron_lbaas.conf service_providers \
+	service_provider "LOADBALANCERV2:Haproxy:neutron_lbaas.drivers.haproxy.plugin_driver.HaproxyOnHostPluginDriver:default"
+fi
 
 service_restart neutron-l3-agent
 service_enable neutron-l3-agent
@@ -181,7 +186,10 @@ service_restart neutron-metadata-agent
 service_enable neutron-metadata-agent
 service_restart neutron-metering-agent
 service_enable neutron-metering-agent
-service_enable neutron-lbaasv2-agent
+if [ $OSVERSION -ge $OSNEWTON ]; then
+    service_restart neutron-lbaasv2-agent
+    service_enable neutron-lbaasv2-agent
+fi
 
 touch $OURDIR/setup-networkmanager-done
 

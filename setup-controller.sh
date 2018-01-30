@@ -1325,8 +1325,12 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
     crudini --set /etc/neutron/neutron.conf DEFAULT verbose ${VERBOSE_LOGGING}
     crudini --set /etc/neutron/neutron.conf DEFAULT debug ${DEBUG_LOGGING}
     crudini --set /etc/neutron/neutron.conf DEFAULT core_plugin ml2
-    crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins \
-    'router,metering,neutron_lbaas.services.loadbalancer.plugin.LoadBalancerPluginv2'
+    if [ $OSVERSION -lt $OSNEWTON ]; then
+	crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins 'router,metering'
+    else
+	crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins \
+	    'router,metering,neutron_lbaas.services.loadbalancer.plugin.LoadBalancerPluginv2'
+    fi
     crudini --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips True
 
     if [ $OSVERSION -le $OSKILO ]; then
@@ -1480,8 +1484,10 @@ EOF
 	    firewall_driver $fwdriver
     fi
 
-    crudini --set /etc/neutron/neutron_lbaas.conf service_providers \
-    service_provider "LOADBALANCERV2:Haproxy:neutron_lbaas.drivers.haproxy.plugin_driver.HaproxyOnHostPluginDriver:default"
+    if [ $OSVERSION -ge $OSNEWTON ]; then
+	crudini --set /etc/neutron/neutron_lbaas.conf service_providers \
+	    service_provider "LOADBALANCERV2:Haproxy:neutron_lbaas.drivers.haproxy.plugin_driver.HaproxyOnHostPluginDriver:default"
+    fi
 
     crudini --set /etc/nova/nova.conf DEFAULT \
 	network_api_class nova.network.neutronv2.api.API
