@@ -1551,6 +1551,24 @@ EOF
 	su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade ${OSCODENAME}" neutron
     fi
 
+    # Install the neutron lbaas dashboard panel, and update the neutron
+    # db for lbaas.
+    if [ $OSVERSION -ge $OSNEWTON ]; then
+	git clone https://git.openstack.org/openstack/neutron-lbaas-dashboard
+	cd neutron-lbaas-dashboard
+	git checkout stable/${OSRELEASE}
+	python setup.py install
+	cp -p neutron_lbaas_dashboard/enabled/_1481_project_ng_loadbalancersv2_panel.py \
+	   /usr/share/openstack-dashboard/openstack_dashboard/local/enabled/
+	echo "OPENSTACK_NEUTRON_NETWORK['enable_lb'] = True" \
+	     >> /etc/openstack-dashboard/local_settings.py
+	/usr/share/openstack-dashboard/manage.py collectstatic --noinput \
+	    && /usr/share/openstack-dashboard/manage.py compress
+	service_restart apache2
+
+	su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --subproject neutron-lbaas upgrade head" neutron
+    fi
+
     service_restart nova-api
     service_restart nova-scheduler
     service_restart nova-conductor
