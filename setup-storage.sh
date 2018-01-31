@@ -103,6 +103,11 @@ crudini --set /etc/cinder/cinder.conf DEFAULT auth_strategy keystone
 crudini --set /etc/cinder/cinder.conf DEFAULT verbose ${VERBOSE_LOGGING}
 crudini --set /etc/cinder/cinder.conf DEFAULT debug ${DEBUG_LOGGING}
 crudini --set /etc/cinder/cinder.conf DEFAULT my_ip ${MGMTIP}
+if [ $OSVERSION -ge $OSPIKE ]; then
+    crudini --set /etc/cinder/cinder.conf backend_defaults iscsi_ip_address ${MYIP}
+elif [ $OSVERSION -ge $OSOCATA ]; then
+    crudini --set /etc/cinder/cinder.conf DEFAULT iscsi_ip_address ${MYIP}
+fi
 
 if [ $OSVERSION -lt $OSKILO ]; then
     crudini --set /etc/cinder/cinder.conf DEFAULT rpc_backend rabbit
