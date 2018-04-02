@@ -210,6 +210,15 @@ pc.defineParameter("firewallStyle","Firewall Style",
                    [("none","None"),("basic","Basic"),("closed","Closed")],
                    advanced=True,
                    longDescription="Optionally add a CloudLab infrastructure firewall between the public IP addresses of your nodes (and your floating IPs) and the Internet (and rest of CloudLab).  The choice you make for this parameter controls the firewall ruleset, if not None.  None means no firewall; Basic implies a simple firewall that allows inbound SSH and outbound HTTP/HTTPS traffic; Closed implies a firewall ruleset that allows *no* communication with the outside world or other experiments within CloudLab.  If you are unsure, the Basic style is the one that will work best for you.")
+pc.defineParameter("controllerDiskImage","Controller Node Disk Image",
+                   portal.ParameterType.IMAGE,"",advanced=True,
+                   longDescription="An image URN or URL that the controller node will run.")
+pc.defineParameter("computeDiskImage","Compute Node Disk Image",
+                   portal.ParameterType.IMAGE,"",advanced=True,
+                   longDescription="An image URN or URL that the compute node will run.")
+pc.defineParameter("networkManagerDiskImage","Network Manager Node Disk Image",
+                   portal.ParameterType.IMAGE,"",advanced=True,
+                   longDescription="An image URN or URL that the network manager node will run.")
 #pc.defineParameter("blockStorageHost", "Name of block storage server node",
 #                   portal.ParameterType.STRING, "ctl")
 #pc.defineParameter("objectStorageHost", "Name of object storage server node",
@@ -645,7 +654,10 @@ if params.osNodeType:
     controller.hardware_type = params.osNodeType
     pass
 controller.Site("1")
-controller.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s%s" % (image_urn,image_project,image_os,image_tag_cn,image_tag_rel)
+if params.controllerDiskImage:
+    controller.disk_image = params.controllerDiskImage
+else:
+    controller.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s%s" % (image_urn,image_project,image_os,image_tag_cn,image_tag_rel)
 if firewalling and setfwdesire:
     controller.Desire('firewallable','1.0')
 i = 0
@@ -682,7 +694,10 @@ if params.controllerHost != params.networkManagerHost:
         networkManager.hardware_type = params.osNodeType
         pass
     networkManager.Site("1")
-    networkManager.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s%s" % (image_urn,image_project,image_os,image_tag_nm,image_tag_rel)
+    if params.networkManagerDiskImage:
+        networkManager.disk_image = params.networkManagerDiskImage
+    else:
+        networkManager.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s%s" % (image_urn,image_project,image_os,image_tag_nm,image_tag_rel)
     if firewalling and setfwdesire:
         networkManager.Desire('firewallable','1.0')
     i = 0
@@ -741,7 +756,10 @@ for (siteNumber,cpnameList) in computeNodeNamesBySite.iteritems():
             cpnode.hardware_type = params.osNodeType
         pass
         cpnode.Site(str(siteNumber))
-        cpnode.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s%s" % (image_urn,image_project,image_os,image_tag_cp,image_tag_rel)
+        if params.computeDiskImage:
+            cpnode.disk_image = params.computeDiskImage
+        else:
+            cpnode.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s%s" % (image_urn,image_project,image_os,image_tag_cp,image_tag_rel)
         if firewalling and setfwdesire:
             cpnode.Desire('firewallable','1.0')
         i = 0
