@@ -594,8 +594,12 @@ elif params.release == 'pike':
     image_tag_rel = '-P'
 elif params.release == 'queens':
     image_os = 'UBUNTU18-64-BETA'
-    params.fromScratch = True
+    #params.fromScratch = True
     params.doAptUpdate = True
+    image_tag_cn = 'STD'
+    image_tag_nm = 'STD'
+    image_tag_cp = 'STD'
+    image_tag_rel = ''
 else:
     image_os = 'UBUNTU16-64'
     params.fromScratch = True
