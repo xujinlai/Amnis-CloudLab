@@ -154,11 +154,35 @@ NEWNODELIST=""
 # We might store any missing nodes here
 OLDNODELIST=""
 
+#
+# Setup apt-get to not prompt us
+#
+if [ ! -e $OURDIR/apt-configured ]; then
+    echo "force-confdef" > /etc/dpkg/dpkg.cfg.d/cloudlab
+    echo "force-confold" >> /etc/dpkg/dpkg.cfg.d/cloudlab
+    touch $OURDIR/apt-configured
+fi
+export DEBIAN_FRONTEND=noninteractive
+# -o Dpkg::Options::="--force-confold" -o Dpkg::Options::="--force-confdef" 
+DPKGOPTS=''
+APTGETINSTALLOPTS='-y'
+APTGETINSTALL="apt-get $DPKGOPTS install $APTGETINSTALLOPTS"
+# Don't install/upgrade packages if this is not set
+if [ ${DO_APT_INSTALL} -eq 0 ]; then
+    APTGETINSTALL="/bin/true ${APTGETINSTALL}"
+fi
+
 ##
 ## Detect if this was a geni experiment
 ##
 grep GENIUSER $SETTINGS
 if [ ! $? -eq 0 ]; then
+    which python
+    if [ ! $? -eq 0 ]; then
+	# We need python to continue; install it.
+	apt-get update
+	apt-get $DPKGOPTS install $APTGETINSTALLOPTS python
+    fi
     geni-get slice_urn >/dev/null 2>&1
     if [ $? -eq 0 ]; then
 	GENIUSER=1
@@ -185,13 +209,13 @@ fi
 if [ $GENIUSER -eq 1 ]; then
     dpkg -s python-m2crypto >/dev/null 2>&1
     if [ ! $? -eq 0 ]; then
-	apt-get install python-m2crypto
+	apt-get $DPKGOPTS install $APTGETINSTALLOPTS python-m2crypto
 	# Keep trying again with updated cache forever;
 	# we must have this package.
 	success=$?
 	while [ ! $success -eq 0 ]; do
 	    apt-get update
-	    apt-get install python-m2crypto
+	    apt-get $DPKGOPTS install $APTGETINSTALLOPTS python-m2crypto
 	    success=$?
 	done
     fi
@@ -654,19 +678,6 @@ if [ ! $? -eq 0 ]; then
     fi
 
     echo "MIRRORSETUP=1" >> $SETTINGS
-fi
-
-# Setup apt-get to not prompt us
-echo "force-confdef" > /etc/dpkg/dpkg.cfg.d/cloudlab
-echo "force-confold" >> /etc/dpkg/dpkg.cfg.d/cloudlab
-export DEBIAN_FRONTEND=noninteractive
-# -o Dpkg::Options::="--force-confold" -o Dpkg::Options::="--force-confdef" 
-DPKGOPTS=''
-APTGETINSTALLOPTS='-y'
-APTGETINSTALL="apt-get $DPKGOPTS install $APTGETINSTALLOPTS"
-# Don't install/upgrade packages if this is not set
-if [ ${DO_APT_INSTALL} -eq 0 ]; then
-    APTGETINSTALL="/bin/true ${APTGETINSTALL}"
 fi
 
 if [ ! -f $OURDIR/apt-updated -a "${DO_APT_UPDATE}" = "1" ]; then
