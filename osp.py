@@ -592,12 +592,15 @@ elif params.release == 'ocata':
 elif params.release == 'pike':
     image_os = 'UBUNTU16-64'
     image_tag_rel = '-P'
-elif params.release == 'queens':
-    image_os = 'UBUNTU18-64-BETA'
-    #params.fromScratch = True
+elif params.release == 'queens' \
+  and not (params.controllerDiskImage or params.networkManagerDiskImage \
+           or params.computeDiskImage):
+    spurn = "urn:publicid:IDN+emulab.net+image+emulab-ops//UBUNTU18-64-BETA"
+    params.controllerDiskImage = \
+        params.networkManagerDiskImage = \
+        params.computeDiskImage = spurn
+    params.fromScratch = True
     params.doAptUpdate = True
-    image_tag_cn = image_tag_nm = image_tag_cp = ''
-    image_tag_rel = ''
 else:
     image_os = 'UBUNTU16-64'
     params.fromScratch = True
