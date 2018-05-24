@@ -596,9 +596,7 @@ elif params.release == 'queens':
     image_os = 'UBUNTU18-64-BETA'
     #params.fromScratch = True
     params.doAptUpdate = True
-    image_tag_cn = 'STD'
-    image_tag_nm = 'STD'
-    image_tag_cp = 'STD'
+    image_tag_cn = image_tag_nm = image_tag_cp = ''
     image_tag_rel = ''
 else:
     image_os = 'UBUNTU16-64'
@@ -608,14 +606,14 @@ else:
     pass
 
 if params.fromScratch:
-    image_tag_cn = 'STD'
-    image_tag_nm = 'STD'
-    image_tag_cp = 'STD'
+    image_tag_cn = '-STD'
+    image_tag_nm = '-STD'
+    image_tag_cp = '-STD'
     image_tag_rel = ''
 else:
-    image_tag_cn = 'OSCN'
-    image_tag_nm = 'OSNM'
-    image_tag_cp = 'OSCP'
+    image_tag_cn = '-OSCN'
+    image_tag_nm = '-OSNM'
+    image_tag_cp = '-OSCP'
     pass
 
 nodes = dict({})
@@ -665,7 +663,7 @@ controller.Site("1")
 if params.controllerDiskImage:
     controller.disk_image = params.controllerDiskImage
 else:
-    controller.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s%s" % (image_urn,image_project,image_os,image_tag_cn,image_tag_rel)
+    controller.disk_image = "urn:publicid:IDN+%s+image+%s//%s%s%s" % (image_urn,image_project,image_os,image_tag_cn,image_tag_rel)
 if firewalling and setfwdesire:
     controller.Desire('firewallable','1.0')
 i = 0
@@ -705,7 +703,7 @@ if params.controllerHost != params.networkManagerHost:
     if params.networkManagerDiskImage:
         networkManager.disk_image = params.networkManagerDiskImage
     else:
-        networkManager.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s%s" % (image_urn,image_project,image_os,image_tag_nm,image_tag_rel)
+        networkManager.disk_image = "urn:publicid:IDN+%s+image+%s//%s%s%s" % (image_urn,image_project,image_os,image_tag_nm,image_tag_rel)
     if firewalling and setfwdesire:
         networkManager.Desire('firewallable','1.0')
     i = 0
@@ -767,7 +765,7 @@ for (siteNumber,cpnameList) in computeNodeNamesBySite.iteritems():
         if params.computeDiskImage:
             cpnode.disk_image = params.computeDiskImage
         else:
-            cpnode.disk_image = "urn:publicid:IDN+%s+image+%s//%s-%s%s" % (image_urn,image_project,image_os,image_tag_cp,image_tag_rel)
+            cpnode.disk_image = "urn:publicid:IDN+%s+image+%s//%s%s%s" % (image_urn,image_project,image_os,image_tag_cp,image_tag_rel)
         if firewalling and setfwdesire:
             cpnode.Desire('firewallable','1.0')
         i = 0
