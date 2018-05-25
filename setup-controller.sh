@@ -2882,7 +2882,14 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	        ceilometer-alarm-notifier
 	fi
     else
-	maybe_install_packages gnocchi-api gnocchi-metricd python-gnocchiclient
+	maybe_install_packages gnocchi-metricd python-gnocchiclient
+	if [ $OSVERSION = $OSQUEENS ]; then
+	    # gnocchi-api in Queens initially needs mod-wsgi-py3, which
+	    # conflicts with many other things and uninstalls them.
+	    maybe_install_packages python-gnocchi
+	else
+	    maybe_install_packages gnocchi-api
+	fi
     fi
 
     # Seems like the Pike package doesn't properly install /etc/ceilometer;
