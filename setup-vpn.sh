@@ -140,11 +140,23 @@ EOF
 	# Make sure we don't start the VPN until our network is up.
 	# This is sort of magical, but it works.
 	mkdir /etc/systemd/system/openvpn@.service.d
-	cat <<EOF >/etc/systemd/system/openvpn@.service.d/local-ifup.conf
+	systemctl list-units | grep -q networking\.service
+	if [ $? -eq 0 ]; then
+	    cat <<EOF >/etc/systemd/system/openvpn@.service.d/local-ifup.conf
 [Unit]
 Requires=networking.service
 After=networking.service
 EOF
+	else
+	    systemctl list-units | grep -q network-online\.target
+	    if [ $? -eq 0 ]; then
+		cat <<EOF >/etc/systemd/system/openvpn@.service.d/local-ifup.conf
+[Unit]
+Requires=network-online.target
+After=network-online.target
+EOF
+	    fi
+	fi
 	systemctl daemon-reload
 	systemctl enable openvpn@server.service
 	systemctl start openvpn@server.service
