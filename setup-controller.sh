@@ -530,10 +530,10 @@ EOF
     # Create admin token
     if [ $OSVERSION -lt $OSKILO ]; then
 	export OS_SERVICE_TOKEN=$ADMIN_TOKEN
-	export OS_SERVICE_ENDPOINT=http://$CONTROLLER:35357/$KAPISTR
+	export OS_SERVICE_ENDPOINT=http://$CONTROLLER:${KADMINPORT}/$KAPISTR
     else
 	export OS_TOKEN=$ADMIN_TOKEN
-	export OS_URL=http://$CONTROLLER:35357/$KAPISTR
+	export OS_URL=http://$CONTROLLER:${KADMINPORT}/$KAPISTR
 
 	if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
 	    export OS_IDENTITY_API_VERSION=3
@@ -553,7 +553,7 @@ EOF
             --service-id `keystone service-list | awk '/ identity / {print $2}'` \
             --publicurl http://$CONTROLLER:5000/v2.0 \
             --internalurl http://$CONTROLLER:5000/v2.0 \
-            --adminurl http://$CONTROLLER:35357/v2.0 \
+            --adminurl http://$CONTROLLER:${KADMINPORT}/v2.0 \
             --region $REGION
     else
 	__openstack service create \
@@ -563,7 +563,7 @@ EOF
 	    __openstack endpoint create \
 		--publicurl http://${CONTROLLER}:5000/${KAPISTR} \
 		--internalurl http://${CONTROLLER}:5000/${KAPISTR} \
-		--adminurl http://${CONTROLLER}:35357/${KAPISTR} \
+		--adminurl http://${CONTROLLER}:${KADMINPORT}/${KAPISTR} \
 		--region $REGION identity
 	else
 	    __openstack endpoint create --region $REGION \
@@ -571,7 +571,7 @@ EOF
 	    __openstack endpoint create --region $REGION \
 		identity internal http://${CONTROLLER}:5000/${KAPISTR}
 	    __openstack endpoint create --region $REGION \
-		identity admin http://${CONTROLLER}:35357/${KAPISTR}
+		identity admin http://${CONTROLLER}:${KADMINPORT}/${KAPISTR}
 	fi
     fi
 
@@ -657,12 +657,12 @@ fi
 echo "export OS_TENANT_NAME=admin" > $OURDIR/admin-openrc-oldcli.sh
 echo "export OS_USERNAME=${ADMIN_API}" >> $OURDIR/admin-openrc-oldcli.sh
 echo "export OS_PASSWORD=${ADMIN_API_PASS}" >> $OURDIR/admin-openrc-oldcli.sh
-echo "export OS_AUTH_URL=http://$CONTROLLER:35357/v2.0" >> $OURDIR/admin-openrc-oldcli.sh
+echo "export OS_AUTH_URL=http://$CONTROLLER:${KADMINPORT}/v2.0" >> $OURDIR/admin-openrc-oldcli.sh
 
 echo "OS_TENANT_NAME=\"admin\"" > $OURDIR/admin-openrc-oldcli.py
 echo "OS_USERNAME=\"${ADMIN_API}\"" >> $OURDIR/admin-openrc-oldcli.py
 echo "OS_PASSWORD=\"${ADMIN_API_PASS}\"" >> $OURDIR/admin-openrc-oldcli.py
-echo "OS_AUTH_URL=\"http://$CONTROLLER:35357/v2.0\"" >> $OURDIR/admin-openrc-oldcli.py
+echo "OS_AUTH_URL=\"http://$CONTROLLER:${KADMINPORT}/v2.0\"" >> $OURDIR/admin-openrc-oldcli.py
 if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
     echo "OS_IDENTITY_API_VERSION=3" >> $OURDIR/admin-openrc-oldcli.py
 else
@@ -686,7 +686,7 @@ echo "export OS_PROJECT_NAME=admin" >> $OURDIR/admin-openrc-newcli.sh
 echo "export OS_TENANT_NAME=admin" >> $OURDIR/admin-openrc-newcli.sh
 echo "export OS_USERNAME=${ADMIN_API}" >> $OURDIR/admin-openrc-newcli.sh
 echo "export OS_PASSWORD=${ADMIN_API_PASS}" >> $OURDIR/admin-openrc-newcli.sh
-echo "export OS_AUTH_URL=http://$CONTROLLER:35357/${KAPISTR}" >> $OURDIR/admin-openrc-newcli.sh
+echo "export OS_AUTH_URL=http://$CONTROLLER:${KADMINPORT}/${KAPISTR}" >> $OURDIR/admin-openrc-newcli.sh
 if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
     echo "export OS_IDENTITY_API_VERSION=3" >> $OURDIR/admin-openrc-newcli.sh
 else
@@ -709,7 +709,7 @@ echo "OS_PROJECT_NAME=\"admin\"" >> $OURDIR/admin-openrc-newcli.py
 echo "OS_TENANT_NAME=\"admin\"" >> $OURDIR/admin-openrc-newcli.py
 echo "OS_USERNAME=\"${ADMIN_API}\"" >> $OURDIR/admin-openrc-newcli.py
 echo "OS_PASSWORD=\"${ADMIN_API_PASS}\"" >> $OURDIR/admin-openrc-newcli.py
-echo "OS_AUTH_URL=\"http://$CONTROLLER:35357/${KAPISTR}\"" >> $OURDIR/admin-openrc-newcli.py
+echo "OS_AUTH_URL=\"http://$CONTROLLER:${KADMINPORT}/${KAPISTR}\"" >> $OURDIR/admin-openrc-newcli.py
 if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
     echo "OS_IDENTITY_API_VERSION=3" >> $OURDIR/admin-openrc-newcli.py
 else
@@ -726,7 +726,7 @@ if [ $OSVERSION -eq $OSJUNO ]; then
     export OS_TENANT_NAME=admin
     export OS_USERNAME=${ADMIN_API}
     export OS_PASSWORD=${ADMIN_API_PASS}
-    export OS_AUTH_URL=http://$CONTROLLER:35357/${KAPISTR}
+    export OS_AUTH_URL=http://$CONTROLLER:${KADMINPORT}/${KAPISTR}
 
     ln -sf $OURDIR/admin-openrc-oldcli.sh $OURDIR/admin-openrc.sh
     ln -sf $OURDIR/admin-openrc-oldcli.py $OURDIR/admin-openrc.py
@@ -744,7 +744,7 @@ else
     export OS_TENANT_NAME=admin
     export OS_USERNAME=${ADMIN_API}
     export OS_PASSWORD=${ADMIN_API_PASS}
-    export OS_AUTH_URL=http://${CONTROLLER}:35357/${KAPISTR}
+    export OS_AUTH_URL=http://${CONTROLLER}:${KADMINPORT}/${KAPISTR}
     if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
 	export OS_IDENTITY_API_VERSION=3
     else
@@ -814,7 +814,7 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
-	    identity_uri http://${CONTROLLER}:35357
+	    identity_uri http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
 	    admin_tenant_name service
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
@@ -825,7 +825,7 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
-	    auth_url http://${CONTROLLER}:35357
+	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
@@ -862,7 +862,7 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
-	    identity_uri http://${CONTROLLER}:35357
+	    identity_uri http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
 	    admin_tenant_name service
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
@@ -873,7 +873,7 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
-	    auth_url http://${CONTROLLER}:35357
+	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
@@ -1054,7 +1054,7 @@ EOF
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
-	    identity_uri http://${CONTROLLER}:35357
+	    identity_uri http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
 	    admin_tenant_name service
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
@@ -1065,7 +1065,7 @@ EOF
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
-	    auth_url http://${CONTROLLER}:35357
+	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
@@ -1144,7 +1144,7 @@ EOF
 	crudini --set /etc/nova/nova.conf placement \
 	    os_region_name $REGION
 	crudini --set /etc/nova/nova.conf placement \
-	    auth_url http://${CONTROLLER}:35357/v3
+	    auth_url http://${CONTROLLER}:${KADMINPORT}/v3
 	crudini --set /etc/nova/nova.conf placement \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/nova/nova.conf placement \
@@ -1372,7 +1372,7 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
-	    identity_uri http://${CONTROLLER}:35357
+	    identity_uri http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	    admin_tenant_name service
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
@@ -1383,7 +1383,7 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
-	    auth_url http://${CONTROLLER}:35357
+	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
@@ -1413,7 +1413,7 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	service_tenant_id=`keystone tenant-get service | grep id | cut -d '|' -f 3`
 
 	crudini --set /etc/neutron/neutron.conf DEFAULT \
-	    nova_admin_auth_url http://$CONTROLLER:35357/${KAPISTR}
+	    nova_admin_auth_url http://$CONTROLLER:${KADMINPORT}/${KAPISTR}
 	crudini --set /etc/neutron/neutron.conf DEFAULT nova_region_name $REGION
 	crudini --set /etc/neutron/neutron.conf DEFAULT nova_admin_username nova
 	crudini --set /etc/neutron/neutron.conf DEFAULT \
@@ -1422,7 +1422,7 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	    nova_admin_password ${NOVA_PASS}
     else
 	crudini --set /etc/neutron/neutron.conf nova \
-	    auth_url http://$CONTROLLER:35357
+	    auth_url http://$CONTROLLER:${KADMINPORT}
 	crudini --set /etc/neutron/neutron.conf nova ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/neutron/neutron.conf nova ${PROJECT_DOMAIN_PARAM} default
 	crudini --set /etc/neutron/neutron.conf nova ${USER_DOMAIN_PARAM} default
@@ -1439,7 +1439,7 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	crudini --set /etc/neutron/neutron.conf placement \
 	    os_region_name $REGION
 	crudini --set /etc/neutron/neutron.conf placement \
-	    auth_url http://${CONTROLLER}:35357/v3
+	    auth_url http://${CONTROLLER}:${KADMINPORT}/v3
 	crudini --set /etc/neutron/neutron.conf placement \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/neutron/neutron.conf placement \
@@ -1523,10 +1523,10 @@ EOF
 	auth_strategy keystone
     if [ $OSVERSION -le $OSKILO ]; then
 	crudini --set /etc/nova/nova.conf neutron \
-	    admin_auth_url http://$CONTROLLER:35357/${KAPISTR}
+	    admin_auth_url http://$CONTROLLER:${KADMINPORT}/${KAPISTR}
     else
 	crudini --set /etc/nova/nova.conf neutron \
-	    auth_url http://$CONTROLLER:35357
+	    auth_url http://$CONTROLLER:${KADMINPORT}
     fi
     if [ $OSVERSION -lt $OSMITAKA ]; then
 	crudini --set /etc/nova/nova.conf neutron \
@@ -1986,7 +1986,7 @@ if [ -z "${CINDER_DBPASS}" ]; then
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
-	    identity_uri http://${CONTROLLER}:35357
+	    identity_uri http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	    admin_tenant_name service
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
@@ -1997,7 +1997,7 @@ if [ -z "${CINDER_DBPASS}" ]; then
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
-	    auth_url http://${CONTROLLER}:35357
+	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
@@ -2156,7 +2156,7 @@ if [ $OSVERSION -ge $OSMITAKA -a -z "${MANILA_DBPASS}" ]; then
     crudini --set /etc/manila/manila.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/manila/manila.conf keystone_authtoken \
-	auth_url http://${CONTROLLER}:35357
+	auth_url http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/manila/manila.conf keystone_authtoken \
 	${AUTH_TYPE_PARAM} password
     crudini --set /etc/manila/manila.conf keystone_authtoken \
@@ -2371,7 +2371,7 @@ if [ -z "${SWIFT_PASS}" ]; then
 	crudini --set /etc/swift/proxy-server.conf \
 	    auth_uri "http://${CONTROLLER}:5000/${KAPISTR}"
 	crudini --set /etc/swift/proxy-server.conf \
-	    filter:authtoken identity_url "http://${CONTROLLER}:35357"
+	    filter:authtoken identity_url "http://${CONTROLLER}:${KADMINPORT}"
 	crudini --set /etc/swift/proxy-server.conf \
 	    filter:authtoken admin_tenant_name service
 	crudini --set /etc/swift/proxy-server.conf \
@@ -2382,7 +2382,7 @@ if [ -z "${SWIFT_PASS}" ]; then
 	crudini --set /etc/swift/proxy-server.conf \
 	    filter:authtoken auth_uri "http://${CONTROLLER}:5000"
 	crudini --set /etc/swift/proxy-server.conf \
-	    filter:authtoken auth_url "http://${CONTROLLER}:35357"
+	    filter:authtoken auth_url "http://${CONTROLLER}:${KADMINPORT}"
 	crudini --set /etc/swift/proxy-server.conf \
 	    filter:authtoken ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/swift/proxy-server.conf \
@@ -2633,7 +2633,7 @@ if [ -z "${HEAT_DBPASS}" ]; then
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
-	    identity_uri http://${CONTROLLER}:35357
+	    identity_uri http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
 	    admin_tenant_name service
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
@@ -2644,7 +2644,7 @@ if [ -z "${HEAT_DBPASS}" ]; then
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
-	    auth_url http://${CONTROLLER}:35357
+	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
@@ -2672,7 +2672,7 @@ if [ -z "${HEAT_DBPASS}" ]; then
     fi
     if [ $OSVERSION -ge $OSLIBERTY ]; then
 	crudini --set /etc/heat/heat.conf trustee \
-	    auth_url http://${CONTROLLER}:35357
+	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/heat/heat.conf trustee \
 	    username heat
 	crudini --set /etc/heat/heat.conf trustee \
@@ -2910,7 +2910,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	        auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-		identity_uri http://${CONTROLLER}:35357
+		identity_uri http://${CONTROLLER}:${KADMINPORT}
 	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 		admin_tenant_name service
 	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
@@ -2921,7 +2921,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	        auth_uri http://${CONTROLLER}:5000
 	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	        auth_url http://${CONTROLLER}:35357
+	        auth_url http://${CONTROLLER}:${KADMINPORT}
 	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	        ${AUTH_TYPE_PARAM} password
 	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
@@ -3036,7 +3036,7 @@ EOF
 	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
-	    auth_url http://${CONTROLLER}:35357
+	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
@@ -3724,7 +3724,7 @@ EOF
 	cat <<EOF >> /etc/trove/api-paste.ini
 [filter:authtoken]
 auth_uri = http://${CONTROLLER}:5000/${KAPISTR}
-identity_uri = http://${CONTROLLER}:35357
+identity_uri = http://${CONTROLLER}:${KADMINPORT}
 admin_user = trove
 admin_password = ${TROVE_PASS}
 admin_tenant_name = service
@@ -3734,7 +3734,7 @@ EOF
 	crudini --set /etc/trove/trove.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/trove/trove.conf keystone_authtoken \
-	    auth_url http://${CONTROLLER}:35357
+	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/trove/trove.conf keystone_authtoken \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/trove/trove.conf keystone_authtoken \
@@ -3926,7 +3926,7 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
-	    identity_uri http://${CONTROLLER}:35357
+	    identity_uri http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    admin_tenant_name service
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
@@ -3937,7 +3937,7 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
-	    auth_url http://${CONTROLLER}:35357
+	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
@@ -4044,7 +4044,7 @@ if [ 0 = 1 -a "$OSCODENAME" = "kilo" -a -n "$BAREMETALNODES" -a -z "${IRONIC_DBP
     crudini --set /etc/ironic/ironic.conf \
 	keystone_authtoken auth_uri "http://$CONTROLLER:5000/"
     crudini --set /etc/ironic/ironic.conf \
-	keystone_authtoken identity_uri "http://$CONTROLLER:35357"
+	keystone_authtoken identity_uri "http://$CONTROLLER:${KADMINPORT}"
     crudini --set /etc/ironic/ironic.conf \
 	keystone_authtoken admin_user ironic
     crudini --set /etc/ironic/ironic.conf \
@@ -4196,7 +4196,7 @@ EOF
     crudini --set /etc/designate/designate.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/designate/designate.conf keystone_authtoken \
-	auth_url http://${CONTROLLER}:35357
+	auth_url http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/designate/designate.conf keystone_authtoken \
 	${AUTH_TYPE_PARAM} password
     crudini --set /etc/designate/designate.conf keystone_authtoken \
@@ -4301,7 +4301,7 @@ EOF
     crudini --set /etc/neutron/neutron.conf designate \
 	url http://${CONTROLLER}:9001/v2
     crudini --set /etc/neutron/neutron.conf designate \
-        auth_url http://$CONTROLLER:35357
+        auth_url http://$CONTROLLER:${KADMINPORT}
     crudini --set /etc/neutron/neutron.conf designate \
 	allow_reverse_dns_lookup True
     crudini --set /etc/neutron/neutron.conf designate \

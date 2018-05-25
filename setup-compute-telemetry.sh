@@ -73,7 +73,7 @@ if [ $OSVERSION -lt $OSKILO ]; then
     crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000/${KAPISTR}
     crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	identity_uri http://${CONTROLLER}:35357
+	identity_uri http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	admin_tenant_name service
     crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
@@ -84,7 +84,7 @@ else
     crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	auth_url http://${CONTROLLER}:35357
+	auth_url http://${CONTROLLER}:${KADMINPORT}
     if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
 	crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	    memcached_servers ${CONTROLLER}:11211

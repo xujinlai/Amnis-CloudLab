@@ -387,6 +387,17 @@ else
 fi
 
 #
+# See which keystone port has the admin capabilities.  This changed in
+# Queens to fully drop 35357 because it's now irrelevant and not
+# configured by default.
+#
+if [ $OSRELEASE -ge $OSQUEENS ]; then
+    KADMINPORT=5000
+else
+    KADMINPORT=35357
+fi
+
+#
 # Figure out if we got told to use keystone v2 or v3, or what our
 # default should be if not.
 #

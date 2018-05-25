@@ -81,7 +81,7 @@ if [ $OSVERSION -lt $OSKILO ]; then
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000/${KAPISTR}
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
-	identity_uri http://${CONTROLLER}:35357
+	identity_uri http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	admin_tenant_name service
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
@@ -92,7 +92,7 @@ else
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
-	auth_url http://${CONTROLLER}:35357
+	auth_url http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	${AUTH_TYPE_PARAM} password
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
@@ -121,7 +121,7 @@ if [ $OSVERSION -lt $OSKILO ]; then
     crudini --set /etc/neutron/neutron.conf nova \
 	auth_uri http://${CONTROLLER}:5000/${KAPISTR}
     crudini --set /etc/neutron/neutron.conf nova \
-	identity_uri http://${CONTROLLER}:35357
+	identity_uri http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/neutron/neutron.conf nova \
 	admin_tenant_name service
     crudini --set /etc/neutron/neutron.conf nova \
@@ -132,7 +132,7 @@ else
     crudini --set /etc/neutron/neutron.conf nova \
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/neutron/neutron.conf nova \
-	auth_url http://${CONTROLLER}:35357
+	auth_url http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/neutron/neutron.conf nova \
 	${AUTH_TYPE_PARAM} password
     crudini --set /etc/neutron/neutron.conf nova \
@@ -154,7 +154,7 @@ if [ $OSVERSION -ge $OSOCATA ]; then
     crudini --set /etc/neutron/neutron.conf placement \
 	os_region_name $REGION
     crudini --set /etc/neutron/neutron.conf placement \
-	auth_url http://${CONTROLLER}:35357/v3
+	auth_url http://${CONTROLLER}:${KADMINPORT}/v3
     crudini --set /etc/neutron/neutron.conf placement \
 	${AUTH_TYPE_PARAM} password
     crudini --set /etc/neutron/neutron.conf placement \

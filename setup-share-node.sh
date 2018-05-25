@@ -73,7 +73,7 @@ crudini --set /etc/manila/manila.conf keystone_authtoken \
 crudini --set /etc/manila/manila.conf keystone_authtoken \
     auth_uri http://${CONTROLLER}:5000
 crudini --set /etc/manila/manila.conf keystone_authtoken \
-    auth_url http://${CONTROLLER}:35357
+    auth_url http://${CONTROLLER}:${KADMINPORT}
 crudini --set /etc/manila/manila.conf keystone_authtoken \
     ${AUTH_TYPE_PARAM} password
 crudini --set /etc/manila/manila.conf keystone_authtoken \
@@ -214,7 +214,7 @@ else
     crudini --set /etc/manila/manila.conf nova \
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/manila/manila.conf nova \
-	auth_url http://${CONTROLLER}:35357
+	auth_url http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/manila/manila.conf nova \
 	auth_type password
     crudini --set /etc/manila/manila.conf nova \
@@ -235,7 +235,7 @@ else
     crudini --set /etc/manila/manila.conf cinder \
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/manila/manila.conf cinder \
-	auth_url http://${CONTROLLER}:35357
+	auth_url http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/manila/manila.conf cinder \
 	auth_type password
     crudini --set /etc/manila/manila.conf cinder \
@@ -258,7 +258,7 @@ else
     crudini --set /etc/manila/manila.conf neutron \
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/manila/manila.conf neutron \
-	auth_url http://${CONTROLLER}:35357
+	auth_url http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/manila/manila.conf neutron \
 	auth_type password
     crudini --set /etc/manila/manila.conf neutron \

@@ -119,7 +119,7 @@ else
     crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
-	auth_url http://${CONTROLLER}:35357/v2.0
+	auth_url http://${CONTROLLER}:${KADMINPORT}/v2.0
     crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
 	auth_region $REGION
     crudini --set /etc/neutron/metadata_agent.ini DEFAULT \

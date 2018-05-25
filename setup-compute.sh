@@ -128,7 +128,7 @@ if [ $OSVERSION -lt $OSKILO ]; then
     crudini --set /etc/nova/nova.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000/v2.0
     crudini --set /etc/nova/nova.conf keystone_authtoken \
-	identity_uri http://${CONTROLLER}:35357
+	identity_uri http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/nova/nova.conf keystone_authtoken \
 	admin_tenant_name service
     crudini --set /etc/nova/nova.conf keystone_authtoken \
@@ -139,7 +139,7 @@ else
     crudini --set /etc/nova/nova.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/nova/nova.conf keystone_authtoken \
-	auth_url http://${CONTROLLER}:35357
+	auth_url http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/nova/nova.conf keystone_authtoken \
 	${AUTH_TYPE_PARAM} password
     crudini --set /etc/nova/nova.conf keystone_authtoken \
@@ -168,7 +168,7 @@ if [ $OSVERSION -ge $OSOCATA ]; then
     crudini --set /etc/nova/nova.conf placement \
 	os_region_name $REGION
     crudini --set /etc/nova/nova.conf placement \
-	auth_url http://${CONTROLLER}:35357/v3
+	auth_url http://${CONTROLLER}:${KADMINPORT}/v3
     crudini --set /etc/nova/nova.conf placement \
 	${AUTH_TYPE_PARAM} password
     crudini --set /etc/nova/nova.conf placement \
