@@ -371,7 +371,9 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
 	fi
 
 	if [ $KEYSTONEUSEMEMCACHE -eq 1 ]; then
-	    crudini --set /etc/keystone/keystone.conf token driver 'memcache'
+	    if [ $OSRELEASE -lt $OSQUEENS ]; then
+		crudini --set /etc/keystone/keystone.conf token driver 'memcache'
+	    fi
 	    crudini --set /etc/keystone/keystone.conf cache \
 	        backend dogpile.cache.memcached
 	    crudini --set /etc/keystone/keystone.conf cache \
