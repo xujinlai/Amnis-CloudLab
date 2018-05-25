@@ -76,6 +76,7 @@ PSCP='/usr/bin/parallel-scp -t 0 -O StrictHostKeyChecking=no '
 # Setup mail to users
 #
 maybe_install_packages dma
+maybe_install_packages mailutils
 echo "$PFQDN" > /etc/mailname
 sleep 2
 echo "Your OpenStack instance is setting up on `hostname` ." \
