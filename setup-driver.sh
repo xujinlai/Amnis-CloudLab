@@ -59,7 +59,11 @@ if [ "$HOSTNAME" = "$NETWORKMANAGER" ]; then
     # up (i.e. neutron-ovs-cleanup; see setup-ovs-node.sh).
     echo $MYIP `hostname` >> /etc/hosts.tmp
     cp -p /etc/hosts $OURDIR/hosts.orig
-    cat $OURDIR/hosts.orig >> /etc/hosts.tmp
+    cp -p /etc/hosts $OURDIR/hosts.stripped
+    for node in $NODES ; do
+	sed -i -e "s/[ ]$node\$//g" $OURDIR/hosts.stripped
+    done
+    cat $OURDIR/hosts.stripped >> /etc/hosts.tmp
     mv /etc/hosts.tmp /etc/hosts
     for node in $NODES 
     do
@@ -75,10 +79,10 @@ if [ "$HOSTNAME" = "$NETWORKMANAGER" ]; then
 	    #$OURDIR/data-hosts $OURDIR/data-netmask \
 	    #$fqdn:$OURDIR
 	scp -p -o StrictHostKeyChecking=no \
-	    $OURDIR/mgmt-hosts $fqdn:$OURDIR
+	    $OURDIR/mgmt-hosts $OURDIR/hosts.stripped $fqdn:$OURDIR
 	# For now, just insert the new hosts in front of the existing ones.
 	# setup-{ovs,linuxbridge}-node.sh may do differently.
-	$SSH $fqdn "cp -p /etc/hosts $OURDIR/hosts.orig ; cat $OURDIR/mgmt-hosts > /etc/hosts.tmp ; cat $OURDIR/hosts.orig >> /etc/hosts.tmp ; mv /etc/hosts.tmp /etc/hosts"
+	$SSH $fqdn "cp -p /etc/hosts $OURDIR/hosts.orig ; cat $OURDIR/mgmt-hosts > /etc/hosts.tmp ; cat $OURDIR/hosts.stripped >> /etc/hosts.tmp ; mv /etc/hosts.tmp /etc/hosts"
     done
 
     echo "*** Setting up the Management Network"
