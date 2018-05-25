@@ -77,13 +77,10 @@ if [ ! -f $OURDIR/vpn-server-done ]; then
     # Handle the case on Ubuntu18 where easy-rsa is broken for openssl 1.1.0
     # (https://github.com/OpenVPN/easy-rsa/issues/159)
     openssl version | grep -iq '^openssl 1\.1\.'
-    if [ $? -eq 0 -a -e ./whichopensslcnf ]; then
-	cnffile=`./whichopensslcnf .`
-	if [ -n "$cnffile" -a ! -e $cnffile -a -e openssl-1.0.0.cnf ]; then
-	    cp -p openssl-1.0.0.cnf $cnffile
-	    export KEY_CONFIG="$cnffile"
-	    echo '# For use with easy-rsa version 2.x and OpenSSL 1.1.0*' >> $cnffile
-	fi
+    if [ $? -eq 0 -a -n "$KEY_CONFIG" -a ! -e $KEY_CONFIG -a -e openssl-1.0.0.cnf ]; then
+	    cp -p openssl-1.0.0.cnf $KEY_CONFIG
+	    echo '# For use with easy-rsa version 2.x and OpenSSL 1.1.0*' >> $KEY_CONFIG
+	    echo '# For use with easy-rsa version 2.0 and OpenSSL 1.1.0*' >> $KEY_CONFIG
     fi
 
     # Fixup the openssl.cnf files
