@@ -319,7 +319,7 @@ EOF
     logtend "memcache"
 fi
 
-if [ $OSRELEASE -ge $OSQUEENS -a -z "${ETCD_DONE}" ]; then
+if [ $OSVERSION -ge $OSQUEENS -a -z "${ETCD_DONE}" ]; then
     logtstart "etcd"
     maybe_install_packages etcd etcd-server etcd-client
     mkdir -p /etc/etcd
@@ -396,7 +396,7 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
 	fi
 
 	if [ $KEYSTONEUSEMEMCACHE -eq 1 ]; then
-	    if [ $OSRELEASE -lt $OSQUEENS ]; then
+	    if [ $OSVERSION -lt $OSQUEENS ]; then
 		crudini --set /etc/keystone/keystone.conf token driver 'memcache'
 	    fi
 	    crudini --set /etc/keystone/keystone.conf cache \

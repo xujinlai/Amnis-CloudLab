@@ -391,7 +391,7 @@ fi
 # Queens to fully drop 35357 because it's now irrelevant and not
 # configured by default.
 #
-if [ $OSRELEASE -ge $OSQUEENS ]; then
+if [ $OSVERSION -ge $OSQUEENS ]; then
     KADMINPORT=5000
 else
     KADMINPORT=35357
