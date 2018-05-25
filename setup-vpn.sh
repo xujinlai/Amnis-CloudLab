@@ -74,6 +74,15 @@ mkdir -p $KEY_DIR
 cd $EASY_RSA
 
 if [ ! -f $OURDIR/vpn-server-done ]; then
+    # Handle the case on Ubuntu18 where easy-rsa is broken for openssl 1.1.0
+    # (https://github.com/OpenVPN/easy-rsa/issues/159)
+    openssl version | grep -iq '^openssl 1\.1\.'
+    if [ $? -eq 0 -a -e ./whichopensslcnf ]; then
+	cnffile=`./whichopensslcnf .`
+	if [ -n "$cnffile" -a ! -e $cnffile -e openssl-1.0.0.cnf ]; then
+	    cp -p openssl-1.0.0.cnf $cnffile
+	fi
+    fi
 
     # Fixup the openssl.cnf files
     for file in `ls -1 /etc/openvpn/easy-rsa/openssl*.cnf | xargs` ; do
