@@ -82,6 +82,7 @@ if [ ! -f $OURDIR/vpn-server-done ]; then
 	if [ -n "$cnffile" -a ! -e $cnffile -a -e openssl-1.0.0.cnf ]; then
 	    cp -p openssl-1.0.0.cnf $cnffile
 	    export KEY_CONFIG="$cnffile"
+	    echo '# For use with easy-rsa version 2.x and OpenSSL 1.1.0*' >> $cnffile
 	fi
     fi
 
