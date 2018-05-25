@@ -319,6 +319,31 @@ EOF
     logtend "memcache"
 fi
 
+if [ $OSRELEASE -ge $OSQUEENS -a -z "${ETCD_DONE}" ]; then
+    logtstart "etcd"
+    maybe_install_packages etcd etcd-server etcd-client
+    mkdir -p /etc/etcd
+    cat <<EOF >> /etc/etcd/etcd.conf.yaml
+name: ${CONTROLLER}
+data-dir: /var/lib/etcd
+initial-cluster-state: 'new'
+initial-cluster-token: 'etcd-cluster-01'
+initial-cluster: ${CONTROLLER}=http://${MGMTIP}:2380
+initial-advertise-peer-urls: http://${MGMTIP}:2380
+advertise-client-urls: http://${MGMTIP}:2379
+listen-peer-urls: http://0.0.0.0:2380
+listen-client-urls: http://${MGMTIP}:2379
+EOF
+    chown -R etcd:etcd /etc/etcd
+    chmod 750 /etc/etcd
+
+    service_enable etcd
+    service_restart etcd
+
+    echo "ETCD_DONE=1" >> $SETTINGS
+    logtend "etcd"
+fi
+
 #
 # Install the Identity Service
 #
