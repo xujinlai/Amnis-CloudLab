@@ -294,11 +294,23 @@ EOF
 
     if [ ${HAVE_SYSTEMD} -eq 1 ]; then
 	mkdir /etc/systemd/system/memcached.service.d
-	cat <<EOF >/etc/systemd/system/memcached.service.d/local-ifup.conf
+	systemctl list-units | grep -q networking\.service
+	if [ $? -eq 0 ]; then
+	    cat <<EOF >/etc/systemd/system/memcached.service.d/local-ifup.conf
 [Unit]
 Requires=networking.service
 After=networking.service
 EOF
+	else
+	    systemctl list-units | grep -q network-online\.target
+	    if [ $? -eq 0 ]; then
+		cat <<EOF >/etc/systemd/system/memcached.service.d/local-ifup.conf
+[Unit]
+Requires=network-online.target
+After=network-online.target
+EOF
+	    fi
+	fi
     fi
     service_restart memcached
     service_enable memcached
