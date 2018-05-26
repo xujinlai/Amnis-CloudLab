@@ -2629,6 +2629,9 @@ if [ -z "${HEAT_DBPASS}" ]; then
     fi
 
     maybe_install_packages heat-api heat-api-cfn heat-engine python-heatclient
+    if [ $OSVERSION -ge $OSQUEENS ]; then
+	maybe_install_packages python-heat-dashboard
+    fi
 
     crudini --set /etc/heat/heat.conf database \
 	connection "${DBDSTRING}://heat:${HEAT_DBPASS}@$CONTROLLER/heat"
