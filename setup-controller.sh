@@ -4258,8 +4258,6 @@ EOF
     crudini --set /etc/designate/designate.conf keystone_authtoken \
 	memcached_servers ${CONTROLLER}:11211
 
-    crudini --set /etc/designate/designate.conf 
-
     su -s /bin/sh -c "designate-manage database sync" designate
 
     service_restart designate-central
