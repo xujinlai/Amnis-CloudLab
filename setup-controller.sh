@@ -3264,6 +3264,7 @@ if [ $OSVERSION -ge $OSPIKE -a -z "${TELEMETRY_GRAFANA_DONE}" ]; then
     crudini --set /etc/grafana/grafana.ini security admin_user admin
     crudini --set /etc/grafana/grafana.ini security admin_password "${GPASSWD}"
 
+    chown -R grafana:grafana /var/lib/grafana/grafana.db
     service_enable grafana-server
     service_restart grafana-server
     # Try an initial password reset to force the DB schema to be populated;
@@ -3282,7 +3283,7 @@ if [ $OSVERSION -ge $OSPIKE -a -z "${TELEMETRY_GRAFANA_DONE}" ]; then
     echo "select id from org where id=1" \
 	| sqlite3 /var/lib/grafana/grafana.db  | grep -q 1
     if [ ! $? -eq 0 ]; then
-	echo "replace into 'org' (id,version,name,created,updated) values (1,1,'default',datetime('now'),datetime('now'));" \
+	echo "replace into org (id,version,name,created,updated) values (1,1,'default',datetime('now'),datetime('now'));" \
 	     sqlite3 /var/lib/grafana/grafana.db
     fi
     echo "select login from user where login='admin'" \
@@ -3297,6 +3298,7 @@ if [ $OSVERSION -ge $OSPIKE -a -z "${TELEMETRY_GRAFANA_DONE}" ]; then
 
     # Install the gnocchi plugin
     grafana-cli plugins install gnocchixyz-gnocchi-datasource
+    chown -R grafana:grafana /var/lib/grafana/grafana.db
     service_restart grafana-server
 
     # Add the token-based datasource
