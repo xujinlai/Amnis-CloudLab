@@ -3239,8 +3239,13 @@ fi
 if [ $OSVERSION -ge $OSPIKE -a -z "${TELEMETRY_GRAFANA_DONE}" ]; then
     logtstart "grafana"
 
-    echo deb https://packagecloud.io/grafana/stable/debian/ jessie main \
-        >> /etc/apt/sources.list.d/grafana.list
+    if [ $OSVERSION -ge $OSQUEENS ]; then
+	echo deb https://packagecloud.io/grafana/stable/debian/ stretch main \
+             >> /etc/apt/sources.list.d/grafana.list
+    else
+	echo deb https://packagecloud.io/grafana/stable/debian/ jessie main \
+             >> /etc/apt/sources.list.d/grafana.list
+    fi
     curl https://packagecloud.io/gpg.key | sudo apt-key add -
     apt-get update
 
@@ -3251,6 +3256,14 @@ if [ $OSVERSION -ge $OSPIKE -a -z "${TELEMETRY_GRAFANA_DONE}" ]; then
     # run at least this so it can find the real database.
     crudini --set /etc/grafana/grafana.ini paths data /var/lib/grafana
 
+    if [ "x${ADMIN_PASS}" = "x" ]; then
+	GPASSWD=`cat /root/setup/decrypted_admin_pass`
+    else
+	GPASSWD="${ADMIN_PASS}"
+    fi
+    crudini --set /etc/grafana/grafana.ini security admin_user admin
+    crudini --set /etc/grafana/grafana.ini security admin_password "${GPASSWD}"
+
     service_enable grafana-server
     service_restart grafana-server
 
@@ -3260,15 +3273,14 @@ if [ $OSVERSION -ge $OSPIKE -a -z "${TELEMETRY_GRAFANA_DONE}" ]; then
     # values, then change the password to the one shown to our user in
     # the portal UI, same as for OpenStack.
     #
-    if [ "x${ADMIN_PASS}" = "x" ]; then
-	GPASSWD=`cat /root/setup/decrypted_admin_pass`
-    else
-	GPASSWD="${ADMIN_PASS}"
+    echo "select login from user where login='admin'" \
+	| sqlite3 /var/lib/grafana/grafana.db  | grep -q admin
+    if [ ! $? -eq 0 ]; then
+	echo "REPLACE INTO \"user\" VALUES(1,0,'admin','admin@localhost','','38d481956ebbb14985a42acd18859630008cf879076492971a80d7d782a5e8149f87b19f706fc8c98a7329ee4e67c6802f11','knT2WLp6iP','WzhsbIERTc','',1,1,0,'',datetime('now'),datetime('now'),1,datetime('now'));" | sqlite3 /var/lib/grafana/grafana.db
     fi
-    echo "REPLACE INTO \"user\" VALUES(1,0,'admin','admin@localhost','','38d481956ebbb14985a42acd18859630008cf879076492971a80d7d782a5e8149f87b19f706fc8c98a7329ee4e67c6802f11','knT2WLp6iP','WzhsbIERTc','',1,1,0,'',datetime('now'),datetime('now'),1,datetime('now'));" | sqlite3 /var/lib/grafana/grafana.db
     grafana-cli admin reset-admin-password \
         --config /etc/grafana/grafana.ini --homepath /usr/share/grafana \
-	$GPASSWD
+	"$GPASSWD"
 
     # Install the gnocchi plugin
     grafana-cli plugins install gnocchixyz-gnocchi-datasource
