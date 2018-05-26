@@ -3279,10 +3279,17 @@ if [ $OSVERSION -ge $OSPIKE -a -z "${TELEMETRY_GRAFANA_DONE}" ]; then
     # values, then change the password to the one shown to our user in
     # the portal UI, same as for OpenStack.
     #
+    echo "select id from org where id=1" \
+	| sqlite3 /var/lib/grafana/grafana.db  | grep -q 1
+    if [ ! $? -eq 0 ]; then
+	echo "replace into 'org' (id,version,name,created,updated) values (1,1,'default',datetime('now'),datetime('now'));" \
+	     sqlite3 /var/lib/grafana/grafana.db
+    fi
     echo "select login from user where login='admin'" \
 	| sqlite3 /var/lib/grafana/grafana.db  | grep -q admin
     if [ ! $? -eq 0 ]; then
-	echo "REPLACE INTO \"user\" VALUES(1,0,'admin','admin@localhost','','38d481956ebbb14985a42acd18859630008cf879076492971a80d7d782a5e8149f87b19f706fc8c98a7329ee4e67c6802f11','knT2WLp6iP','WzhsbIERTc','',1,1,0,'',datetime('now'),datetime('now'),1,datetime('now'));" | sqlite3 /var/lib/grafana/grafana.db
+	echo "REPLACE INTO \"user\" VALUES(1,0,'admin','admin@localhost','','38d481956ebbb14985a42acd18859630008cf879076492971a80d7d782a5e8149f87b19f706fc8c98a7329ee4e67c6802f11','knT2WLp6iP','WzhsbIERTc',1,1,1,0,'',datetime('now'),datetime('now'),1,datetime('now'));" | sqlite3 /var/lib/grafana/grafana.db
+	echo "replace into org_user values (1,1,1,'Admin',datetime('now'),datetime('now'));" | sqlite3 /var/lib/grafana/grafana.db
     fi
     grafana-cli admin reset-admin-password \
         --config /etc/grafana/grafana.ini --homepath /usr/share/grafana \
