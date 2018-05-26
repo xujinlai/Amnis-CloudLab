@@ -3113,8 +3113,6 @@ EOF
 	gnocchi-upgrade
 	if [ $OSVERSION -lt $OSQUEENS ]; then
 	    ceilometer-upgrade --debug --skip-metering-database
-	else
-	    ceilometer-upgrade --debug
 	fi
     fi
 
@@ -3307,8 +3305,6 @@ EOF
 
     if [ $OSVERSION -lt $OSQUEENS ]; then
 	ceilometer-upgrade --debug --skip-metering-database
-    else
-	ceilometer-upgrade --debug
     fi
 
     # Finally, dump a simple default dashboard into place.
