@@ -3266,6 +3266,12 @@ if [ $OSVERSION -ge $OSPIKE -a -z "${TELEMETRY_GRAFANA_DONE}" ]; then
 
     service_enable grafana-server
     service_restart grafana-server
+    # Try an initial password reset to force the DB schema to be populated;
+    # apparently just starting grafana-server doesn't do that.
+    grafana-cli admin reset-admin-password \
+        --config /etc/grafana/grafana.ini --homepath /usr/share/grafana \
+	"$GPASSWD"
+    service_restart grafana-server
 
     #
     # Create the admin user and change its password.  Doesn't seem to be
