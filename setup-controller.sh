@@ -3111,7 +3111,11 @@ EOF
 	chmod -R 770 /var/lib/gnocchi
 
 	gnocchi-upgrade
-	ceilometer-upgrade --skip-metering-database
+	if [ $OSVERSION -lt $OSQUEENS ]; then
+	    ceilometer-upgrade --debug --skip-metering-database
+	else
+	    ceilometer-upgrade --debug
+	fi
     fi
 
     #
@@ -3300,7 +3304,11 @@ EOF
     service_enable grafana-gnocchi-openstack-token-renewer
     service_restart grafana-gnocchi-openstack-token-renewer
 
-    ceilometer-upgrade --debug --skip-metering-database
+    if [ $OSVERSION -lt $OSQUEENS ]; then
+	ceilometer-upgrade --debug --skip-metering-database
+    else
+	ceilometer-upgrade --debug
+    fi
 
     # Finally, dump a simple default dashboard into place.
     AUTHSTR=`echo "import base64; import sys; sys.stdout.write(base64.b64encode('admin:$GPASSWD'));" | python`
