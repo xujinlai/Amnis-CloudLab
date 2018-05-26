@@ -3247,6 +3247,7 @@ if [ $OSVERSION -ge $OSPIKE -a -z "${TELEMETRY_GRAFANA_DONE}" ]; then
     apt-get update
 
     $APTGETINSTALL grafana
+    maybe_install_packages sqlite3
     systemctl daemon-reload
     # grafana-cli doesn't have sane defaults that match the config, so
     # run at least this so it can find the real database.
