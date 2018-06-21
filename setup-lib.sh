@@ -372,6 +372,7 @@ else
     OSCODENAME="juno"
     OSVERSION=$OSJUNO
 fi
+DISTRIB_MAJOR=`echo $DISTRIB_RELEASE | cut -d. -f1`
 
 #
 # Default memcached fully on for Mitaka or greater.  Too slow without it.
@@ -1150,6 +1151,7 @@ if [ ! -e $OURDIR/info.mgmt ]; then
 	    MGMTMAC=`cat ${BOOTDIR}/tmcc/ifconfig | sed -n -e "s/^.* VMAC=\([0-9a-f:\.]*\) .* LAN=${MGMTLAN}.*\$/\1/p"`
 	    MGMT_NETWORK_INTERFACE=`/usr/local/etc/emulab/findif -m $MGMTMAC`
 	    MGMTVLANDEV=`ip link show ${MGMT_NETWORK_INTERFACE} | sed -n -e "s/^.*${MGMT_NETWORK_INTERFACE}\@\([0-9a-zA-Z_]*\): .*\$/\1/p"`
+	    MGMTVLANTAG=`cat ${BOOTDIR}/tmcc/ifconfig | sed -n -e "s/^.* LAN=${MGMTLAN} VTAG=\([0-9]*\).*\$/\1/p"`
 	else
 	    MGMTVLAN=0
 	    MGMTMAC=`cat ${BOOTDIR}/tmcc/ifconfig | sed -n -e "s/.* MAC=\([0-9a-f:\.]*\) .* LAN=${MGMTLAN}/\1/p"`
@@ -1164,6 +1166,7 @@ if [ ! -e $OURDIR/info.mgmt ]; then
     echo "MGMTMAC='$MGMTMAC'" >> $OURDIR/info.mgmt
     echo "MGMT_NETWORK_INTERFACE='$MGMT_NETWORK_INTERFACE'" >> $OURDIR/info.mgmt
     echo "MGMTVLANDEV='$MGMTVLANDEV'" >> $OURDIR/info.mgmt
+    echo "MGMTVLANTAG='$MGMTVLANTAG'" >> $OURDIR/info.mgmt
 else
     . $OURDIR/info.mgmt
 fi
@@ -1179,6 +1182,7 @@ for lan in $DATAFLATLANS $DATAOTHERLANS ; do
 
     DATAIP=`cat $OURDIR/data-hosts.$lan | grep -E "$NODEID$" | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
     DATANETMASK=`cat $OURDIR/data-netmask.$lan`
+    DATAPREFIX=`netmask2prefix $DATANETMASK`
     cat ${BOOTDIR}/tmcc/ifconfig | grep "IFACETYPE=vlan" | grep "${lan}"
     if [ $? = 0 ]; then
 	DATAVLAN=1
@@ -1199,6 +1203,7 @@ for lan in $DATAFLATLANS $DATAOTHERLANS ; do
     echo "DATABRIDGE=br-${lan}" >> $OURDIR/info.$lan
     echo "DATAIP=${DATAIP}" >> $OURDIR/info.$lan
     echo "DATANETMASK=${DATANETMASK}" >> $OURDIR/info.$lan
+    echo "DATAPREFIX=${DATAPREFIX}" >> $OURDIR/info.$lan
     echo "DATAVLAN=${DATAVLAN}" >> $OURDIR/info.$lan
     echo "DATAVLANTAG=${DATAVLANTAG}" >> $OURDIR/info.$lan
     echo "DATAVLANDEV=${DATAVLANDEV}" >> $OURDIR/info.$lan
