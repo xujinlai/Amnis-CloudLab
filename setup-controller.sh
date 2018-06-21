@@ -2207,6 +2207,13 @@ if [ $OSVERSION -ge $OSMITAKA -a -z "${MANILA_DBPASS}" ]; then
     __openstack flavor create manila-service-flavor \
 	--id 100 --ram 256 --disk 0 --vcpus 1
 
+    # Fix a bug in manila-api.  This isn't exactly the right fix, I'm
+    # sure, but because we default neutron port_security off, it works
+    # fine for us.
+    if [ $OSVERSION -eq $OSQUEENS ]; then
+	patch -p0 -d / < $DIRNAME/etc/manila-queens-port-security-bug.patch
+    fi
+
     service_restart manila-scheduler
     service_enable manila-scheduler
     service_restart manila-api
