@@ -2890,6 +2890,35 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    # gnocchi-api in Queens initially needs mod-wsgi-py3, which
 	    # conflicts with many other things and uninstalls them.
 	    maybe_install_packages python-gnocchi
+	    # So, the workaround for now is to install the Apache config,
+	    # which is I guess the only relevant thing in gnocchi-api.  Hm.
+	    cat <<'EOF' >/etc/apache2/conf-available/gnocchi-api.conf
+Listen 8041
+
+<VirtualHost *:8041>
+    WSGIDaemonProcess gnocchi-api processes=2 threads=10 user=gnocchi display-name=%{GROUP}
+    WSGIProcessGroup gnocchi-api
+    WSGIScriptAlias / /usr/bin/gnocchi-api
+    WSGIApplicationGroup %{GLOBAL}
+    <IfVersion >= 2.4>
+        ErrorLogFormat "%{cu}t %M"
+    </IfVersion>
+    ErrorLog /var/log/apache2/gnocchi_error.log
+    CustomLog /var/log/apache2/gnocchi_access.log combined
+
+    <Directory /usr/bin>
+        <IfVersion >= 2.4>
+            Require all granted
+        </IfVersion>
+        <IfVersion < 2.4>
+            Order allow,deny
+            Allow from all
+        </IfVersion>
+    </Directory>
+</VirtualHost>
+EOF
+	    a2enconf gnocchi-api
+	    systemctl reload apache2
 	else
 	    maybe_install_packages gnocchi-api
 	fi
