@@ -3284,7 +3284,7 @@ if [ $OSVERSION -ge $OSPIKE -a -z "${TELEMETRY_GRAFANA_DONE}" ]; then
 	| sqlite3 /var/lib/grafana/grafana.db  | grep -q 1
     if [ ! $? -eq 0 ]; then
 	echo "replace into org (id,version,name,created,updated) values (1,1,'default',datetime('now'),datetime('now'));" \
-	     sqlite3 /var/lib/grafana/grafana.db
+	     | sqlite3 /var/lib/grafana/grafana.db
     fi
     echo "select login from user where login='admin'" \
 	| sqlite3 /var/lib/grafana/grafana.db  | grep -q admin
