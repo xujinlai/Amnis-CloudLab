@@ -3139,9 +3139,12 @@ EOF
 	usermod -a -G gnocchi ceilometer
 	chmod -R 770 /var/lib/gnocchi
 
-	gnocchi-upgrade
 	if [ $OSVERSION -lt $OSQUEENS ]; then
+	    gnocchi-upgrade
 	    ceilometer-upgrade --debug --skip-metering-database
+	else
+	    ceilometer-upgrade --debug
+	    gnocchi-upgrade --config-file=/etc/gnocchi/gnocchi.conf
 	fi
     fi
 
