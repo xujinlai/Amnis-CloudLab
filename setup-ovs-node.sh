@@ -274,7 +274,8 @@ Kind=vlan
 [VLAN]
 Id=$MGMTVLANTAG
 EOF
-	    cat <<EOF >/etc/systemd/network/${MGMTVLANDEV}.network
+	    if [ ! -e /etc/systemd/network/${MGMTVLANDEV}.network ]; then
+		cat <<EOF >/etc/systemd/network/${MGMTVLANDEV}.network
 [Match]
 Name=${MGMTVLANDEV}
 
@@ -282,6 +283,11 @@ Name=${MGMTVLANDEV}
 DHCP=no
 VLAN=${MGMT_NETWORK_INTERFACE}
 EOF
+	    else
+		cat <<EOF >>/etc/systemd/network/${MGMTVLANDEV}.network
+VLAN=${MGMT_NETWORK_INTERFACE}
+EOF
+	    fi
 	fi
     fi
 fi
@@ -354,7 +360,8 @@ Kind=vlan
 [VLAN]
 Id=$DATAVLANTAG
 EOF
-	    cat <<EOF >/etc/systemd/network/${DATAVLANDEV}.network
+	    if [ ! -e /etc/systemd/network/${DATAVLANDEV}.network ]; then
+		cat <<EOF >/etc/systemd/network/${DATAVLANDEV}.network
 [Match]
 Name=${DATAVLANDEV}
 
@@ -362,6 +369,11 @@ Name=${DATAVLANDEV}
 DHCP=no
 VLAN=${DATADEV}
 EOF
+	    else
+		cat <<EOF >/etc/systemd/network/${DATAVLANDEV}.network
+VLAN=${DATADEV}
+EOF
+	    fi
 	fi
     fi
 
