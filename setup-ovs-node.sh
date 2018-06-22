@@ -168,7 +168,7 @@ EOF
     chmod 755 /root/setup/testbed-pre-static-control-network.sh
     systemctl daemon-reload
     systemctl enable testbed-pre-static-control-network.service
-    cat <<EOF >/etc/systemd/system/openvswitch-post-control-network.service
+    cat <<'EOF' >/etc/systemd/system/openvswitch-post-control-network.service
 [Unit]
 Description=Testbed OpenVswitch Static Control Network Flows
 After=network.target network-online.target local-fs.target openvswitch-switch.service
