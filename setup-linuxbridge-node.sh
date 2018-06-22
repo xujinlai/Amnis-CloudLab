@@ -54,6 +54,7 @@ if [ ! -f $OURDIR/ctlnet.vars ]; then
     ctlnetmask=`ifconfig ${EXTERNAL_NETWORK_INTERFACE} | sed -n -e 's/^.*Mask:\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
     ctlgw=`ip route show default | sed -n -e 's/^default via \([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
     ctlnet=`ip route show dev ${EXTERNAL_NETWORK_INTERFACE} | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\/[0-9]*\) .*$/\1/p'`
+    ctlprefix=`echo $ctlnet | cut -d/ -f2`
 
     echo "ctlip=\"$ctlip\"" > $OURDIR/ctlnet.vars
     echo "ctlmac=\"$ctlmac\"" >> $OURDIR/ctlnet.vars
@@ -61,6 +62,7 @@ if [ ! -f $OURDIR/ctlnet.vars ]; then
     echo "ctlnetmask=\"$ctlnetmask\"" >> $OURDIR/ctlnet.vars
     echo "ctlgw=\"$ctlgw\"" >> $OURDIR/ctlnet.vars
     echo "ctlnet=\"$ctlnet\"" >> $OURDIR/ctlnet.vars
+    echo "ctlprefix=\"$ctlprefix\"" >> $OURDIR/ctlnet.vars
 else
     . $OURDIR/ctlnet.vars
 fi
@@ -83,14 +85,15 @@ route add default gw $ctlgw
 #
 # Make the configuration for the $EXTERNAL_NETWORK_INTERFACE be static.
 #
-DNSDOMAIN=`cat /etc/resolv.conf | grep search | head -1 | awk '{ print $2 }'`
+DNSDOMAIN=`hostname | cut -d. -f4-100`
 DNSSERVER=`cat /etc/resolv.conf | grep nameserver | head -1 | awk '{ print $2 }'`
 
 #
 # We need to blow away the Emulab config -- no more dhcp
 # This would definitely break experiment modify, of course
 #
-cat <<EOF > /etc/network/interfaces
+if [ $DISTRIB_MAJOR -lt 18 ]; then
+    cat <<EOF > /etc/network/interfaces
 #
 # Openstack Network Node in Cloudlab/Emulab/Apt/Federation
 #
@@ -114,6 +117,67 @@ iface ${EXTERNAL_NETWORK_BRIDGE} inet static
     up echo "${EXTERNAL_NETWORK_BRIDGE}" > /var/run/cnet
     up echo "${EXTERNAL_NETWORK_BRIDGE}" > /var/emulab/boot/controlif
 EOF
+else
+    mv /etc/udev/rules.d/99-emulab-networkd.rules \
+        /etc/udev/rules.d/99-emulab-networkd.rules.NO
+    cat <<EOF >/etc/systemd/system/testbed-pre-static-control-network.service
+[Unit]
+Description=Testbed Static Control Network Services
+After=network.target network-online.target local-fs.target
+Wants=network.target
+Before=testbed.service
+Before=pubsubd.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=$OURDIR/testbed-pre-static-control-network.sh
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target
+WantedBy=testbed.service
+WantedBy=pubsubd.service
+EOF
+    cat <<EOF >$OURDIR/testbed-pre-static-control-network.sh
+#!/bin/sh
+
+#
+# These are just the things we cannot do via hook from systemd-networkd,
+# that were previously done in /etc/network/interfaces via "up" hook.
+#
+echo "${EXTERNAL_NETWORK_BRIDGE}" > /var/run/cnet
+echo "${EXTERNAL_NETWORK_BRIDGE}" > /var/emulab/boot/controlif
+EOF
+    chmod 755 $OURDIR/testbed-pre-static-control-network.sh
+    systemctl daemon-reload
+    cat <<EOF >/etc/systemd/network/${EXTERNAL_NETWORK_BRIDGE}.netdev
+[NetDev]
+Name=${EXTERNAL_NETWORK_BRIDGE}
+Kind=bridge
+EOF
+    cat <<EOF >/etc/systemd/network/${EXTERNAL_NETWORK_INTERFACE}.network
+[Match]
+Name=${EXTERNAL_NETWORK_INTERFACE}
+
+[Network]
+Bridge=${EXTERNAL_NETWORK_BRIDGE}
+EOF
+    cat <<EOF >/etc/systemd/network/${EXTERNAL_NETWORK_BRIDGE}.network
+[Match]
+Name=${EXTERNAL_NETWORK_BRIDGE}
+
+[Network]
+Description=OpenStack External Network Bridge
+DHCP=no
+Address=$ctlip/$ctlprefix
+Gateway=$ctlgw
+DNS=$DNSSERVER
+Domains=$DNSDOMAIN
+IPForward=yes
+EOF
+fi
 
 # Also restart slothd so it listens on the new control iface.
 echo "${EXTERNAL_NETWORK_BRIDGE}" > /var/run/cnet
@@ -127,7 +191,8 @@ sleep 1
 # Add the management network config if necessary (if not, it's already a VPN)
 #
 if [ ! -z "$MGMTLAN" ]; then
-    cat <<EOF >> /etc/network/interfaces
+    if [ $DISTRIB_MAJOR -lt 18 ]; then
+	cat <<EOF >> /etc/network/interfaces
 
 auto ${MGMT_NETWORK_INTERFACE}
 iface ${MGMT_NETWORK_INTERFACE} inet static
@@ -136,10 +201,53 @@ iface ${MGMT_NETWORK_INTERFACE} inet static
     up mkdir -p /var/run/emulab
     up echo "${MGMT_NETWORK_INTERFACE} $MGMTIP $MGMTMAC" > /var/run/emulab/interface-done-$MGMTMAC
 EOF
+    else
+	cat <<EOF >/etc/systemd/network/${MGMT_NETWORK_INTERFACE}.network
+[Match]
+Name=${MGMT_NETWORK_INTERFACE}
+
+[Network]
+Description=OpenStack Management Network
+DHCP=no
+Address=$MGMTIP/$MGMTPREFIX
+IPForward=yes
+EOF
+	cat <<EOF >>$OURDIR/testbed-pre-static-control-network.sh
+
+mkdir -p /var/run/emulab
+echo "${MGMT_NETWORK_INTERFACE} $MGMTIP $MGMTMAC" > /var/run/emulab/interface-done-$MGMTMAC
+EOF
+    fi
+    
     if [ -n "$MGMTVLANDEV" ]; then
-	cat <<EOF >> /etc/network/interfaces
+	if [ $DISTRIB_MAJOR -lt 18 ]; then
+	    cat <<EOF >> /etc/network/interfaces
     vlan-raw-device ${MGMTVLANDEV}
 EOF
+	else
+	    cat <<EOF >/etc/systemd/network/${MGMT_NETWORK_INTERFACE}.netdev
+[NetDev]
+Name=${MGMT_NETWORK_INTERFACE}
+Kind=vlan
+
+[VLAN]
+Id=$MGMTVLANTAG
+EOF
+	    if [ ! -e /etc/systemd/network/${MGMTVLANDEV}.network ]; then
+		cat <<EOF >/etc/systemd/network/${MGMTVLANDEV}.network
+[Match]
+Name=${MGMTVLANDEV}
+
+[Network]
+DHCP=no
+VLAN=${MGMT_NETWORK_INTERFACE}
+EOF
+	    else
+		cat <<EOF >>/etc/systemd/network/${MGMTVLANDEV}.network
+VLAN=${MGMT_NETWORK_INTERFACE}
+EOF
+	    fi
+	fi
     fi
 fi
 
@@ -158,7 +266,8 @@ for lan in $DATAFLATLANS ; do
         # XXX!
         #route add -net 10.0.0.0/8 dev ${DATA_NETWORK_BRIDGE}
 
-	cat <<EOF >> /etc/network/interfaces
+	if [ $DISTRIB_MAJOR -lt 18 ]; then
+	    cat <<EOF >> /etc/network/interfaces
 
 auto ${DATADEV}
 iface ${DATADEV} inet static
@@ -172,8 +281,38 @@ iface ${DATABRIDGE} inet static
     up mkdir -p /var/run/emulab
     up echo "${DATABRIDGE} $DATAIP $DATAMAC" > /var/run/emulab/interface-done-$DATAMAC
 EOF
+	else
+	    cat <<EOF >/etc/systemd/network/${DATABRIDGE}.netdev
+[NetDev]
+Name=${DATABRIDGE}
+Kind=bridge
+EOF
+	    cat <<EOF >/etc/systemd/network/${DATADEV}.network
+[Match]
+Name=${DATADEV}
+
+[Network]
+Bridge=${DATABRIDGE}
+EOF
+	    cat <<EOF >/etc/systemd/network/${DATABRIDGE}.network
+[Match]
+Name=${DATABRIDGE}
+
+[Network]
+Description=OpenStack Network Bridge
+DHCP=no
+Address=$DATAIP/$DATAPREFIX
+IPForward=yes
+EOF
+	    cat <<EOF >>$OURDIR/testbed-pre-static-control-network.sh
+
+mkdir -p /var/run/emulab
+echo "${DATABRIDGE} $DATAIP $DATAMAC" > /var/run/emulab/interface-done-$DATAMAC
+EOF
+	fi
     else
-	cat <<EOF >> /etc/network/interfaces
+	if [ $DISTRIB_MAJOR -lt 18 ]; then
+	    cat <<EOF >> /etc/network/interfaces
 
 auto ${DATADEV}
 iface ${DATADEV} inet static
@@ -182,13 +321,29 @@ iface ${DATADEV} inet static
     up mkdir -p /var/run/emulab
     up echo "${DATADEV} $DATAIP $DATAMAC" > /var/run/emulab/interface-done-$DATAMAC
 EOF
+	else
+	    cat <<EOF >/etc/systemd/network/${DATADEV}.network
+[Match]
+Name=${DATADEV}
+
+[Network]
+Address=$DATAIP/$DATAPREFIX
+EOF
+	    cat <<EOF >>$OURDIR/testbed-pre-static-control-network.sh
+
+mkdir -p /var/run/emulab
+echo "${DATABRIDGE} $DATAIP $DATAMAC" > /var/run/emulab/interface-done-$DATAMAC
+EOF
+	fi
     fi
 
-    if [ -n "$DATAVLANDEV" ]; then
-	cat <<EOF >> /etc/network/interfaces
-    vlan-raw-device ${DATAVLANDEV}
-EOF
-    fi
+    # XXX: doesn't look like we support multiplexed vlan links for
+    # the linuxbridge case yet!
+    #if [ -n "$DATAVLANDEV" ]; then
+    #	cat <<EOF >> /etc/network/interfaces
+    #vlan-raw-device ${DATAVLANDEV}
+    #EOF
+    #fi
 done
 
 #
@@ -214,7 +369,8 @@ for lan in $DATAVLANS ; do
 
 	grep "^auto ${DATAVLANDEV}$" /etc/network/interfaces
 	if [ ! $? -eq 0 ]; then
-	    cat <<EOF >> /etc/network/interfaces
+	    if [ $DISTRIB_MAJOR -lt 18 ]; then
+		cat <<EOF >> /etc/network/interfaces
 auto ${DATAVLANDEV}
 iface ${DATAVLANDEV} inet static
     #address 0.0.0.0
@@ -224,6 +380,16 @@ iface ${DATAVLANDEV} inet static
     # to not setup any of these vlans.
     up touch /var/run/emulab/interface-done-$DATAPMAC
 EOF
+	    else
+		cat <<EOF >/etc/systemd/network/${DATAVLANDEV}.network
+[Match]
+Name=${DATAVLANDEV}
+
+[Network]
+Description=OpenStack Data VLAN Physical Interface
+DHCP=no
+EOF
+	    fi
 	fi
     fi
 done
