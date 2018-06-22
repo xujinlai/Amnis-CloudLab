@@ -92,7 +92,7 @@ ovs-vsctl add-port ${EXTERNAL_NETWORK_BRIDGE} ${EXTERNAL_NETWORK_INTERFACE}
 # Now move the $EXTERNAL_NETWORK_INTERFACE and default route config to ${EXTERNAL_NETWORK_BRIDGE}
 #
 DNSDOMAIN=`cat /etc/resolv.conf | grep search | head -1 | awk '{ print $2 }'`
-DNSSERVER=`cat /etc/resolv.conf | grep nameserver | head -1 | awk '{ print $2 }'`
+DNSSERVER=`hostname | cut -d. -f4-100`
 
 #
 # If we're Mitaka or greater, we have to always re-add our anti-ARP
