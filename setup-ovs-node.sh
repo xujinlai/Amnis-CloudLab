@@ -136,6 +136,7 @@ EOF
 else
     mv /etc/udev/rules.d/99-emulab-networkd.rules \
         /etc/udev/rules.d/99-emulab-networkd.rules.NO
+    systemctl disable emulab-udev-settle.service
     cat <<EOF >/etc/systemd/system/testbed-pre-static-control-network.service
 [Unit]
 Description=Testbed Static Control Network Services
@@ -163,11 +164,30 @@ EOF
 #
 echo "${EXTERNAL_NETWORK_BRIDGE}" > /var/run/cnet
 echo "${EXTERNAL_NETWORK_BRIDGE}" > /var/emulab/boot/controlif
-for line in `cat /etc/neutron/ovs-default-flows/br-ex`; do
-    ovs-ofctl add-flow br-ex $line
-done
 EOF
     chmod 755 /root/setup/testbed-pre-static-control-network.sh
+    systemctl daemon-reload
+    systemctl enable testbed-pre-static-control-network.service
+    cat <<EOF >/etc/systemd/system/openvswitch-post-control-network.service
+[Unit]
+Description=Testbed OpenVswitch Static Control Network Flows
+After=network.target network-online.target local-fs.target openvswitch-switch.service
+Wants=network.target openvswitch-switch.service
+Before=testbed.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'for line in `cat /etc/neutron/ovs-default-flows/br-ex`; do ovs-ofctl add-flow br-ex $line ; done'
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target
+WantedBy=testbed.service
+EOF
+    systemctl daemon-reload
+    systemctl enable openvswitch-post-control-network.service
     cat <<EOF >/etc/systemd/network/${EXTERNAL_NETWORK_BRIDGE}.network
 [Match]
 Name=${EXTERNAL_NETWORK_BRIDGE}
@@ -180,6 +200,14 @@ Gateway=$ctlgw
 DNS=$DNSSERVER
 Domains=$DNSDOMAIN
 IPForward=yes
+EOF
+    cat <<EOF >/etc/systemd/network/${EXTERNAL_NETWORK_INTERFACE}.network
+[Match]
+Name=${EXTERNAL_NETWORK_INTERFACE}
+
+[Network]
+Description=OpenStack External Network Bridge Physical Interface
+DHCP=no
 EOF
 fi
 
@@ -300,6 +328,14 @@ DHCP=no
 Address=$DATAIP/$DATAPREFIX
 IPForward=yes
 EOF
+	cat <<EOF >/etc/systemd/network/${DATADEV}.network
+[Match]
+Name=${DATADEV}
+
+[Network]
+Description=OpenStack Data Flat Lan $DATABRIDGE Network Physical Interface
+DHCP=no
+EOF
 	cat <<EOF >>/root/setup/testbed-pre-static-control-network.sh
 
 mkdir -p /var/run/emulab
@@ -366,6 +402,13 @@ iface ${DATAVLANDEV} inet static
     up touch /var/run/emulab/interface-done-$DATAPMAC
 EOF
 	else
+	    cat <<EOF >/etc/systemd/network/${DATAVLANDEV}.network
+[Match]
+Name=${DATAVLANDEV}
+
+[Network]
+UseDHCP=no
+EOF
 	    cat <<EOF >>/root/setup/testbed-pre-static-control-network.sh
 
 mkdir -p /var/run/emulab
