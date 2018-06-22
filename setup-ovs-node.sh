@@ -143,6 +143,7 @@ Description=Testbed Static Control Network Services
 After=network.target network-online.target local-fs.target
 Wants=network.target
 Before=testbed.service
+Before=pubsubd.service
 
 [Service]
 Type=oneshot
@@ -154,6 +155,7 @@ StandardError=journal+console
 [Install]
 WantedBy=multi-user.target
 WantedBy=testbed.service
+WantedBy=pubsubd.service
 EOF
     cat <<EOF >/root/setup/testbed-pre-static-control-network.sh
 #!/bin/sh
@@ -174,6 +176,7 @@ Description=Testbed OpenVswitch Static Control Network Flows
 After=network.target network-online.target local-fs.target openvswitch-switch.service
 Wants=network.target openvswitch-switch.service
 Before=testbed.service
+Before=pubsubd.service
 
 [Service]
 Type=oneshot
@@ -185,6 +188,7 @@ StandardError=journal+console
 [Install]
 WantedBy=multi-user.target
 WantedBy=testbed.service
+WantedBy=pubsubd.service
 EOF
     systemctl daemon-reload
     systemctl enable openvswitch-post-control-network.service
