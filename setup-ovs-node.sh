@@ -148,7 +148,7 @@ Before=pubsubd.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/root/setup/testbed-pre-static-control-network.sh
+ExecStart=$OURDIR/testbed-pre-static-control-network.sh
 StandardOutput=journal+console
 StandardError=journal+console
 
@@ -157,7 +157,7 @@ WantedBy=multi-user.target
 WantedBy=testbed.service
 WantedBy=pubsubd.service
 EOF
-    cat <<EOF >/root/setup/testbed-pre-static-control-network.sh
+    cat <<EOF >$OURDIR/testbed-pre-static-control-network.sh
 #!/bin/sh
 
 #
@@ -167,7 +167,7 @@ EOF
 echo "${EXTERNAL_NETWORK_BRIDGE}" > /var/run/cnet
 echo "${EXTERNAL_NETWORK_BRIDGE}" > /var/emulab/boot/controlif
 EOF
-    chmod 755 /root/setup/testbed-pre-static-control-network.sh
+    chmod 755 $OURDIR/testbed-pre-static-control-network.sh
     systemctl daemon-reload
     systemctl enable testbed-pre-static-control-network.service
     cat <<'EOF' >/etc/systemd/system/openvswitch-post-control-network.service
@@ -254,7 +254,7 @@ DHCP=no
 Address=$MGMTIP/$MGMTPREFIX
 IPForward=yes
 EOF
-	cat <<EOF >>/root/setup/testbed-pre-static-control-network.sh
+	cat <<EOF >>$OURDIR/testbed-pre-static-control-network.sh
 
 mkdir -p /var/run/emulab
 echo "${MGMT_NETWORK_INTERFACE} $MGMTIP $MGMTMAC" > /var/run/emulab/interface-done-$MGMTMAC
@@ -346,7 +346,7 @@ Name=${DATADEV}
 Description=OpenStack Data Flat Lan $DATABRIDGE Network Physical Interface
 DHCP=no
 EOF
-	cat <<EOF >>/root/setup/testbed-pre-static-control-network.sh
+	cat <<EOF >>$OURDIR/testbed-pre-static-control-network.sh
 
 mkdir -p /var/run/emulab
 echo "${DATABRIDGE} $DATAIP $DATAMAC" > /var/run/emulab/interface-done-$DATAMAC
@@ -425,7 +425,7 @@ Name=${DATAVLANDEV}
 [Network]
 UseDHCP=no
 EOF
-	    cat <<EOF >>/root/setup/testbed-pre-static-control-network.sh
+	    cat <<EOF >>$OURDIR/testbed-pre-static-control-network.sh
 
 mkdir -p /var/run/emulab
 # Just touch it, don't put iface/inet/mac into it; the vlans atop this
