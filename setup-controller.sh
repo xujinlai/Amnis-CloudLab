@@ -3237,6 +3237,7 @@ EOF
 	fi
 	a2ensite gnocchi-api
 	service apache2 reload
+	sudo chown -R gnocchi:gnocchi /var/lib/gnocchi
     fi
 
     if [ $USING_GNOCCHI -eq 0 ]; then
@@ -3371,6 +3372,8 @@ EOF
 
     if [ $OSVERSION -lt $OSQUEENS ]; then
 	ceilometer-upgrade --debug --skip-metering-database
+    else
+	ceilometer-upgrade --debug
     fi
 
     # Finally, dump a simple default dashboard into place.
