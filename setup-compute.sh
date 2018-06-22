@@ -247,6 +247,16 @@ crudini --set /etc/nova/nova-compute.conf DEFAULT \
     compute_driver libvirt.LibvirtDriver
 crudini --set /etc/nova/nova-compute.conf libvirt virt_type kvm
 
+if [ ${ENABLE_HOST_PASSTHROUGH} = 1 ]; then
+    # turn off MSR emulation
+    echo 1 > /sys/module/kvm/parameters/ignore_msrs
+    # persist the setting in case we reboot
+    echo "options kvm ignore_msrs=1" >> /etc/modprobe.d/qemu-system-x86.conf
+
+    # Set the "host-passthrough" mode for libvirt
+    crudini --set /etc/nova/nova-compute.conf libvirt cpu_mode host-passthrough
+fi
+
 if [ "$ARCH" = "aarch64" ] ; then
     crudini --set /etc/nova/nova-compute.conf libvirt cpu_mode custom
     crudini --set /etc/nova/nova-compute.conf libvirt cpu_model host

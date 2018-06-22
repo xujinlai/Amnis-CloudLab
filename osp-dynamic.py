@@ -189,6 +189,10 @@ class OSDynSliceManagerHelper(protogeniclientlib.DynSliceManagerHelper,
                            portal.ParameterType.BOOLEAN,False,advanced=True,
                            longDescription="Sometimes it can be easier to play with OpenStack if you do not have to mess around with security groups at all.  This option selects a null security group driver, if set.  This means security groups are enabled, but are not enforced (we set the firewall_driver neutron option to neutron.agent.firewall.NoopFirewallDriver to accomplish this).")
 
+        self.pc.defineParameter("enableHostPassthrough","Enable Host Passthrough",
+                                portal.ParameterType.BOOLEAN,True,advanced=True,
+                                longDescription="Signals KVM to pass through the host CPU with no modifications. The difference to host-model, instead of just matching feature flags, every last detail of the host CPU is matched. This gives the best performance but comes at a cost with respect to migration. The guest can only be migrated to a matching host CPU.")
+
         self.pc.defineParameter("enableInboundSshAndIcmp","Enable Inbound SSH and ICMP",
                            portal.ParameterType.BOOLEAN,True,advanced=True,
                            longDescription="Enable inbound SSH and ICMP into your instances in the default security group, if you have security groups enabled.")
@@ -946,7 +950,10 @@ class OSParameters(RSpec.Resource):
         param = ET.SubElement(el,paramXML)
         param.text = "ADMIN_PASS_HASH=''"
 ###            pass
-        
+
+        param = ET.SubElement(el,paramXML)
+        param.text = "ENABLE_HOST_PASSTHROUGH=%d" % (int(self.helper.params.enableHostPassthrough))
+
         param = ET.SubElement(el,paramXML)
         param.text = "ENABLE_NEW_SERIAL_SUPPORT=%d" % (int(self.helper.params.enableNewSerialSupport))
         
