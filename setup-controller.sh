@@ -2899,33 +2899,33 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    maybe_install_packages python-gnocchi
 	    # So, the workaround for now is to install the Apache config,
 	    # which is I guess the only relevant thing in gnocchi-api.  Hm.
-	    cat <<'EOF' >/etc/apache2/conf-available/gnocchi-api.conf
-Listen 8041
+	    # My "Hm" was justified.  This is no fix; gnocchi cannot be run
+	    # from python2 (it just feels like it can, until ceilometer
+	    # starts trying to send it data).
+	    # So we write out a quick systemd service and run gnocchi-api
+	    # standalone (there is no service file installed with it).
+	    cat <<'EOF' >/etc/systemd/system/gnocchi-api.service
+[Unit]
+Description=Gnocchi API
+After=postgresql.service mysql.service keystone.service rabbitmq-server.service ntp.service
 
-<VirtualHost *:8041>
-    WSGIDaemonProcess gnocchi-api processes=2 threads=10 user=gnocchi display-name=%{GROUP}
-    WSGIProcessGroup gnocchi-api
-    WSGIScriptAlias / /usr/bin/gnocchi-api
-    WSGIApplicationGroup %{GLOBAL}
-    <IfVersion >= 2.4>
-        ErrorLogFormat "%{cu}t %M"
-    </IfVersion>
-    ErrorLog /var/log/apache2/gnocchi_error.log
-    CustomLog /var/log/apache2/gnocchi_access.log combined
+[Service]
+User=gnocchi
+Group=gnocchi
+Type=simple
+WorkingDirectory=~
+ExecStart=/usr/bin/gnocchi-api
+Restart=on-failure
+LimitNOFILE=65535
+TimeoutStopSec=15
 
-    <Directory /usr/bin>
-        <IfVersion >= 2.4>
-            Require all granted
-        </IfVersion>
-        <IfVersion < 2.4>
-            Order allow,deny
-            Allow from all
-        </IfVersion>
-    </Directory>
-</VirtualHost>
+[Install]
+WantedBy=multi-user.target
 EOF
-	    a2enconf gnocchi-api
-	    systemctl reload apache2
+	    crudini --set /etc/gnocchi/gnocchi.conf api uwsgi_mode http-socket
+	    systemctl daemon-reload
+	    systemctl enable gnocchi-api
+	    systemctl restart gnocchi-api
 	else
 	    maybe_install_packages gnocchi-api
 	fi
