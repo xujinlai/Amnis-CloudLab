@@ -120,6 +120,7 @@ EOF
 else
     mv /etc/udev/rules.d/99-emulab-networkd.rules \
         /etc/udev/rules.d/99-emulab-networkd.rules.NO
+    systemctl disable emulab-udev-settle.service
     cat <<EOF >/etc/systemd/system/testbed-pre-static-control-network.service
 [Unit]
 Description=Testbed Static Control Network Services
