@@ -259,6 +259,11 @@ for lan in $DATAFLATLANS ; do
     # suck in the vars we'll use to configure this one
     . $OURDIR/info.$lan
 
+    NETINTVLANSTR=""
+    if [ -n "$DATAVLANDEV" ]; then
+	NETINTVLANSTR="vlan-raw-device ${DATAVLANDEV}"
+    fi
+
     if [ $LINUXBRIDGE_STATIC -eq 1 ]; then
 	brctl addbr ${DATABRIDGE}
 	brctl addif ${DATABRIDGE} ${DATADEV}
@@ -273,6 +278,7 @@ for lan in $DATAFLATLANS ; do
 auto ${DATADEV}
 iface ${DATADEV} inet static
     address 0.0.0.0
+    $NETINTVLANSTR
 
 auto ${DATABRIDGE}
 iface ${DATABRIDGE} inet static
@@ -310,6 +316,30 @@ EOF
 mkdir -p /var/run/emulab
 echo "${DATABRIDGE} $DATAIP $DATAMAC" > /var/run/emulab/interface-done-$DATAMAC
 EOF
+	    if [ -n "$DATAVLANDEV" ]; then
+		cat <<EOF >/etc/systemd/network/${DATADEV}.netdev
+[Match]
+Name=${DATADEV}
+Kind=vlan
+
+[VLAN]
+Id=${DATAVLANTAG}
+EOF
+		if [ ! -e /etc/systemd/network/${DATAVLANDEV}.network ]; then
+		    cat <<EOF >/etc/systemd/network/${DATAVLANDEV}.network
+[Match]
+Name=${MGMTVLANDEV}
+
+[Network]
+DHCP=no
+VLAN=${DATADEV}
+EOF
+		else
+		    cat <<EOF >>/etc/systemd/network/${DATAVLANDEV}.network
+VLAN=${DATADEV}
+EOF
+		fi
+	    fi
 	fi
     else
 	if [ $DISTRIB_MAJOR -lt 18 ]; then
@@ -319,6 +349,7 @@ auto ${DATADEV}
 iface ${DATADEV} inet static
     address $DATAIP
     netmask $DATANETMASK
+    $NETINTVLANSTR
     up mkdir -p /var/run/emulab
     up echo "${DATADEV} $DATAIP $DATAMAC" > /var/run/emulab/interface-done-$DATAMAC
 EOF
@@ -337,14 +368,6 @@ echo "${DATABRIDGE} $DATAIP $DATAMAC" > /var/run/emulab/interface-done-$DATAMAC
 EOF
 	fi
     fi
-
-    # XXX: doesn't look like we support multiplexed vlan links for
-    # the linuxbridge case yet!
-    #if [ -n "$DATAVLANDEV" ]; then
-    #	cat <<EOF >> /etc/network/interfaces
-    #vlan-raw-device ${DATAVLANDEV}
-    #EOF
-    #fi
 done
 
 #
