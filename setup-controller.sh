@@ -2904,6 +2904,8 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    # starts trying to send it data).
 	    # So we write out a quick systemd service and run gnocchi-api
 	    # standalone (there is no service file installed with it).
+	    maybe_install_packages uwsgi-core \
+		uwsgi-plugin-python uwsgi-plugin-python3
 	    cat <<'EOF' >/etc/systemd/system/gnocchi-api.service
 [Unit]
 Description=Gnocchi API
@@ -2926,6 +2928,10 @@ EOF
 	    systemctl daemon-reload
 	    systemctl enable gnocchi-api
 	    systemctl restart gnocchi-api
+
+	    # Once we have gnocchi running, then finally upgrade its resources
+	    sleep 4
+	    ceilometer-upgrade --debug
 	else
 	    maybe_install_packages gnocchi-api
 	fi
