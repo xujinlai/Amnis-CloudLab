@@ -2928,6 +2928,7 @@ EOF
 	    systemctl daemon-reload
 	    systemctl enable gnocchi-api
 	    systemctl restart gnocchi-api
+	    chown -R gnocchi:gnocchi /var/lib/gnocchi
 
 	    # Once we have gnocchi running, then finally upgrade its resources
 	    sleep 4
