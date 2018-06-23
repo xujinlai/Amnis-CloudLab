@@ -3150,7 +3150,7 @@ EOF
 	    gnocchi-upgrade
 	    ceilometer-upgrade --debug --skip-metering-database
 	else
-	    ceilometer-upgrade --debug
+	    ceilometer-upgrade --debug --skip-gnocchi-resource-types
 	    gnocchi-upgrade --config-file=/etc/gnocchi/gnocchi.conf
 	fi
     fi
@@ -3207,7 +3207,7 @@ EOF
     elif [ $USING_GNOCCHI -eq 0 ]; then
 	service_restart ceilometer-api
 	service_enable ceilometer-api
-    else
+    elif [ $OSVERSION -lt $OSQUEENS ]; then
 	grep -qi 'allow from' /etc/apache2/sites-available/gnocchi-api.conf
 	if [ ! $? -eq 0 -a -f /etc/apache2/sites-available/gnocchi-api.conf -a -f /usr/lib/python2.7/dist-packages/gnocchi/rest/app.wsgi ]; then
 	    cat <<EOF >/etc/apache2/sites-available/gnocchi-api.conf
@@ -3373,7 +3373,7 @@ EOF
     if [ $OSVERSION -lt $OSQUEENS ]; then
 	ceilometer-upgrade --debug --skip-metering-database
     else
-	ceilometer-upgrade --debug
+	ceilometer-upgrade --debug --skip-gnocchi-resource-types
     fi
 
     # Finally, dump a simple default dashboard into place.
