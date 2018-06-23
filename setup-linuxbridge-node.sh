@@ -348,7 +348,7 @@ EOF
     # Handle vlan dev for $DATAVLANDEV case
     if [ $DISTRIB_MAJOR -ge 18 -a -n "$DATAVLANDEV" ]; then
 	cat <<EOF >/etc/systemd/network/${DATADEV}.netdev
-[Match]
+[NetDev]
 Name=${DATADEV}
 Kind=vlan
 
