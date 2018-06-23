@@ -316,30 +316,6 @@ EOF
 mkdir -p /var/run/emulab
 echo "${DATABRIDGE} $DATAIP $DATAMAC" > /var/run/emulab/interface-done-$DATAMAC
 EOF
-	    if [ -n "$DATAVLANDEV" ]; then
-		cat <<EOF >/etc/systemd/network/${DATADEV}.netdev
-[Match]
-Name=${DATADEV}
-Kind=vlan
-
-[VLAN]
-Id=${DATAVLANTAG}
-EOF
-		if [ ! -e /etc/systemd/network/${DATAVLANDEV}.network ]; then
-		    cat <<EOF >/etc/systemd/network/${DATAVLANDEV}.network
-[Match]
-Name=${MGMTVLANDEV}
-
-[Network]
-DHCP=no
-VLAN=${DATADEV}
-EOF
-		else
-		    cat <<EOF >>/etc/systemd/network/${DATAVLANDEV}.network
-VLAN=${DATADEV}
-EOF
-		fi
-	    fi
 	fi
     else
 	if [ $DISTRIB_MAJOR -lt 18 ]; then
@@ -365,6 +341,32 @@ EOF
 
 mkdir -p /var/run/emulab
 echo "${DATABRIDGE} $DATAIP $DATAMAC" > /var/run/emulab/interface-done-$DATAMAC
+EOF
+	fi
+    fi
+
+    # Handle vlan dev for $DATAVLANDEV case
+    if [ $DISTRIB_MAJOR -ge 18 -a -n "$DATAVLANDEV" ]; then
+	cat <<EOF >/etc/systemd/network/${DATADEV}.netdev
+[Match]
+Name=${DATADEV}
+Kind=vlan
+
+[VLAN]
+Id=${DATAVLANTAG}
+EOF
+	if [ ! -e /etc/systemd/network/${DATAVLANDEV}.network ]; then
+	    cat <<EOF >/etc/systemd/network/${DATAVLANDEV}.network
+[Match]
+Name=${MGMTVLANDEV}
+
+[Network]
+DHCP=no
+VLAN=${DATADEV}
+EOF
+	else
+	    cat <<EOF >>/etc/systemd/network/${DATAVLANDEV}.network
+VLAN=${DATADEV}
 EOF
 	fi
     fi
