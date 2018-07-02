@@ -320,7 +320,7 @@ EOF
     logtend "memcache"
 fi
 
-if [ $OSVERSION -ge $OSQUEENS -a -z "${ETCD_DONE}" ]; then
+if [ ! $ARCH -eq "aarch64" -a $OSVERSION -ge $OSQUEENS -a -z "${ETCD_DONE}" ]; then
     logtstart "etcd"
     maybe_install_packages etcd etcd-server etcd-client
     mkdir -p /etc/etcd
