@@ -53,7 +53,7 @@ EOF
 sysctl -p
 
 maybe_install_packages neutron-l3-agent neutron-dhcp-agent neutron-metering-agent
-if [ $OSVERSION -ge $OSNEWTON ]; then
+if [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
     maybe_install_packages neutron-lbaasv2-agent
 fi
 
@@ -161,7 +161,7 @@ crudini --set /etc/neutron/metering_agent.ini DEFAULT \
 crudini --set /etc/neutron/metering_agent.ini DEFAULT \
     use_namespaces True
 
-if [ $OSVERSION -ge $OSNEWTON ]; then
+if [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
     crudini --set /etc/neutron/lbaas_agent.ini DEFAULT \
 	device_driver "neutron_lbaas.drivers.haproxy.namespace_driver.HaproxyNSDriver"
     if [ "${ML2PLUGIN}" = "linuxbridge" ]; then
@@ -186,7 +186,7 @@ service_restart neutron-metadata-agent
 service_enable neutron-metadata-agent
 service_restart neutron-metering-agent
 service_enable neutron-metering-agent
-if [ $OSVERSION -ge $OSNEWTON ]; then
+if [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
     service_restart neutron-lbaasv2-agent
     service_enable neutron-lbaasv2-agent
 fi

@@ -1347,7 +1347,10 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	fi
     fi
 
-    maybe_install_packages neutron-server neutron-plugin-ml2 python-neutron-lbaas python-neutronclient
+    maybe_install_packages neutron-server neutron-plugin-ml2 python-neutronclient
+    if [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
+	maybe_install_packages python-neutron-lbaas
+    fi
 
     #
     # Install a patch to make manual router interfaces less likely to hijack
@@ -1371,9 +1374,12 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
     crudini --set /etc/neutron/neutron.conf DEFAULT core_plugin ml2
     if [ $OSVERSION -lt $OSNEWTON ]; then
 	crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins 'router,metering'
-    else
+    elif [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
 	crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins \
 	    'router,metering,neutron_lbaas.services.loadbalancer.plugin.LoadBalancerPluginv2'
+    else
+	crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins \
+	    'router,metering'
     fi
     crudini --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips True
 
@@ -1528,7 +1534,7 @@ EOF
 	    firewall_driver $fwdriver
     fi
 
-    if [ $OSVERSION -ge $OSNEWTON ]; then
+    if [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
 	crudini --set /etc/neutron/neutron_lbaas.conf service_providers \
 	    service_provider "LOADBALANCERV2:Haproxy:neutron_lbaas.drivers.haproxy.plugin_driver.HaproxyOnHostPluginDriver:default"
     fi
@@ -1603,7 +1609,7 @@ EOF
 
     # Install the neutron lbaas dashboard panel, and update the neutron
     # db for lbaas.
-    if [ $OSVERSION -ge $OSNEWTON ]; then
+    if [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
 	git clone https://git.openstack.org/openstack/neutron-lbaas-dashboard
 	cd neutron-lbaas-dashboard
 	git checkout stable/${OSRELEASE}

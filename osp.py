@@ -181,6 +181,10 @@ pc.defineParameter("enableInboundSshAndIcmp","Enable Inbound SSH and ICMP",
                    portal.ParameterType.BOOLEAN,True,advanced=True,
                    longDescription="Enable inbound SSH and ICMP into your instances in the default security group, if you have security groups enabled.")
 
+pc.defineParameter("enableNeutronLoadBalancing","Enable Neutron LBaaS",
+                   portal.ParameterType.BOOLEAN,False,advanced=True,
+                   longDescription="Enable Neutron LBaas for releases >= Newton.")
+
 pc.defineParameter("enableNewSerialSupport","Enable new Juno serial consoles",
                    portal.ParameterType.BOOLEAN,False,advanced=True,
                    longDescription="Enable new serial console support added in Juno.  This means you can access serial consoles via web sockets from a CLI tool (not in the dashboard yet), but the serial console log will no longer be available for viewing!  Until it supports both interactivity and logging, you will have to choose.  We download software for you and create a simple frontend script on your controller node, /root/setup/novaconsole.sh , that when given the name of an instance as its sole argument, will connect you to its serial console.  The escape sequence is ~. (tilde,period), but make sure to use multiple tildes to escape through your ssh connection(s), so that those are not disconnected along with your console session.")
@@ -970,6 +974,9 @@ class Parameters(RSpec.Resource):
         
         param = ET.SubElement(el,paramXML)
         param.text = "DEFAULT_SECGROUP_ENABLE_SSH_ICMP=%d" % (int(params.enableInboundSshAndIcmp))
+        
+        param = ET.SubElement(el,paramXML)
+        param.text = "USE_NEUTRON_LBAAS=%d" % (int(params.enableNeutronLoadBalancing))
         
         param = ET.SubElement(el,paramXML)
         param.text = "CEILOMETER_USE_MONGODB=%d" % (int(params.ceilometerUseMongoDB))
