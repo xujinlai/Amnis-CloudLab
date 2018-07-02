@@ -2934,10 +2934,6 @@ EOF
 	    systemctl enable gnocchi-api
 	    systemctl restart gnocchi-api
 	    chown -R gnocchi:gnocchi /var/lib/gnocchi
-
-	    # Once we have gnocchi running, then finally upgrade its resources
-	    sleep 4
-	    ceilometer-upgrade --debug
 	else
 	    maybe_install_packages gnocchi-api
 	fi
@@ -3162,8 +3158,14 @@ EOF
 	    gnocchi-upgrade
 	    ceilometer-upgrade --debug --skip-metering-database
 	else
-	    ceilometer-upgrade --debug --skip-gnocchi-resource-types
+	    # For some reason, gnocchi-api needs to be running to do
+	    # upgrades, it seems.
+	    service_restart gnocchi-api
+	    sleep 4
+	    ceilometer-upgrade --debug
 	    gnocchi-upgrade --config-file=/etc/gnocchi/gnocchi.conf
+	    # Restart after the upgrades...
+	    service_restart gnocchi-api
 	fi
     fi
 
