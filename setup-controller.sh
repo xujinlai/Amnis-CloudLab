@@ -2908,6 +2908,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    # starts trying to send it data).
 	    # So we write out a quick systemd service and run gnocchi-api
 	    # standalone (there is no service file installed with it).
+	    maybe_install_packages python3-gnocchi python3-gnocchiclient
 	    maybe_install_packages uwsgi-core \
 		uwsgi-plugin-python uwsgi-plugin-python3
 	    cat <<'EOF' >/etc/systemd/system/gnocchi-api.service
