@@ -1017,7 +1017,9 @@ if [ -z "${NOVA_DBPASS}" ]; then
 
     maybe_install_packages nova-api nova-conductor nova-consoleauth \
 	nova-novncproxy nova-scheduler python-novaclient
-    maybe_install_packages nova-cert
+    if [ $OSVERSION -lt $OSQUEENS ]; then
+	maybe_install_packages nova-cert
+    fi
     if [ $OSVERSION -ge $OSOCATA ]; then
 	maybe_install_packages nova-placement-api
     fi
@@ -1203,8 +1205,10 @@ EOF
     service_restart memcached
     service_restart nova-api
     service_enable nova-api
-    service_restart nova-cert
-    service_enable nova-cert
+    if [ $OSVERSION -lt $OSQUEENS ]; then
+	service_restart nova-cert
+	service_enable nova-cert
+    fi
     service_restart nova-consoleauth
     service_enable nova-consoleauth
     service_restart nova-scheduler
