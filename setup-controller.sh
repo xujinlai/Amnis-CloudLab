@@ -721,6 +721,9 @@ fi
 if [ $OSVERSION -ge $OSNEWTON ]; then
     echo "export OS_IMAGE_API_VERSION=2" >> $OURDIR/admin-openrc-newcli.sh
 fi
+if [ $OSVERSION -ge $OSQUEENS ]; then
+    echo "OS_AUTH_TYPE=password" >> $OURDIR/admin-openrc-newcli.sh
+fi
 
 if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
     if [ $OSVERSION -lt $OSMITAKA ]; then
@@ -743,6 +746,9 @@ else
 fi
 if [ $OSVERSION -ge $OSNEWTON ]; then
     echo "OS_IMAGE_API_VERSION=2" >> $OURDIR/admin-openrc-newcli.py
+fi
+if [ $OSVERSION -ge $OSQUEENS ]; then
+    echo "OS_AUTH_TYPE='password'" >> $OURDIR/admin-openrc-newcli.py
 fi
 
 #
