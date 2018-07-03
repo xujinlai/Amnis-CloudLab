@@ -141,8 +141,13 @@ else
     crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
 	admin_password "${NEUTRON_PASS}"
 fi
-crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
-    nova_metadata_ip ${CONTROLLER}
+if [ $OSVERSION -lt $OSPIKE ]; then
+    crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+        nova_metadata_ip ${CONTROLLER}
+else
+    crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+        nova_metadata_host ${CONTROLLER}
+fi
 crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
     metadata_proxy_shared_secret ${NEUTRON_METADATA_SECRET}
 crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
