@@ -2938,8 +2938,8 @@ EOF
 	    crudini --set /etc/gnocchi/gnocchi.conf api uwsgi_mode http-socket
 	    systemctl daemon-reload
 	    systemctl enable gnocchi-api
-	    systemctl restart gnocchi-api
 	    chown -R gnocchi:gnocchi /var/lib/gnocchi
+	    systemctl restart gnocchi-api
 	else
 	    maybe_install_packages gnocchi-api
 	fi
@@ -3170,6 +3170,7 @@ EOF
 	    sleep 4
 	    gnocchi-upgrade --config-file=/etc/gnocchi/gnocchi.conf
 	    # Restart after the upgrades...
+	    chown -R gnocchi:gnocchi /var/lib/gnocchi
 	    service_restart gnocchi-api
 	    ceilometer-upgrade --debug
 	fi
