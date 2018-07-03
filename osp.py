@@ -429,7 +429,7 @@ passwdHelp += "  When logging in to the Dashboard, use the `admin` user; when lo
 tourInstructions = \
   """
 ### Basic Instructions
-Once your experiment nodes have booted, and this profile's configuration scripts have finished configuring OpenStack inside your experiment, you'll be able to visit [the OpenStack Dashboard WWW interface](http://{host-%s}/horizon/auth/login/?next=/horizon/project/instances/) (approx. 5-15 minutes).  If you've selected the Pike release (or newer), you can also login to [your experiment's Grafana WWW interface](http://{host-%s}:3000/dashboard/db/openstack-instance-statistics) and view OpenStack instance VM statistics once you've created some VMs.  %s
+Once your experiment nodes have booted, and this profile's configuration scripts have finished configuring OpenStack inside your experiment, you'll be able to visit [the OpenStack Dashboard WWW interface](http://{host-%s}/horizon/auth/login/?next=/horizon/project/instances/) (approx. 5-15 minutes).  If you've selected the Pike release (or newer), you can also login to [your experiment's Grafana WWW interface](http://{host-%s}:3000/dashboard/db/openstack-instance-statistics?orgId=1) and view OpenStack instance VM statistics once you've created some VMs.  %s
 
 Please wait to login to the OpenStack dashboard until the setup scripts have completed (we've seen Dashboard issues with content not appearing if you login before configuration is complete).  There are multiple ways to determine if the scripts have finished:
   - First, you can watch the experiment status page: the overall State will say \"booted (startup services are still running)\" to indicate that the nodes have booted up, but the setup scripts are still running.
