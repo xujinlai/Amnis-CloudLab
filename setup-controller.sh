@@ -3168,10 +3168,10 @@ EOF
 	    # upgrades, it seems.
 	    service_restart gnocchi-api
 	    sleep 4
-	    ceilometer-upgrade --debug
 	    gnocchi-upgrade --config-file=/etc/gnocchi/gnocchi.conf
 	    # Restart after the upgrades...
 	    service_restart gnocchi-api
+	    ceilometer-upgrade --debug
 	fi
     fi
 
