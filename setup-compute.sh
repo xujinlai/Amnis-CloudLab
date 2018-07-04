@@ -262,6 +262,8 @@ if [ "$ARCH" = "aarch64" ] ; then
 	patch -d / -p0 < $DIRNAME/etc/nova-pike-aarch64-virtio-video.patch
 	crudini --set /etc/nova/nova-compute.conf libvirt video_type virtio
 	crudini --set /etc/nova/nova-compute.conf DEFAULT pointer_model ps2mouse
+    elif [ $OSVERSION -eq $OSQUEENS ]; then
+	patch -d / -p0 < $DIRNAME/etc/nova-queens-aarch64-libvirt-bios-default.patch
     fi
 fi
 
