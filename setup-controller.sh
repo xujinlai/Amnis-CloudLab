@@ -2933,8 +2933,10 @@ User=gnocchi
 Group=gnocchi
 Type=simple
 WorkingDirectory=~
-ExecStart=/usr/bin/gnocchi-api
-Restart=on-failure
+#ExecStart=/usr/bin/gnocchi-api
+#Restart=on-failure
+ExecStart=/usr/bin/uwsgi --if-not-plugin python --plugin python --endif --http-socket 0.0.0.0:8041 --master --enable-threads --thunder-lock --processes 4 --threads 4 --lazy-apps --chdir / --wsgi gnocchi.rest.wsgi
+Restart=always
 LimitNOFILE=65535
 TimeoutStopSec=15
 
