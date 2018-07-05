@@ -3407,10 +3407,17 @@ EOF
 
     # Finally, dump a simple default dashboard into place.
     AUTHSTR=`echo "import base64; import sys; sys.stdout.write(base64.b64encode('admin:$GPASSWD'));" | python`
-    curl -X POST -H 'Content-type: application/json' \
-        -H "Authorization: Basic $AUTHSTR" \
-	-d "@$DIRNAME/etc/grafana-default-dashboard.json" \
-	http://localhost:3000/api/dashboards/import
+    if [ -f $DIRNAME/etc/grafana-default-dashboard-${OSRELEASE}.json ]; then
+	curl -X POST -H 'Content-type: application/json' \
+            -H "Authorization: Basic $AUTHSTR" \
+	    -d "@$DIRNAME/etc/grafana-default-dashboard-${OSRELEASE}.json" \
+	    http://localhost:3000/api/dashboards/import
+    else
+	curl -X POST -H 'Content-type: application/json' \
+            -H "Authorization: Basic $AUTHSTR" \
+	    -d "@$DIRNAME/etc/grafana-default-dashboard.json" \
+	    http://localhost:3000/api/dashboards/import
+    fi
 
     echo "TELEMETRY_GRAFANA_DONE=\"1\"" >> $SETTINGS
     logtend "grafana"
