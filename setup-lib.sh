@@ -118,7 +118,7 @@ LINUXBRIDGE_STATIC=0
 # to the cluster's domain.
 USE_DESIGNATE_AS_RESOLVER=1
 # If set to 1, and if OSRELEASE >= OSNEWTON, then setup Neutron LBaaS.
-USE_NEUTRON_LBAAS=0
+USE_NEUTRON_LBAAS=1
 # We are not currently using the ceilometer stats, and they do not work
 # as of Pike due to the switch to Gnocchi as the measurement DB.
 ENABLE_OPENSTACK_SLOTHD=0
