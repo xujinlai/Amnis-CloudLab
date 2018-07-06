@@ -51,7 +51,7 @@ crudini --set /etc/nova/nova.conf neutron \
     auth_strategy keystone
 if [ $OSVERSION -le $OSKILO ]; then
     crudini --set /etc/nova/nova.conf neutron \
-	admin_auth_url http://$CONTROLLER:35357/v2.0
+	admin_auth_url http://$CONTROLLER:${KADMINPORT}/v2.0
     crudini --set /etc/nova/nova.conf neutron \
 	admin_tenant_name service
     crudini --set /etc/nova/nova.conf neutron \
@@ -60,7 +60,7 @@ if [ $OSVERSION -le $OSKILO ]; then
 	admin_password ${NEUTRON_PASS}
 else
     crudini --set /etc/nova/nova.conf neutron \
-	auth_url http://$CONTROLLER:35357
+	auth_url http://$CONTROLLER:${KADMINPORT}
     crudini --set /etc/nova/nova.conf neutron ${AUTH_TYPE_PARAM} password
     crudini --set /etc/nova/nova.conf neutron ${PROJECT_DOMAIN_PARAM} default
     crudini --set /etc/nova/nova.conf neutron ${USER_DOMAIN_PARAM} default

@@ -76,6 +76,7 @@ PSCP='/usr/bin/parallel-scp -t 0 -O StrictHostKeyChecking=no '
 # Setup mail to users
 #
 maybe_install_packages dma
+maybe_install_packages mailutils
 echo "$PFQDN" > /etc/mailname
 sleep 2
 echo "Your OpenStack instance is setting up on `hostname` ." \
@@ -294,17 +295,54 @@ EOF
 
     if [ ${HAVE_SYSTEMD} -eq 1 ]; then
 	mkdir /etc/systemd/system/memcached.service.d
-	cat <<EOF >/etc/systemd/system/memcached.service.d/local-ifup.conf
+	systemctl list-units | grep -q networking\.service
+	if [ $? -eq 0 ]; then
+	    cat <<EOF >/etc/systemd/system/memcached.service.d/local-ifup.conf
 [Unit]
 Requires=networking.service
 After=networking.service
 EOF
+	else
+	    systemctl list-units | grep -q network-online\.target
+	    if [ $? -eq 0 ]; then
+		cat <<EOF >/etc/systemd/system/memcached.service.d/local-ifup.conf
+[Unit]
+Requires=network-online.target
+After=network-online.target
+EOF
+	    fi
+	fi
     fi
     service_restart memcached
     service_enable memcached
 
     echo "MEMCACHE_DONE=1" >> $SETTINGS
     logtend "memcache"
+fi
+
+if [ ! $ARCH -eq "aarch64" -a $OSVERSION -ge $OSQUEENS -a -z "${ETCD_DONE}" ]; then
+    logtstart "etcd"
+    maybe_install_packages etcd etcd-server etcd-client
+    mkdir -p /etc/etcd
+    cat <<EOF >> /etc/etcd/etcd.conf.yaml
+name: ${CONTROLLER}
+data-dir: /var/lib/etcd
+initial-cluster-state: 'new'
+initial-cluster-token: 'etcd-cluster-01'
+initial-cluster: ${CONTROLLER}=http://${MGMTIP}:2380
+initial-advertise-peer-urls: http://${MGMTIP}:2380
+advertise-client-urls: http://${MGMTIP}:2379
+listen-peer-urls: http://0.0.0.0:2380
+listen-client-urls: http://${MGMTIP}:2379
+EOF
+    chown -R etcd:etcd /etc/etcd
+    chmod 750 /etc/etcd
+
+    service_enable etcd
+    service_restart etcd
+
+    echo "ETCD_DONE=1" >> $SETTINGS
+    logtend "etcd"
 fi
 
 #
@@ -359,7 +397,9 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
 	fi
 
 	if [ $KEYSTONEUSEMEMCACHE -eq 1 ]; then
-	    crudini --set /etc/keystone/keystone.conf token driver 'memcache'
+	    if [ $OSVERSION -lt $OSQUEENS ]; then
+		crudini --set /etc/keystone/keystone.conf token driver 'memcache'
+	    fi
 	    crudini --set /etc/keystone/keystone.conf cache \
 	        backend dogpile.cache.memcached
 	    crudini --set /etc/keystone/keystone.conf cache \
@@ -516,10 +556,10 @@ EOF
     # Create admin token
     if [ $OSVERSION -lt $OSKILO ]; then
 	export OS_SERVICE_TOKEN=$ADMIN_TOKEN
-	export OS_SERVICE_ENDPOINT=http://$CONTROLLER:35357/$KAPISTR
+	export OS_SERVICE_ENDPOINT=http://$CONTROLLER:${KADMINPORT}/$KAPISTR
     else
 	export OS_TOKEN=$ADMIN_TOKEN
-	export OS_URL=http://$CONTROLLER:35357/$KAPISTR
+	export OS_URL=http://$CONTROLLER:${KADMINPORT}/$KAPISTR
 
 	if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
 	    export OS_IDENTITY_API_VERSION=3
@@ -539,7 +579,7 @@ EOF
             --service-id `keystone service-list | awk '/ identity / {print $2}'` \
             --publicurl http://$CONTROLLER:5000/v2.0 \
             --internalurl http://$CONTROLLER:5000/v2.0 \
-            --adminurl http://$CONTROLLER:35357/v2.0 \
+            --adminurl http://$CONTROLLER:${KADMINPORT}/v2.0 \
             --region $REGION
     else
 	__openstack service create \
@@ -549,7 +589,7 @@ EOF
 	    __openstack endpoint create \
 		--publicurl http://${CONTROLLER}:5000/${KAPISTR} \
 		--internalurl http://${CONTROLLER}:5000/${KAPISTR} \
-		--adminurl http://${CONTROLLER}:35357/${KAPISTR} \
+		--adminurl http://${CONTROLLER}:${KADMINPORT}/${KAPISTR} \
 		--region $REGION identity
 	else
 	    __openstack endpoint create --region $REGION \
@@ -557,7 +597,7 @@ EOF
 	    __openstack endpoint create --region $REGION \
 		identity internal http://${CONTROLLER}:5000/${KAPISTR}
 	    __openstack endpoint create --region $REGION \
-		identity admin http://${CONTROLLER}:35357/${KAPISTR}
+		identity admin http://${CONTROLLER}:${KADMINPORT}/${KAPISTR}
 	fi
     fi
 
@@ -643,12 +683,12 @@ fi
 echo "export OS_TENANT_NAME=admin" > $OURDIR/admin-openrc-oldcli.sh
 echo "export OS_USERNAME=${ADMIN_API}" >> $OURDIR/admin-openrc-oldcli.sh
 echo "export OS_PASSWORD=${ADMIN_API_PASS}" >> $OURDIR/admin-openrc-oldcli.sh
-echo "export OS_AUTH_URL=http://$CONTROLLER:35357/v2.0" >> $OURDIR/admin-openrc-oldcli.sh
+echo "export OS_AUTH_URL=http://$CONTROLLER:${KADMINPORT}/v2.0" >> $OURDIR/admin-openrc-oldcli.sh
 
 echo "OS_TENANT_NAME=\"admin\"" > $OURDIR/admin-openrc-oldcli.py
 echo "OS_USERNAME=\"${ADMIN_API}\"" >> $OURDIR/admin-openrc-oldcli.py
 echo "OS_PASSWORD=\"${ADMIN_API_PASS}\"" >> $OURDIR/admin-openrc-oldcli.py
-echo "OS_AUTH_URL=\"http://$CONTROLLER:35357/v2.0\"" >> $OURDIR/admin-openrc-oldcli.py
+echo "OS_AUTH_URL=\"http://$CONTROLLER:${KADMINPORT}/v2.0\"" >> $OURDIR/admin-openrc-oldcli.py
 if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
     echo "OS_IDENTITY_API_VERSION=3" >> $OURDIR/admin-openrc-oldcli.py
 else
@@ -672,7 +712,7 @@ echo "export OS_PROJECT_NAME=admin" >> $OURDIR/admin-openrc-newcli.sh
 echo "export OS_TENANT_NAME=admin" >> $OURDIR/admin-openrc-newcli.sh
 echo "export OS_USERNAME=${ADMIN_API}" >> $OURDIR/admin-openrc-newcli.sh
 echo "export OS_PASSWORD=${ADMIN_API_PASS}" >> $OURDIR/admin-openrc-newcli.sh
-echo "export OS_AUTH_URL=http://$CONTROLLER:35357/${KAPISTR}" >> $OURDIR/admin-openrc-newcli.sh
+echo "export OS_AUTH_URL=http://$CONTROLLER:${KADMINPORT}/${KAPISTR}" >> $OURDIR/admin-openrc-newcli.sh
 if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
     echo "export OS_IDENTITY_API_VERSION=3" >> $OURDIR/admin-openrc-newcli.sh
 else
@@ -680,6 +720,9 @@ else
 fi
 if [ $OSVERSION -ge $OSNEWTON ]; then
     echo "export OS_IMAGE_API_VERSION=2" >> $OURDIR/admin-openrc-newcli.sh
+fi
+if [ $OSVERSION -ge $OSQUEENS ]; then
+    echo "export OS_AUTH_TYPE=password" >> $OURDIR/admin-openrc-newcli.sh
 fi
 
 if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
@@ -695,7 +738,7 @@ echo "OS_PROJECT_NAME=\"admin\"" >> $OURDIR/admin-openrc-newcli.py
 echo "OS_TENANT_NAME=\"admin\"" >> $OURDIR/admin-openrc-newcli.py
 echo "OS_USERNAME=\"${ADMIN_API}\"" >> $OURDIR/admin-openrc-newcli.py
 echo "OS_PASSWORD=\"${ADMIN_API_PASS}\"" >> $OURDIR/admin-openrc-newcli.py
-echo "OS_AUTH_URL=\"http://$CONTROLLER:35357/${KAPISTR}\"" >> $OURDIR/admin-openrc-newcli.py
+echo "OS_AUTH_URL=\"http://$CONTROLLER:${KADMINPORT}/${KAPISTR}\"" >> $OURDIR/admin-openrc-newcli.py
 if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
     echo "OS_IDENTITY_API_VERSION=3" >> $OURDIR/admin-openrc-newcli.py
 else
@@ -703,6 +746,9 @@ else
 fi
 if [ $OSVERSION -ge $OSNEWTON ]; then
     echo "OS_IMAGE_API_VERSION=2" >> $OURDIR/admin-openrc-newcli.py
+fi
+if [ $OSVERSION -ge $OSQUEENS ]; then
+    echo "OS_AUTH_TYPE='password'" >> $OURDIR/admin-openrc-newcli.py
 fi
 
 #
@@ -712,7 +758,7 @@ if [ $OSVERSION -eq $OSJUNO ]; then
     export OS_TENANT_NAME=admin
     export OS_USERNAME=${ADMIN_API}
     export OS_PASSWORD=${ADMIN_API_PASS}
-    export OS_AUTH_URL=http://$CONTROLLER:35357/${KAPISTR}
+    export OS_AUTH_URL=http://$CONTROLLER:${KADMINPORT}/${KAPISTR}
 
     ln -sf $OURDIR/admin-openrc-oldcli.sh $OURDIR/admin-openrc.sh
     ln -sf $OURDIR/admin-openrc-oldcli.py $OURDIR/admin-openrc.py
@@ -730,7 +776,7 @@ else
     export OS_TENANT_NAME=admin
     export OS_USERNAME=${ADMIN_API}
     export OS_PASSWORD=${ADMIN_API_PASS}
-    export OS_AUTH_URL=http://${CONTROLLER}:35357/${KAPISTR}
+    export OS_AUTH_URL=http://${CONTROLLER}:${KADMINPORT}/${KAPISTR}
     if [ "x$KEYSTONEAPIVERSION" = "x3" ]; then
 	export OS_IDENTITY_API_VERSION=3
     else
@@ -800,7 +846,7 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
-	    identity_uri http://${CONTROLLER}:35357
+	    identity_uri http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
 	    admin_tenant_name service
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
@@ -811,7 +857,7 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
-	    auth_url http://${CONTROLLER}:35357
+	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
@@ -848,7 +894,7 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
-	    identity_uri http://${CONTROLLER}:35357
+	    identity_uri http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
 	    admin_tenant_name service
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
@@ -859,7 +905,7 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
-	    auth_url http://${CONTROLLER}:35357
+	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
@@ -977,7 +1023,9 @@ if [ -z "${NOVA_DBPASS}" ]; then
 
     maybe_install_packages nova-api nova-conductor nova-consoleauth \
 	nova-novncproxy nova-scheduler python-novaclient
-    maybe_install_packages nova-cert
+    if [ $OSVERSION -lt $OSQUEENS ]; then
+	maybe_install_packages nova-cert
+    fi
     if [ $OSVERSION -ge $OSOCATA ]; then
 	maybe_install_packages nova-placement-api
     fi
@@ -1040,7 +1088,7 @@ EOF
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
-	    identity_uri http://${CONTROLLER}:35357
+	    identity_uri http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
 	    admin_tenant_name service
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
@@ -1051,7 +1099,7 @@ EOF
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
-	    auth_url http://${CONTROLLER}:35357
+	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
@@ -1130,7 +1178,7 @@ EOF
 	crudini --set /etc/nova/nova.conf placement \
 	    os_region_name $REGION
 	crudini --set /etc/nova/nova.conf placement \
-	    auth_url http://${CONTROLLER}:35357/v3
+	    auth_url http://${CONTROLLER}:${KADMINPORT}/v3
 	crudini --set /etc/nova/nova.conf placement \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/nova/nova.conf placement \
@@ -1163,8 +1211,10 @@ EOF
     service_restart memcached
     service_restart nova-api
     service_enable nova-api
-    service_restart nova-cert
-    service_enable nova-cert
+    if [ $OSVERSION -lt $OSQUEENS ]; then
+	service_restart nova-cert
+	service_enable nova-cert
+    fi
     service_restart nova-consoleauth
     service_enable nova-consoleauth
     service_restart nova-scheduler
@@ -1303,7 +1353,10 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	fi
     fi
 
-    maybe_install_packages neutron-server neutron-plugin-ml2 python-neutron-lbaas python-neutronclient
+    maybe_install_packages neutron-server neutron-plugin-ml2 python-neutronclient
+    if [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
+	maybe_install_packages python-neutron-lbaas
+    fi
 
     #
     # Install a patch to make manual router interfaces less likely to hijack
@@ -1327,9 +1380,12 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
     crudini --set /etc/neutron/neutron.conf DEFAULT core_plugin ml2
     if [ $OSVERSION -lt $OSNEWTON ]; then
 	crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins 'router,metering'
-    else
+    elif [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
 	crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins \
 	    'router,metering,neutron_lbaas.services.loadbalancer.plugin.LoadBalancerPluginv2'
+    else
+	crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins \
+	    'router,metering'
     fi
     crudini --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips True
 
@@ -1358,7 +1414,7 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
-	    identity_uri http://${CONTROLLER}:35357
+	    identity_uri http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	    admin_tenant_name service
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
@@ -1369,7 +1425,7 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
-	    auth_url http://${CONTROLLER}:35357
+	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
@@ -1399,7 +1455,7 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	service_tenant_id=`keystone tenant-get service | grep id | cut -d '|' -f 3`
 
 	crudini --set /etc/neutron/neutron.conf DEFAULT \
-	    nova_admin_auth_url http://$CONTROLLER:35357/${KAPISTR}
+	    nova_admin_auth_url http://$CONTROLLER:${KADMINPORT}/${KAPISTR}
 	crudini --set /etc/neutron/neutron.conf DEFAULT nova_region_name $REGION
 	crudini --set /etc/neutron/neutron.conf DEFAULT nova_admin_username nova
 	crudini --set /etc/neutron/neutron.conf DEFAULT \
@@ -1408,7 +1464,7 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	    nova_admin_password ${NOVA_PASS}
     else
 	crudini --set /etc/neutron/neutron.conf nova \
-	    auth_url http://$CONTROLLER:35357
+	    auth_url http://$CONTROLLER:${KADMINPORT}
 	crudini --set /etc/neutron/neutron.conf nova ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/neutron/neutron.conf nova ${PROJECT_DOMAIN_PARAM} default
 	crudini --set /etc/neutron/neutron.conf nova ${USER_DOMAIN_PARAM} default
@@ -1425,7 +1481,7 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	crudini --set /etc/neutron/neutron.conf placement \
 	    os_region_name $REGION
 	crudini --set /etc/neutron/neutron.conf placement \
-	    auth_url http://${CONTROLLER}:35357/v3
+	    auth_url http://${CONTROLLER}:${KADMINPORT}/v3
 	crudini --set /etc/neutron/neutron.conf placement \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/neutron/neutron.conf placement \
@@ -1484,7 +1540,7 @@ EOF
 	    firewall_driver $fwdriver
     fi
 
-    if [ $OSVERSION -ge $OSNEWTON ]; then
+    if [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
 	crudini --set /etc/neutron/neutron_lbaas.conf service_providers \
 	    service_provider "LOADBALANCERV2:Haproxy:neutron_lbaas.drivers.haproxy.plugin_driver.HaproxyOnHostPluginDriver:default"
     fi
@@ -1509,10 +1565,10 @@ EOF
 	auth_strategy keystone
     if [ $OSVERSION -le $OSKILO ]; then
 	crudini --set /etc/nova/nova.conf neutron \
-	    admin_auth_url http://$CONTROLLER:35357/${KAPISTR}
+	    admin_auth_url http://$CONTROLLER:${KADMINPORT}/${KAPISTR}
     else
 	crudini --set /etc/nova/nova.conf neutron \
-	    auth_url http://$CONTROLLER:35357
+	    auth_url http://$CONTROLLER:${KADMINPORT}
     fi
     if [ $OSVERSION -lt $OSMITAKA ]; then
 	crudini --set /etc/nova/nova.conf neutron \
@@ -1559,7 +1615,7 @@ EOF
 
     # Install the neutron lbaas dashboard panel, and update the neutron
     # db for lbaas.
-    if [ $OSVERSION -ge $OSNEWTON ]; then
+    if [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
 	git clone https://git.openstack.org/openstack/neutron-lbaas-dashboard
 	cd neutron-lbaas-dashboard
 	git checkout stable/${OSRELEASE}
@@ -1972,7 +2028,7 @@ if [ -z "${CINDER_DBPASS}" ]; then
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
-	    identity_uri http://${CONTROLLER}:35357
+	    identity_uri http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	    admin_tenant_name service
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
@@ -1983,7 +2039,7 @@ if [ -z "${CINDER_DBPASS}" ]; then
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
-	    auth_url http://${CONTROLLER}:35357
+	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
@@ -2142,7 +2198,7 @@ if [ $OSVERSION -ge $OSMITAKA -a -z "${MANILA_DBPASS}" ]; then
     crudini --set /etc/manila/manila.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/manila/manila.conf keystone_authtoken \
-	auth_url http://${CONTROLLER}:35357
+	auth_url http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/manila/manila.conf keystone_authtoken \
 	${AUTH_TYPE_PARAM} password
     crudini --set /etc/manila/manila.conf keystone_authtoken \
@@ -2166,6 +2222,13 @@ if [ $OSVERSION -ge $OSMITAKA -a -z "${MANILA_DBPASS}" ]; then
     # It is nice to create it before the daemons run so they don't whine.
     __openstack flavor create manila-service-flavor \
 	--id 100 --ram 256 --disk 0 --vcpus 1
+
+    # Fix a bug in manila-api.  This isn't exactly the right fix, I'm
+    # sure, but because we default neutron port_security off, it works
+    # fine for us.
+    if [ $OSVERSION -eq $OSQUEENS ]; then
+	patch -p0 -d / < $DIRNAME/etc/manila-queens-port-security-bug.patch
+    fi
 
     service_restart manila-scheduler
     service_enable manila-scheduler
@@ -2357,7 +2420,7 @@ if [ -z "${SWIFT_PASS}" ]; then
 	crudini --set /etc/swift/proxy-server.conf \
 	    auth_uri "http://${CONTROLLER}:5000/${KAPISTR}"
 	crudini --set /etc/swift/proxy-server.conf \
-	    filter:authtoken identity_url "http://${CONTROLLER}:35357"
+	    filter:authtoken identity_url "http://${CONTROLLER}:${KADMINPORT}"
 	crudini --set /etc/swift/proxy-server.conf \
 	    filter:authtoken admin_tenant_name service
 	crudini --set /etc/swift/proxy-server.conf \
@@ -2368,7 +2431,7 @@ if [ -z "${SWIFT_PASS}" ]; then
 	crudini --set /etc/swift/proxy-server.conf \
 	    filter:authtoken auth_uri "http://${CONTROLLER}:5000"
 	crudini --set /etc/swift/proxy-server.conf \
-	    filter:authtoken auth_url "http://${CONTROLLER}:35357"
+	    filter:authtoken auth_url "http://${CONTROLLER}:${KADMINPORT}"
 	crudini --set /etc/swift/proxy-server.conf \
 	    filter:authtoken ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/swift/proxy-server.conf \
@@ -2589,6 +2652,9 @@ if [ -z "${HEAT_DBPASS}" ]; then
     fi
 
     maybe_install_packages heat-api heat-api-cfn heat-engine python-heatclient
+    if [ $OSVERSION -ge $OSQUEENS ]; then
+	maybe_install_packages python-heat-dashboard
+    fi
 
     crudini --set /etc/heat/heat.conf database \
 	connection "${DBDSTRING}://heat:${HEAT_DBPASS}@$CONTROLLER/heat"
@@ -2619,7 +2685,7 @@ if [ -z "${HEAT_DBPASS}" ]; then
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
-	    identity_uri http://${CONTROLLER}:35357
+	    identity_uri http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
 	    admin_tenant_name service
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
@@ -2630,7 +2696,7 @@ if [ -z "${HEAT_DBPASS}" ]; then
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
-	    auth_url http://${CONTROLLER}:35357
+	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
@@ -2658,7 +2724,7 @@ if [ -z "${HEAT_DBPASS}" ]; then
     fi
     if [ $OSVERSION -ge $OSLIBERTY ]; then
 	crudini --set /etc/heat/heat.conf trustee \
-	    auth_url http://${CONTROLLER}:35357
+	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/heat/heat.conf trustee \
 	    username heat
 	crudini --set /etc/heat/heat.conf trustee \
@@ -2842,7 +2908,49 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	        ceilometer-alarm-notifier
 	fi
     else
-	maybe_install_packages gnocchi-api gnocchi-metricd python-gnocchiclient
+	maybe_install_packages gnocchi-metricd python-gnocchiclient
+	if [ $OSVERSION = $OSQUEENS ]; then
+	    # gnocchi-api in Queens initially needs mod-wsgi-py3, which
+	    # conflicts with many other things and uninstalls them.
+	    maybe_install_packages python-gnocchi
+	    # So, the workaround for now is to install the Apache config,
+	    # which is I guess the only relevant thing in gnocchi-api.  Hm.
+	    # My "Hm" was justified.  This is no fix; gnocchi cannot be run
+	    # from python2 (it just feels like it can, until ceilometer
+	    # starts trying to send it data).
+	    # So we write out a quick systemd service and run gnocchi-api
+	    # standalone (there is no service file installed with it).
+	    maybe_install_packages python3-gnocchi python3-gnocchiclient
+	    maybe_install_packages uwsgi-core \
+		uwsgi-plugin-python uwsgi-plugin-python3
+	    cat <<'EOF' >/etc/systemd/system/gnocchi-api.service
+[Unit]
+Description=Gnocchi API
+After=postgresql.service mysql.service keystone.service rabbitmq-server.service ntp.service
+
+[Service]
+User=gnocchi
+Group=gnocchi
+Type=simple
+WorkingDirectory=~
+#ExecStart=/usr/bin/gnocchi-api
+#Restart=on-failure
+ExecStart=/usr/bin/uwsgi --if-not-plugin python --plugin python --endif --http-socket 0.0.0.0:8041 --master --enable-threads --thunder-lock --processes 4 --threads 4 --lazy-apps --chdir / --wsgi gnocchi.rest.wsgi
+Restart=always
+LimitNOFILE=65535
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target
+EOF
+	    crudini --set /etc/gnocchi/gnocchi.conf api uwsgi_mode http-socket
+	    systemctl daemon-reload
+	    systemctl enable gnocchi-api
+	    chown -R gnocchi:gnocchi /var/lib/gnocchi
+	    systemctl restart gnocchi-api
+	else
+	    maybe_install_packages gnocchi-api
+	fi
     fi
 
     # Seems like the Pike package doesn't properly install /etc/ceilometer;
@@ -2896,7 +3004,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	        auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-		identity_uri http://${CONTROLLER}:35357
+		identity_uri http://${CONTROLLER}:${KADMINPORT}
 	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 		admin_tenant_name service
 	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
@@ -2907,7 +3015,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	        auth_uri http://${CONTROLLER}:5000
 	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	        auth_url http://${CONTROLLER}:35357
+	        auth_url http://${CONTROLLER}:${KADMINPORT}
 	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	        ${AUTH_TYPE_PARAM} password
 	    crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
@@ -3022,7 +3130,7 @@ EOF
 	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
-	    auth_url http://${CONTROLLER}:35357
+	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
@@ -3060,8 +3168,20 @@ EOF
 	usermod -a -G gnocchi ceilometer
 	chmod -R 770 /var/lib/gnocchi
 
-	gnocchi-upgrade
-	ceilometer-upgrade --skip-metering-database
+	if [ $OSVERSION -lt $OSQUEENS ]; then
+	    gnocchi-upgrade
+	    ceilometer-upgrade --debug --skip-metering-database
+	else
+	    # For some reason, gnocchi-api needs to be running to do
+	    # upgrades, it seems.
+	    service_restart gnocchi-api
+	    sleep 4
+	    gnocchi-upgrade --config-file=/etc/gnocchi/gnocchi.conf
+	    # Restart after the upgrades...
+	    chown -R gnocchi:gnocchi /var/lib/gnocchi
+	    service_restart gnocchi-api
+	    ceilometer-upgrade --debug
+	fi
     fi
 
     #
@@ -3116,7 +3236,7 @@ EOF
     elif [ $USING_GNOCCHI -eq 0 ]; then
 	service_restart ceilometer-api
 	service_enable ceilometer-api
-    else
+    elif [ $OSVERSION -lt $OSQUEENS ]; then
 	grep -qi 'allow from' /etc/apache2/sites-available/gnocchi-api.conf
 	if [ ! $? -eq 0 -a -f /etc/apache2/sites-available/gnocchi-api.conf -a -f /usr/lib/python2.7/dist-packages/gnocchi/rest/app.wsgi ]; then
 	    cat <<EOF >/etc/apache2/sites-available/gnocchi-api.conf
@@ -3146,6 +3266,7 @@ EOF
 	fi
 	a2ensite gnocchi-api
 	service apache2 reload
+	sudo chown -R gnocchi:gnocchi /var/lib/gnocchi
     fi
 
     if [ $USING_GNOCCHI -eq 0 ]; then
@@ -3187,18 +3308,39 @@ fi
 if [ $OSVERSION -ge $OSPIKE -a -z "${TELEMETRY_GRAFANA_DONE}" ]; then
     logtstart "grafana"
 
-    echo deb https://packagecloud.io/grafana/stable/debian/ jessie main \
-        >> /etc/apt/sources.list.d/grafana.list
+    if [ $OSVERSION -ge $OSQUEENS ]; then
+	echo deb https://packagecloud.io/grafana/stable/debian/ stretch main \
+             >> /etc/apt/sources.list.d/grafana.list
+    else
+	echo deb https://packagecloud.io/grafana/stable/debian/ jessie main \
+             >> /etc/apt/sources.list.d/grafana.list
+    fi
     curl https://packagecloud.io/gpg.key | sudo apt-key add -
     apt-get update
 
     $APTGETINSTALL grafana
+    maybe_install_packages sqlite3
     systemctl daemon-reload
     # grafana-cli doesn't have sane defaults that match the config, so
     # run at least this so it can find the real database.
     crudini --set /etc/grafana/grafana.ini paths data /var/lib/grafana
 
+    if [ "x${ADMIN_PASS}" = "x" ]; then
+	GPASSWD=`cat /root/setup/decrypted_admin_pass`
+    else
+	GPASSWD="${ADMIN_PASS}"
+    fi
+    crudini --set /etc/grafana/grafana.ini security admin_user admin
+    crudini --set /etc/grafana/grafana.ini security admin_password "${GPASSWD}"
+
+    chown -R grafana:grafana /var/lib/grafana/grafana.db
     service_enable grafana-server
+    service_restart grafana-server
+    # Try an initial password reset to force the DB schema to be populated;
+    # apparently just starting grafana-server doesn't do that.
+    grafana-cli admin reset-admin-password \
+        --config /etc/grafana/grafana.ini --homepath /usr/share/grafana \
+	"$GPASSWD"
     service_restart grafana-server
 
     #
@@ -3207,18 +3349,25 @@ if [ $OSVERSION -ge $OSPIKE -a -z "${TELEMETRY_GRAFANA_DONE}" ]; then
     # values, then change the password to the one shown to our user in
     # the portal UI, same as for OpenStack.
     #
-    if [ "x${ADMIN_PASS}" = "x" ]; then
-	GPASSWD=`cat /root/setup/decrypted_admin_pass`
-    else
-	GPASSWD="${ADMIN_PASS}"
+    echo "select id from org where id=1" \
+	| sqlite3 /var/lib/grafana/grafana.db  | grep -q 1
+    if [ ! $? -eq 0 ]; then
+	echo "replace into org (id,version,name,created,updated) values (1,1,'default',datetime('now'),datetime('now'));" \
+	     | sqlite3 /var/lib/grafana/grafana.db
     fi
-    echo "REPLACE INTO \"user\" VALUES(1,0,'admin','admin@localhost','','38d481956ebbb14985a42acd18859630008cf879076492971a80d7d782a5e8149f87b19f706fc8c98a7329ee4e67c6802f11','knT2WLp6iP','WzhsbIERTc','',1,1,0,'',datetime('now'),datetime('now'),1,datetime('now'));" | sqlite3 /var/lib/grafana/grafana.db
+    echo "select login from user where login='admin'" \
+	| sqlite3 /var/lib/grafana/grafana.db  | grep -q admin
+    if [ ! $? -eq 0 ]; then
+	echo "REPLACE INTO \"user\" VALUES(1,0,'admin','admin@localhost','','38d481956ebbb14985a42acd18859630008cf879076492971a80d7d782a5e8149f87b19f706fc8c98a7329ee4e67c6802f11','knT2WLp6iP','WzhsbIERTc',1,1,1,0,'',datetime('now'),datetime('now'),1,datetime('now'));" | sqlite3 /var/lib/grafana/grafana.db
+	echo "replace into org_user values (1,1,1,'Admin',datetime('now'),datetime('now'));" | sqlite3 /var/lib/grafana/grafana.db
+    fi
     grafana-cli admin reset-admin-password \
         --config /etc/grafana/grafana.ini --homepath /usr/share/grafana \
-	$GPASSWD
+	"$GPASSWD"
 
     # Install the gnocchi plugin
     grafana-cli plugins install gnocchixyz-gnocchi-datasource
+    chown -R grafana:grafana /var/lib/grafana/grafana.db
     service_restart grafana-server
 
     # Add the token-based datasource
@@ -3250,14 +3399,25 @@ EOF
     service_enable grafana-gnocchi-openstack-token-renewer
     service_restart grafana-gnocchi-openstack-token-renewer
 
-    ceilometer-upgrade --debug --skip-metering-database
+    if [ $OSVERSION -lt $OSQUEENS ]; then
+	ceilometer-upgrade --debug --skip-metering-database
+    else
+	ceilometer-upgrade --debug --skip-gnocchi-resource-types
+    fi
 
     # Finally, dump a simple default dashboard into place.
     AUTHSTR=`echo "import base64; import sys; sys.stdout.write(base64.b64encode('admin:$GPASSWD'));" | python`
-    curl -X POST -H 'Content-type: application/json' \
-        -H "Authorization: Basic $AUTHSTR" \
-	-d "@$DIRNAME/etc/grafana-default-dashboard.json" \
-	http://localhost:3000/api/dashboards/import
+    if [ -f $DIRNAME/etc/grafana-default-dashboard-${OSRELEASE}.json ]; then
+	curl -X POST -H 'Content-type: application/json' \
+            -H "Authorization: Basic $AUTHSTR" \
+	    -d "@$DIRNAME/etc/grafana-default-dashboard-${OSRELEASE}.json" \
+	    http://localhost:3000/api/dashboards/import
+    else
+	curl -X POST -H 'Content-type: application/json' \
+            -H "Authorization: Basic $AUTHSTR" \
+	    -d "@$DIRNAME/etc/grafana-default-dashboard.json" \
+	    http://localhost:3000/api/dashboards/import
+    fi
 
     echo "TELEMETRY_GRAFANA_DONE=\"1\"" >> $SETTINGS
     logtend "grafana"
@@ -3710,7 +3870,7 @@ EOF
 	cat <<EOF >> /etc/trove/api-paste.ini
 [filter:authtoken]
 auth_uri = http://${CONTROLLER}:5000/${KAPISTR}
-identity_uri = http://${CONTROLLER}:35357
+identity_uri = http://${CONTROLLER}:${KADMINPORT}
 admin_user = trove
 admin_password = ${TROVE_PASS}
 admin_tenant_name = service
@@ -3720,7 +3880,7 @@ EOF
 	crudini --set /etc/trove/trove.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/trove/trove.conf keystone_authtoken \
-	    auth_url http://${CONTROLLER}:35357
+	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/trove/trove.conf keystone_authtoken \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/trove/trove.conf keystone_authtoken \
@@ -3912,7 +4072,7 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
-	    identity_uri http://${CONTROLLER}:35357
+	    identity_uri http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    admin_tenant_name service
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
@@ -3923,7 +4083,7 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
-	    auth_url http://${CONTROLLER}:35357
+	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    ${AUTH_TYPE_PARAM} password
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
@@ -4030,7 +4190,7 @@ if [ 0 = 1 -a "$OSCODENAME" = "kilo" -a -n "$BAREMETALNODES" -a -z "${IRONIC_DBP
     crudini --set /etc/ironic/ironic.conf \
 	keystone_authtoken auth_uri "http://$CONTROLLER:5000/"
     crudini --set /etc/ironic/ironic.conf \
-	keystone_authtoken identity_uri "http://$CONTROLLER:35357"
+	keystone_authtoken identity_uri "http://$CONTROLLER:${KADMINPORT}"
     crudini --set /etc/ironic/ironic.conf \
 	keystone_authtoken admin_user ironic
     crudini --set /etc/ironic/ironic.conf \
@@ -4182,7 +4342,7 @@ EOF
     crudini --set /etc/designate/designate.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/designate/designate.conf keystone_authtoken \
-	auth_url http://${CONTROLLER}:35357
+	auth_url http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/designate/designate.conf keystone_authtoken \
 	${AUTH_TYPE_PARAM} password
     crudini --set /etc/designate/designate.conf keystone_authtoken \
@@ -4199,8 +4359,6 @@ EOF
 	region_name $REGION
     crudini --set /etc/designate/designate.conf keystone_authtoken \
 	memcached_servers ${CONTROLLER}:11211
-
-    crudini --set /etc/designate/designate.conf 
 
     su -s /bin/sh -c "designate-manage database sync" designate
 
@@ -4287,7 +4445,7 @@ EOF
     crudini --set /etc/neutron/neutron.conf designate \
 	url http://${CONTROLLER}:9001/v2
     crudini --set /etc/neutron/neutron.conf designate \
-        auth_url http://$CONTROLLER:35357
+        auth_url http://$CONTROLLER:${KADMINPORT}
     crudini --set /etc/neutron/neutron.conf designate \
 	allow_reverse_dns_lookup True
     crudini --set /etc/neutron/neutron.conf designate \

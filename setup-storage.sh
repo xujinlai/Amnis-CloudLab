@@ -130,7 +130,7 @@ if [ $OSVERSION -lt $OSKILO ]; then
     crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000/${KAPISTR}
     crudini --set /etc/cinder/cinder.conf keystone_authtoken \
-	identity_uri http://${CONTROLLER}:35357
+	identity_uri http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	admin_tenant_name service
     crudini --set /etc/cinder/cinder.conf keystone_authtoken \
@@ -141,7 +141,7 @@ else
     crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/cinder/cinder.conf keystone_authtoken \
-	auth_url http://${CONTROLLER}:35357
+	auth_url http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	${AUTH_TYPE_PARAM} password
     crudini --set /etc/cinder/cinder.conf keystone_authtoken \

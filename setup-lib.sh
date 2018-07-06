@@ -118,6 +118,8 @@ LINUXBRIDGE_STATIC=0
 # control net DNS server).  The local domain will also be searched prior
 # to the cluster's domain.
 USE_DESIGNATE_AS_RESOLVER=1
+# If set to 1, and if OSRELEASE >= OSNEWTON, then setup Neutron LBaaS.
+USE_NEUTRON_LBAAS=1
 # We are not currently using the ceilometer stats, and they do not work
 # as of Pike due to the switch to Gnocchi as the measurement DB.
 ENABLE_OPENSTACK_SLOTHD=0
@@ -155,11 +157,35 @@ NEWNODELIST=""
 # We might store any missing nodes here
 OLDNODELIST=""
 
+#
+# Setup apt-get to not prompt us
+#
+if [ ! -e $OURDIR/apt-configured ]; then
+    echo "force-confdef" > /etc/dpkg/dpkg.cfg.d/cloudlab
+    echo "force-confold" >> /etc/dpkg/dpkg.cfg.d/cloudlab
+    touch $OURDIR/apt-configured
+fi
+export DEBIAN_FRONTEND=noninteractive
+# -o Dpkg::Options::="--force-confold" -o Dpkg::Options::="--force-confdef" 
+DPKGOPTS=''
+APTGETINSTALLOPTS='-y'
+APTGETINSTALL="apt-get $DPKGOPTS install $APTGETINSTALLOPTS"
+# Don't install/upgrade packages if this is not set
+if [ ${DO_APT_INSTALL} -eq 0 ]; then
+    APTGETINSTALL="/bin/true ${APTGETINSTALL}"
+fi
+
 ##
 ## Detect if this was a geni experiment
 ##
 grep GENIUSER $SETTINGS
 if [ ! $? -eq 0 ]; then
+    which python
+    if [ ! $? -eq 0 ]; then
+	# We need python to continue; install it.
+	apt-get update
+	apt-get $DPKGOPTS install $APTGETINSTALLOPTS python
+    fi
     geni-get slice_urn >/dev/null 2>&1
     if [ $? -eq 0 ]; then
 	GENIUSER=1
@@ -186,13 +212,13 @@ fi
 if [ $GENIUSER -eq 1 ]; then
     dpkg -s python-m2crypto >/dev/null 2>&1
     if [ ! $? -eq 0 ]; then
-	apt-get install python-m2crypto
+	apt-get $DPKGOPTS install $APTGETINSTALLOPTS python-m2crypto
 	# Keep trying again with updated cache forever;
 	# we must have this package.
 	success=$?
 	while [ ! $success -eq 0 ]; do
 	    apt-get update
-	    apt-get install python-m2crypto
+	    apt-get $DPKGOPTS install $APTGETINSTALLOPTS python-m2crypto
 	    success=$?
 	done
     fi
@@ -312,6 +338,7 @@ OSMITAKA=13
 OSNEWTON=14
 OSOCATA=15
 OSPIKE=16
+OSQUEENS=17
 
 . /etc/lsb-release
 #
@@ -326,6 +353,7 @@ if [ ! "x$OSRELEASE" = "x" ]; then
     if [ $OSCODENAME = "newton" ]; then OSVERSION=$OSNEWTON ; fi
     if [ $OSCODENAME = "ocata" ]; then OSVERSION=$OSOCATA ; fi
     if [ $OSCODENAME = "pike" ]; then OSVERSION=$OSPIKE ; fi
+    if [ $OSCODENAME = "queens" ]; then OSVERSION=$OSQUEENS ; fi
 
     #
     # We only use cloudarchive for LTS images!
@@ -347,6 +375,7 @@ else
     OSCODENAME="juno"
     OSVERSION=$OSJUNO
 fi
+DISTRIB_MAJOR=`echo $DISTRIB_RELEASE | cut -d. -f1`
 
 #
 # Default memcached fully on for Mitaka or greater.  Too slow without it.
@@ -359,6 +388,17 @@ if [ $OSVERSION -eq $OSJUNO ]; then
     REGION="regionOne"
 else
     REGION="RegionOne"
+fi
+
+#
+# See which keystone port has the admin capabilities.  This changed in
+# Queens to fully drop 35357 because it's now irrelevant and not
+# configured by default.
+#
+if [ $OSVERSION -ge $OSQUEENS ]; then
+    KADMINPORT=5000
+else
+    KADMINPORT=35357
 fi
 
 #
@@ -653,19 +693,6 @@ if [ ! $? -eq 0 ]; then
     fi
 
     echo "MIRRORSETUP=1" >> $SETTINGS
-fi
-
-# Setup apt-get to not prompt us
-echo "force-confdef" > /etc/dpkg/dpkg.cfg.d/cloudlab
-echo "force-confold" >> /etc/dpkg/dpkg.cfg.d/cloudlab
-export DEBIAN_FRONTEND=noninteractive
-# -o Dpkg::Options::="--force-confold" -o Dpkg::Options::="--force-confdef" 
-DPKGOPTS=''
-APTGETINSTALLOPTS='-y'
-APTGETINSTALL="apt-get $DPKGOPTS install $APTGETINSTALLOPTS"
-# Don't install/upgrade packages if this is not set
-if [ ${DO_APT_INSTALL} -eq 0 ]; then
-    APTGETINSTALL="/bin/true ${APTGETINSTALL}"
 fi
 
 if [ ! -f $OURDIR/apt-updated -a "${DO_APT_UPDATE}" = "1" ]; then
@@ -1127,6 +1154,7 @@ if [ ! -e $OURDIR/info.mgmt ]; then
 	    MGMTMAC=`cat ${BOOTDIR}/tmcc/ifconfig | sed -n -e "s/^.* VMAC=\([0-9a-f:\.]*\) .* LAN=${MGMTLAN}.*\$/\1/p"`
 	    MGMT_NETWORK_INTERFACE=`/usr/local/etc/emulab/findif -m $MGMTMAC`
 	    MGMTVLANDEV=`ip link show ${MGMT_NETWORK_INTERFACE} | sed -n -e "s/^.*${MGMT_NETWORK_INTERFACE}\@\([0-9a-zA-Z_]*\): .*\$/\1/p"`
+	    MGMTVLANTAG=`cat ${BOOTDIR}/tmcc/ifconfig | sed -n -e "s/^.* LAN=${MGMTLAN} VTAG=\([0-9]*\).*\$/\1/p"`
 	else
 	    MGMTVLAN=0
 	    MGMTMAC=`cat ${BOOTDIR}/tmcc/ifconfig | sed -n -e "s/.* MAC=\([0-9a-f:\.]*\) .* LAN=${MGMTLAN}/\1/p"`
@@ -1141,6 +1169,7 @@ if [ ! -e $OURDIR/info.mgmt ]; then
     echo "MGMTMAC='$MGMTMAC'" >> $OURDIR/info.mgmt
     echo "MGMT_NETWORK_INTERFACE='$MGMT_NETWORK_INTERFACE'" >> $OURDIR/info.mgmt
     echo "MGMTVLANDEV='$MGMTVLANDEV'" >> $OURDIR/info.mgmt
+    echo "MGMTVLANTAG='$MGMTVLANTAG'" >> $OURDIR/info.mgmt
 else
     . $OURDIR/info.mgmt
 fi
@@ -1156,6 +1185,7 @@ for lan in $DATAFLATLANS $DATAOTHERLANS ; do
 
     DATAIP=`cat $OURDIR/data-hosts.$lan | grep -E "$NODEID$" | sed -n -e 's/^\([0-9]*.[0-9]*.[0-9]*.[0-9]*\).*$/\1/p'`
     DATANETMASK=`cat $OURDIR/data-netmask.$lan`
+    DATAPREFIX=`netmask2prefix $DATANETMASK`
     cat ${BOOTDIR}/tmcc/ifconfig | grep "IFACETYPE=vlan" | grep "${lan}"
     if [ $? = 0 ]; then
 	DATAVLAN=1
@@ -1176,6 +1206,7 @@ for lan in $DATAFLATLANS $DATAOTHERLANS ; do
     echo "DATABRIDGE=br-${lan}" >> $OURDIR/info.$lan
     echo "DATAIP=${DATAIP}" >> $OURDIR/info.$lan
     echo "DATANETMASK=${DATANETMASK}" >> $OURDIR/info.$lan
+    echo "DATAPREFIX=${DATAPREFIX}" >> $OURDIR/info.$lan
     echo "DATAVLAN=${DATAVLAN}" >> $OURDIR/info.$lan
     echo "DATAVLANTAG=${DATAVLANTAG}" >> $OURDIR/info.$lan
     echo "DATAVLANDEV=${DATAVLANDEV}" >> $OURDIR/info.$lan

@@ -74,6 +74,14 @@ mkdir -p $KEY_DIR
 cd $EASY_RSA
 
 if [ ! -f $OURDIR/vpn-server-done ]; then
+    # Handle the case on Ubuntu18 where easy-rsa is broken for openssl 1.1.0
+    # (https://github.com/OpenVPN/easy-rsa/issues/159)
+    openssl version | grep -iq '^openssl 1\.1\.'
+    if [ $? -eq 0 -a -n "$KEY_CONFIG" -a ! -e $KEY_CONFIG -a -e openssl-1.0.0.cnf ]; then
+	    cp -p openssl-1.0.0.cnf $KEY_CONFIG
+	    echo '# For use with easy-rsa version 2.x and OpenSSL 1.1.0*' >> $KEY_CONFIG
+	    echo '# For use with easy-rsa version 2.0 and OpenSSL 1.1.0*' >> $KEY_CONFIG
+    fi
 
     # Fixup the openssl.cnf files
     for file in `ls -1 /etc/openvpn/easy-rsa/openssl*.cnf | xargs` ; do
@@ -131,11 +139,23 @@ EOF
 	# Make sure we don't start the VPN until our network is up.
 	# This is sort of magical, but it works.
 	mkdir /etc/systemd/system/openvpn@.service.d
-	cat <<EOF >/etc/systemd/system/openvpn@.service.d/local-ifup.conf
+	systemctl list-units | grep -q networking\.service
+	if [ $? -eq 0 ]; then
+	    cat <<EOF >/etc/systemd/system/openvpn@.service.d/local-ifup.conf
 [Unit]
 Requires=networking.service
 After=networking.service
 EOF
+	else
+	    systemctl list-units | grep -q network-online\.target
+	    if [ $? -eq 0 ]; then
+		cat <<EOF >/etc/systemd/system/openvpn@.service.d/local-ifup.conf
+[Unit]
+Requires=network-online.target
+After=network-online.target
+EOF
+	    fi
+	fi
 	systemctl daemon-reload
 	systemctl enable openvpn@server.service
 	systemctl start openvpn@server.service

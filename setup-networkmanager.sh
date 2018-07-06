@@ -53,7 +53,7 @@ EOF
 sysctl -p
 
 maybe_install_packages neutron-l3-agent neutron-dhcp-agent neutron-metering-agent
-if [ $OSVERSION -ge $OSNEWTON ]; then
+if [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
     maybe_install_packages neutron-lbaasv2-agent
 fi
 
@@ -119,7 +119,7 @@ else
     crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
-	auth_url http://${CONTROLLER}:35357/v2.0
+	auth_url http://${CONTROLLER}:${KADMINPORT}/v2.0
     crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
 	auth_region $REGION
     crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
@@ -141,8 +141,13 @@ else
     crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
 	admin_password "${NEUTRON_PASS}"
 fi
-crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
-    nova_metadata_ip ${CONTROLLER}
+if [ $OSVERSION -lt $OSPIKE ]; then
+    crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+        nova_metadata_ip ${CONTROLLER}
+else
+    crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
+        nova_metadata_host ${CONTROLLER}
+fi
 crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
     metadata_proxy_shared_secret ${NEUTRON_METADATA_SECRET}
 crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
@@ -161,7 +166,7 @@ crudini --set /etc/neutron/metering_agent.ini DEFAULT \
 crudini --set /etc/neutron/metering_agent.ini DEFAULT \
     use_namespaces True
 
-if [ $OSVERSION -ge $OSNEWTON ]; then
+if [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
     crudini --set /etc/neutron/lbaas_agent.ini DEFAULT \
 	device_driver "neutron_lbaas.drivers.haproxy.namespace_driver.HaproxyNSDriver"
     if [ "${ML2PLUGIN}" = "linuxbridge" ]; then
@@ -186,7 +191,7 @@ service_restart neutron-metadata-agent
 service_enable neutron-metadata-agent
 service_restart neutron-metering-agent
 service_enable neutron-metering-agent
-if [ $OSVERSION -ge $OSNEWTON ]; then
+if [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
     service_restart neutron-lbaasv2-agent
     service_enable neutron-lbaasv2-agent
 fi

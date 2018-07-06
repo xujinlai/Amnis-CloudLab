@@ -55,8 +55,13 @@ crudini --set /etc/neutron/neutron.conf DEFAULT auth_strategy keystone
 crudini --set /etc/neutron/neutron.conf DEFAULT verbose ${VERBOSE_LOGGING}
 crudini --set /etc/neutron/neutron.conf DEFAULT debug ${DEBUG_LOGGING}
 crudini --set /etc/neutron/neutron.conf DEFAULT core_plugin ml2
-crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins \
-    'router,metering,neutron_lbaas.services.loadbalancer.plugin.LoadBalancerPluginv2'
+if [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
+    crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins \
+        'router,metering,neutron_lbaas.services.loadbalancer.plugin.LoadBalancerPluginv2'
+else
+    crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins \
+        'router,metering'
+fi
 crudini --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips True
 crudini --set /etc/neutron/neutron.conf DEFAULT notification_driver messagingv2
 
@@ -81,7 +86,7 @@ if [ $OSVERSION -lt $OSKILO ]; then
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000/${KAPISTR}
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
-	identity_uri http://${CONTROLLER}:35357
+	identity_uri http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	admin_tenant_name service
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
@@ -92,7 +97,7 @@ else
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	auth_uri http://${CONTROLLER}:5000
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
-	auth_url http://${CONTROLLER}:35357
+	auth_url http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	${AUTH_TYPE_PARAM} password
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
@@ -114,7 +119,7 @@ if [ $OSVERSION -ge $OSOCATA ]; then
     crudini --set /etc/neutron/neutron.conf placement \
 	os_region_name $REGION
     crudini --set /etc/neutron/neutron.conf placement \
-	auth_url http://${CONTROLLER}:35357/v3
+	auth_url http://${CONTROLLER}:${KADMINPORT}/v3
     crudini --set /etc/neutron/neutron.conf placement \
 	${AUTH_TYPE_PARAM} password
     crudini --set /etc/neutron/neutron.conf placement \
