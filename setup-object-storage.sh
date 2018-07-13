@@ -72,14 +72,14 @@ if [ -z "$LVM" ] ; then
     if [ $? -eq 0 ]; then
 	vgrename emulab $VGNAME
 	sed -i -re "s/^(.*)(\/dev\/emulab)(.*)$/\1\/dev\/$VGNAME\3/" /etc/fstab
-    fi
-
-    /usr/local/etc/emulab/mkextrafs.pl ${MKEXTRAFS_ARGS}
-    if [ $? -ne 0 ]; then
-	/usr/local/etc/emulab/mkextrafs.pl ${MKEXTRAFS_ARGS} -f
+    else
+	/usr/local/etc/emulab/mkextrafs.pl ${MKEXTRAFS_ARGS}
 	if [ $? -ne 0 ]; then
-	    /usr/local/etc/emulab/mkextrafs.pl -f /storage
-	    LVM=0
+	    /usr/local/etc/emulab/mkextrafs.pl ${MKEXTRAFS_ARGS} -f
+	    if [ $? -ne 0 ]; then
+		/usr/local/etc/emulab/mkextrafs.pl -f /storage
+		LVM=0
+	    fi
 	fi
     fi
 fi
