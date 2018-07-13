@@ -67,8 +67,8 @@ fi
 # if the user requested a temp dataset.  If this happens, we simple
 # rename it to the VG name we expect.
 #
-vgdisplay emulab
 mkdir -p /storage
+vgdisplay emulab
 if [ $? -eq 0 -a "$COMPUTE_EXTRA_NOVA_DISK_SPACE" = "1" ]; then
     LVM=1
     VGNAME="openstack-volumes"
