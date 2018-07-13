@@ -124,6 +124,15 @@ if [ "$MANILADRIVER" = "lvm" ]; then
 		MNLVM=0
 	    fi
 	fi
+
+	# Check to see if we already have an `emulab` VG.  This would occur
+	# if the user requested a temp dataset.  If this happens, we simple
+	# rename it to the VG name we expect.
+	vgdisplay emulab
+	if [ $? -eq 0 ]; then
+	    vgrename emulab $VGNAME
+	    sed -i -re "s/^(.*)(\/dev\/emulab)(.*)$/\1\/dev\/$VGNAME\3/" /etc/fstab
+	fi
 	
 	/usr/local/etc/emulab/mkextrafs.pl ${MKEXTRAFS_ARGS}
 	if [ $? -ne 0 ]; then
