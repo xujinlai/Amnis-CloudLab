@@ -44,6 +44,7 @@ fi
 # /storage for swift later, so we make the dir either way.
 #
 mkdir -p /storage
+VGNAME="openstack-volumes"
 # Check to see if we already have an `emulab` VG.  This would occur
 # if the user requested a temp dataset.  If this happens, we simple
 # rename it to the VG name we expect.
@@ -54,7 +55,6 @@ if [ $? -eq 0 ]; then
     LVM=1
 elif [ -z "$LVM" ] ; then
     LVM=1
-    VGNAME="openstack-volumes"
     MKEXTRAFS_ARGS="-l -v ${VGNAME} -m util -z 1024"
     # On Cloudlab ARM machines, there is no second disk nor extra disk space
     # Well, now there's a new partition layout; try it.

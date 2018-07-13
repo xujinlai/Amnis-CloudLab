@@ -38,11 +38,10 @@ maybe_install_packages xfsprogs rsync
 # First try to make LVM volumes; fall back to loop device in /storage.  We use
 # /storage for swift later, so we make the dir either way.
 #
-
+VGNAME="openstack-volumes"
 mkdir -p /storage
 if [ -z "$LVM" ] ; then
     LVM=1
-    VGNAME="openstack-volumes"
     MKEXTRAFS_ARGS="-l -v ${VGNAME} -m util -z 1024"
     # On Cloudlab ARM machines, there is no second disk nor extra disk space
     # Well, now there's a new partition layout; try it.
