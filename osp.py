@@ -674,6 +674,11 @@ tempBSNodes = []
 if params.tempBlockstoreMountPoint != "":
     if params.tempBlockstoreMountNodes:
         tempBSNodes = params.tempBlockstoreMountNodes.split()
+    if params.tempBlockstoreSize <= 0:
+        perr = portal.ParameterError("Your temporary filesystems must have size > 0!",
+                                     ['tempBlockstoreSize'])
+        pc.reportError(perr)
+        pc.verifyParameters()
     pass
 
 #
