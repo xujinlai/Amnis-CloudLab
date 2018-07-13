@@ -38,11 +38,10 @@ maybe_install_packages xfsprogs rsync
 # First try to make LVM volumes; fall back to loop device in /storage.  We use
 # /storage for swift later, so we make the dir either way.
 #
-
+VGNAME="openstack-volumes"
 mkdir -p /storage
 if [ -z "$LVM" ] ; then
     LVM=1
-    VGNAME="openstack-volumes"
     MKEXTRAFS_ARGS="-l -v ${VGNAME} -m util -z 1024"
     # On Cloudlab ARM machines, there is no second disk nor extra disk space
     # Well, now there's a new partition layout; try it.
@@ -65,12 +64,21 @@ if [ -z "$LVM" ] ; then
 	fi
     fi
 
-    /usr/local/etc/emulab/mkextrafs.pl ${MKEXTRAFS_ARGS}
-    if [ $? -ne 0 ]; then
-	/usr/local/etc/emulab/mkextrafs.pl ${MKEXTRAFS_ARGS} -f
+    # Check to see if we already have an `emulab` VG.  This would occur
+    # if the user requested a temp dataset.  If this happens, we simple
+    # rename it to the VG name we expect.
+    vgdisplay emulab
+    if [ $? -eq 0 ]; then
+	vgrename emulab $VGNAME
+	sed -i -re "s/^(.*)(\/dev\/emulab)(.*)$/\1\/dev\/$VGNAME\3/" /etc/fstab
+    else
+	/usr/local/etc/emulab/mkextrafs.pl ${MKEXTRAFS_ARGS}
 	if [ $? -ne 0 ]; then
-	    /usr/local/etc/emulab/mkextrafs.pl -f /storage
-	    LVM=0
+	    /usr/local/etc/emulab/mkextrafs.pl ${MKEXTRAFS_ARGS} -f
+	    if [ $? -ne 0 ]; then
+		/usr/local/etc/emulab/mkextrafs.pl -f /storage
+		LVM=0
+	    fi
 	fi
     fi
 fi

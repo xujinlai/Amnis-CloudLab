@@ -59,7 +59,39 @@ elif [ -e /dev/nvme0n1 ]; then
     ROOTDEV=nvme0n1
     ROOTPART=p4
 fi
-if [ -e $ROOTDISK -a "$COMPUTE_EXTRA_NOVA_DISK_SPACE" = "1" ]; then
+
+#
+# Try to use LVM for this if possible; otherwise try to fall back to
+# partition 4.
+# Check to see if we already have an `emulab` VG.  This would occur
+# if the user requested a temp dataset.  If this happens, we simple
+# rename it to the VG name we expect.
+#
+mkdir -p /storage
+vgdisplay emulab
+if [ $? -eq 0 -a "$COMPUTE_EXTRA_NOVA_DISK_SPACE" = "1" ]; then
+    LVM=1
+    VGNAME="openstack-volumes"
+
+    vgrename emulab $VGNAME
+    sed -i -re "s/^(.*)(\/dev\/emulab)(.*)$/\1\/dev\/$VGNAME\3/" /etc/fstab
+
+    lvcreate -l 75%FREE -n nova $VGNAME
+    if [ -f /sbin/mkfs.ext4 ]; then
+	mkfs.ext4 /dev/$VGNAME/nova
+    else
+	mkfs.ext3 /dev/$VGNAME/nova
+    fi
+    mkdir -p /mnt/var-lib-nova
+    echo "/dev/$VGNAME/nova /mnt/var-lib-nova none defaults,bind 0 0" \
+	 >> /etc/fstab
+    mount /dev/$VGNAME/nova /mnt/var-lib-nova
+    chown nova:nova /mnt/var-lib-nova
+    rsync -avz /var/lib/nova/ /mnt/var-lib-nova/
+    mount -o bind /mnt/var-lib-nova /var/lib/nova
+    echo "/mnt/var-lib-nova /var/lib/nova none defaults,bind 0 0" \
+	 >> /etc/fstab
+elif [ -e $ROOTDISK -a "$COMPUTE_EXTRA_NOVA_DISK_SPACE" = "1" ]; then
     PART="${ROOTDISK}${ROOTPART}"
     mkdir -p /mnt/var-lib-nova
     FORCEARG=""
