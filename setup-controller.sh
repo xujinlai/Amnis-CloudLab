@@ -2910,12 +2910,20 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	__openstack service create --name gnocchi \
 	    --description "OpenStack Metric Service" metric
 
-	__openstack endpoint create --region $REGION \
-	    metric public http://${CONTROLLER}:8041
-	__openstack endpoint create --region $REGION \
-	    metric internal http://${CONTROLLER}:8041
-	__openstack endpoint create --region $REGION \
-	    metric admin http://${CONTROLLER}:8041
+	if [ $KEYSTONEAPIVERSION -lt 3 ]; then
+	    __openstack endpoint create \
+		--publicurl http://$CONTROLLER:8041 \
+		--internalurl http://$CONTROLLER:8041 \
+		--adminurl http://$CONTROLLER:8041 \
+		--region $REGION metric
+	else
+	    __openstack endpoint create --region $REGION \
+	        metric public http://${CONTROLLER}:8041
+	    __openstack endpoint create --region $REGION \
+	        metric internal http://${CONTROLLER}:8041
+	    __openstack endpoint create --region $REGION \
+		metric admin http://${CONTROLLER}:8041
+	fi
     fi
 
     #
