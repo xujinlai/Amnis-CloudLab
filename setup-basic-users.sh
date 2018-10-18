@@ -49,8 +49,11 @@ if [ $GENIUSER -eq 1 ] ; then
 	AAID=`openstack user show adminapi | awk '/ id / { print $4 }'`
 	AID=`openstack user show admin | awk '/ id / { print $4 }'`
     fi
+    # Do this for both the nova and nova_api DBs; that has changed over time.
     echo "update key_pairs set user_id='$AID' where user_id='$AAID'" \
 	| mysql -u root --password=${DB_ROOT_PASS} nova
+    echo "update key_pairs set user_id='$AID' where user_id='$AAID'" \
+	| mysql -u root --password=${DB_ROOT_PASS} nova_api
 
     # Ok, do it again!
     echo "*** Importing GENI user keys, for ${ADMIN_API} user..."

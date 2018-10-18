@@ -75,6 +75,7 @@ if rval:
 
 def build_keystone_args():
     global KEYSTONE_OPTS, CLOUDLAB_AUTH_FILE
+    version = None
     
     ret = dict()
     # First, see if they're in the env:
@@ -94,6 +95,8 @@ def build_keystone_args():
                 vva = line.split('=')
                 if not vva or len(vva) != 2:
                     continue
+                if vva[0] == 'OS_IDENTITY_API_VERSION':
+                    version = eval(vva[1])
                 if not vva[0] in KEYSTONE_OPTS:
                     continue
                 
@@ -110,9 +113,13 @@ def build_keystone_args():
         LOG.warn("%s does not exist; not loading auth opts from it",CLOUDLAB_AUTH_FILE)
         pass
     
-    # A hack for v3, because of how we write the admin-openrc.py file
+    # A hack for v3 (and v2), because of how we write the admin-openrc.py file.
+    # only project_name is valid in v3.Password; only tenant_name in v2.Password.
     if 'project_name' in ret and 'tenant_name' in ret:
-        del ret['tenant_name']
+        if version is not None and version == 2.0:
+            del ret['project_name']
+        else:
+            del ret['tenant_name']
         pass
     
     return ret
