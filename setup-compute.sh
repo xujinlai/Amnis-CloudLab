@@ -95,7 +95,7 @@ elif [ "$COMPUTE_EXTRA_NOVA_DISK_SPACE" = "1" ]; then
     #
     # See if we can try to use an LVM instead of just the 4th partition.
     #
-    lsblk -n -P -o NAME,FSTYPE,MOUNTPOINT,PARTTYPE,PARTUUID | perl -e 'my %devs = (); while (<STDIN>) { $_ =~ s/([A-Z0-9a-z]+=)/;\$$1/g; print "line = $_"; eval "$_"; if ($NAME ne "sda" && $NAME ne "/dev/nvme0n1" && $NAME ne "sda2" && $FSTYPE eq "" && $FSTYPE eq "" && $MOUNTPOINT eq "" && ($PARTTYPE eq "" || $PARTTYPE eq "0x0")) { push(@devs,"/dev/$NAME"); } }; print join(" ",@devs)."\n"' > /tmp/devs
+    lsblk -n -P -o NAME,FSTYPE,MOUNTPOINT,PARTTYPE,PARTUUID | perl -e 'my %devs = (); while (<STDIN>) { $_ =~ s/([A-Z0-9a-z]+=)/;\$$1/g; eval "$_"; if ($NAME ne "sda" && $NAME ne "/dev/nvme0n1" && $NAME ne "sda2" && $FSTYPE eq "" && $FSTYPE eq "" && $MOUNTPOINT eq "" && ($PARTTYPE eq "" || $PARTTYPE eq "0x0")) { push(@devs,"/dev/$NAME"); } }; print join(" ",@devs)."\n"' > /tmp/devs
     DEVS=`cat /tmp/devs`
     if [ -n "$DEVS" ]; then
 	VGNAME="openstack-volumes"
