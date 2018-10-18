@@ -91,44 +91,69 @@ if [ $? -eq 0 -a "$COMPUTE_EXTRA_NOVA_DISK_SPACE" = "1" ]; then
     mount -o bind /mnt/var-lib-nova /var/lib/nova
     echo "/mnt/var-lib-nova /var/lib/nova none defaults,bind 0 0" \
 	 >> /etc/fstab
-elif [ -e $ROOTDISK -a "$COMPUTE_EXTRA_NOVA_DISK_SPACE" = "1" ]; then
-    PART="${ROOTDISK}${ROOTPART}"
-    mkdir -p /mnt/var-lib-nova
-    FORCEARG=""
-    if [ ! -e $PART ]; then
-	echo "*** WARNING: attempting to create max-size $PART from free space!"
-	START=`sfdisk -F $ROOTDISK | tail -1 | awk '{ print $1; }'`
-	SIZE=`sfdisk -F $ROOTDISK | tail -1 | awk '{ print $3; }'`
-	sfdisk -d $ROOTDISK > /tmp/nparts.out
-	if [ $? -eq 0 -a -s /tmp/nparts.out ]; then
-	    echo "$PART : start=$START,size=$SIZE" >>/tmp/nparts.out
-	    cat /tmp/nparts.out | sfdisk $ROOTDISK --force
-	    if [ ! $? -eq 0 ]; then
-		echo "*** ERROR: failed to create new $PART!"
-	    else
-		# Need to force mkextrafs.pl because sfdisk cannot set a
-		# partition type of 0, and mkextrafs.pl will only work
-		# normally with part-type 0.
-		FORCEARG="-f"
-		partprobe
-		sleep 10
-	    fi
+elif [ "$COMPUTE_EXTRA_NOVA_DISK_SPACE" = "1" ]; then
+    #
+    # See if we can try to use an LVM instead of just the 4th partition.
+    #
+    lsblk -n -P -o NAME,FSTYPE,MOUNTPOINT,PARTTYPE,PARTUUID | perl -e 'my %devs = (); while (<STDIN>) { $_ =~ s/([A-Z0-9a-z]+=)/;\$$1/g; eval "$_"; if ($NAME ne "sda" && $NAME ne "/dev/nvme0n1" && $NAME ne "sda2" && $FSTYPE eq "" && $FSTYPE eq "" && $MOUNTPOINT eq "" && ($PARTTYPE eq "" || $PARTTYPE eq "0x0")) { push(@devs,"/dev/$NAME"); } }; print join(" ",@devs)."\n"' > /tmp/devs
+    DEVS=`cat /tmp/devs`
+    if [ -n "$DEVS" ]; then
+	VGNAME="openstack-volumes"
+	pvcreate $DEVS
+	vgcreate $VGNAME $DEVS
+	lvcreate -l 75%FREE -n nova $VGNAME
+	if [ -f /sbin/mkfs.ext4 ]; then
+	    mkfs.ext4 /dev/$VGNAME/nova
 	else
-	    echo "*** ERROR: could not dump $PART partitions!"
+	    mkfs.ext3 /dev/$VGNAME/nova
 	fi
-    fi
-    /usr/local/etc/emulab/mkextrafs.pl $FORCEARG -r $ROOTDEV -s 4 /mnt/var-lib-nova
-    if [ $? = 0 ]; then
+	mkdir -p /mnt/var-lib-nova
+	echo "/dev/$VGNAME/nova /mnt/var-lib-nova none defaults,bind 0 0" \
+	     >> /etc/fstab
+	mount /dev/$VGNAME/nova /mnt/var-lib-nova
 	chown nova:nova /mnt/var-lib-nova
 	rsync -avz /var/lib/nova/ /mnt/var-lib-nova/
 	mount -o bind /mnt/var-lib-nova /var/lib/nova
 	echo "/mnt/var-lib-nova /var/lib/nova none defaults,bind 0 0" \
-	    >> /etc/fstab
-    else
-	echo "*** ERROR: could not make larger Nova /var/lib/nova dir!"
+	     >> /etc/fstab
+    elif [ -e $ROOTDISK ]; then
+	PART="${ROOTDISK}${ROOTPART}"
+	mkdir -p /mnt/var-lib-nova
+	FORCEARG=""
+	if [ ! -e $PART ]; then
+	    echo "*** WARNING: attempting to create max-size $PART from free space!"
+	    START=`sfdisk -F $ROOTDISK | tail -1 | awk '{ print $1; }'`
+	    SIZE=`sfdisk -F $ROOTDISK | tail -1 | awk '{ print $3; }'`
+	    sfdisk -d $ROOTDISK > /tmp/nparts.out
+	    if [ $? -eq 0 -a -s /tmp/nparts.out ]; then
+		echo "$PART : start=$START,size=$SIZE" >>/tmp/nparts.out
+		cat /tmp/nparts.out | sfdisk $ROOTDISK --force
+		if [ ! $? -eq 0 ]; then
+		    echo "*** ERROR: failed to create new $PART!"
+		else
+		    # Need to force mkextrafs.pl because sfdisk cannot set a
+		    # partition type of 0, and mkextrafs.pl will only work
+		    # normally with part-type 0.
+		    FORCEARG="-f"
+		    partprobe
+		    sleep 10
+		fi
+	    else
+		echo "*** ERROR: could not dump $PART partitions!"
+	    fi
+	fi
+	/usr/local/etc/emulab/mkextrafs.pl $FORCEARG -r $ROOTDEV -s 4 /mnt/var-lib-nova
+	if [ $? = 0 ]; then
+	    chown nova:nova /mnt/var-lib-nova
+	    rsync -avz /var/lib/nova/ /mnt/var-lib-nova/
+	    mount -o bind /mnt/var-lib-nova /var/lib/nova
+	    echo "/mnt/var-lib-nova /var/lib/nova none defaults,bind 0 0" \
+		 >> /etc/fstab
+	else
+	    echo "*** ERROR: could not make larger Nova /var/lib/nova dir!"
+	fi
     fi
 fi
-
 crudini --set /etc/nova/nova.conf DEFAULT auth_strategy keystone
 crudini --set /etc/nova/nova.conf DEFAULT my_ip ${MGMTIP}
 if [ $OSVERSION -lt $OSNEWTON ]; then
