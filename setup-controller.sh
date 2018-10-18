@@ -1012,12 +1012,27 @@ if [ -z "${NOVA_DBPASS}" ]; then
 	    __openstack service create --name placement \
 	        --description "OpenStack Placement API" placement
 
-	    __openstack endpoint create --region $REGION \
-		placement public http://${CONTROLLER}:8778
-	    __openstack endpoint create --region $REGION \
-		placement internal http://${CONTROLLER}:8778
-	    __openstack endpoint create --region $REGION \
-		placement admin http://${CONTROLLER}:8778
+	    if [ $KEYSTONEAPIVERSION -lt 3 ]; then
+		__openstack endpoint create \
+		    --publicurl http://$CONTROLLER:8778 \
+		    --internalurl http://$CONTROLLER:8778 \
+		    --adminurl http://$CONTROLLER:8778 \
+		    --region $REGION placement
+	    elif [ $OSVERSION -lt $OSNEWTON ]; then
+		__openstack endpoint create --region $REGION \
+		    placement public http://${CONTROLLER}:8778
+		__openstack endpoint create --region $REGION \
+		    placement internal http://${CONTROLLER}:8778
+		__openstack endpoint create --region $REGION \
+		    placement admin http://${CONTROLLER}:8778
+	    else
+		__openstack endpoint create --region $REGION \
+		    placement public http://${CONTROLLER}:8778
+		__openstack endpoint create --region $REGION \
+		    placement internal http://${CONTROLLER}:8778
+		__openstack endpoint create --region $REGION \
+		    placement admin http://${CONTROLLER}:8778
+	    fi
 	fi
     fi
 
