@@ -1870,7 +1870,14 @@ OPENSTACK_API_VERSIONS = {
 EOF
 
     if [ $OSVERSION -eq $OSOCATA ]; then
-	chown www-data.www-data /var/lib/openstack-dashboard/secret_key
+	# Original Ocata packages ran dashboard wsgi as www-data; newer
+	# use horizon.
+	grep -q user=horizon /etc/apache2/conf-enabled/openstack-dashboard.conf
+	if [ $? -eq 0 ]; then
+	    chown horizon.www-data /var/lib/openstack-dashboard/secret_key
+	else
+	    chown www-data.www-data /var/lib/openstack-dashboard/secret_key
+	fi
     elif [ $OSVERSION -ge $OSPIKE ]; then
 	chown horizon.www-data /var/lib/openstack-dashboard/secret_key
     fi
