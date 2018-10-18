@@ -364,8 +364,8 @@ if params.doAptDistUpgrade and not params.doAptInstall:
     pass
 
 if params.publicIPCount > 16:
-    perr = portal.ParameterError("You cannot request more than 16 public IP addresses, at least not without creating your own modified version of this profile!",['publicIPCount'])
-    pc.reportError(perr)
+    perr = portal.ParameterWarning("You cannot request more than 16 public IP addresses, at least not without creating your own modified version of this profile!",['publicIPCount'])
+    pc.reportWarning(perr)
     pass
 if (params.vlanDataLanCount + params.vxlanDataLanCount \
     + params.greDataLanCount + params.flatDataLanCount) \
