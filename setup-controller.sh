@@ -3338,14 +3338,9 @@ fi
 if [ $OSVERSION -ge $OSPIKE -a -z "${TELEMETRY_GRAFANA_DONE}" ]; then
     logtstart "grafana"
 
-    if [ $OSVERSION -ge $OSQUEENS ]; then
-	echo deb https://packagecloud.io/grafana/stable/debian/ stretch main \
-             >> /etc/apt/sources.list.d/grafana.list
-    else
-	echo deb https://packagecloud.io/grafana/stable/debian/ jessie main \
-             >> /etc/apt/sources.list.d/grafana.list
-    fi
-    curl https://packagecloud.io/gpg.key | sudo apt-key add -
+    echo deb https://packages.grafana.com/oss/deb stable main \
+        >> /etc/apt/sources.list.d/grafana.list
+    curl https://packages.grafana.com/gpg.key | sudo apt-key add -
     apt-get update
 
     $APTGETINSTALL grafana
