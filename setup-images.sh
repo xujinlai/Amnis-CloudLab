@@ -56,6 +56,8 @@ cd $IMAGEDIR
 #
 if [ "$ARCH" = "aarch64" ] ; then
     . $DIRNAME/setup-images-aarch64.sh
+elif [ "$ARCH" = "ppc64le" ] ; then
+    . $DIRNAME/setup-images-ppc64le.sh
 else
     . $DIRNAME/setup-images-x86_64.sh
 fi
