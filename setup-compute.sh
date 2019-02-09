@@ -332,6 +332,21 @@ if [ "$ARCH" = "aarch64" ] ; then
     elif [ $OSVERSION -eq $OSQUEENS ]; then
 	patch -d / -p0 < $DIRNAME/etc/nova-queens-aarch64-libvirt-bios-default.patch
     fi
+elif [ "$ARCH" = "ppc64le" ] ; then
+    ppc64_cpu --smt=off
+    if [ -e /etc/rc.local ]; then
+	cat <<EOF >>/etc/rc.local
+
+ppc64_cpu --smt=off
+EOF
+    else
+	cat <<EOF >/etc/rc.local
+#!/bin/sh
+
+ppc64_cpu --smt=off
+EOF
+	chmod 755 /etc/rc.local
+    fi
 fi
 
 if [ ${OSCODENAME} = "juno" ]; then

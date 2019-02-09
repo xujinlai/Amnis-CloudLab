@@ -1274,6 +1274,25 @@ EOF
 	__openstack flavor create m1.xlarge --id 5 --ram 16384 --disk 160 --vcpus 8 --public
     fi
 
+    #
+    # Create SMT flavors on ppc64le.  SMT is disabled in the root
+    # context, but can be used by VMs.  See
+    # https://docs.openstack.org/nova/pike/admin/cpu-topologies.html and
+    # http://www.redbooks.ibm.com/redbooks/pdfs/sg248231.pdf .
+    #
+    if [ "$ARCH" = "ppc64le" ] ; then
+	__openstack flavor create m1.tiny-smt --id 10 --ram 512 --disk 1 --vcpus 1 --public \
+	    --property hw:cpu_cores=1 --property hw:cpu_sockets=1 --property hw:cpu_threads=1
+	__openstack flavor create m1.small-smt --id 11 --ram 2048 --disk 20 --vcpus 1 --public \
+	    --property hw:cpu_cores=1 --property hw:cpu_sockets=1 --property hw:cpu_threads=1
+	__openstack flavor create m1.medium-smt --id 12 --ram 4096 --disk 40 --vcpus 2 --public \
+	    --property hw:cpu_cores=1 --property hw:cpu_sockets=1 --property hw:cpu_threads=2
+	__openstack flavor create m1.large-smt --id 13 --ram 8192 --disk 80 --vcpus 4 --public \
+	    --property hw:cpu_cores=1 --property hw:cpu_sockets=1 --property hw:cpu_threads=4
+	__openstack flavor create m1.xlarge-smt --id 14 --ram 16384 --disk 160 --vcpus 8 --public \
+	    --property hw:cpu_cores=1 --property hw:cpu_sockets=1 --property hw:cpu_threads=8
+    fi
+
     echo "NOVA_DBPASS=\"${NOVA_DBPASS}\"" >> $SETTINGS
     echo "NOVA_PASS=\"${NOVA_PASS}\"" >> $SETTINGS
     echo "PLACEMENT_PASS=\"${PLACEMENT_PASS}\"" >> $SETTINGS
