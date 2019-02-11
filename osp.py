@@ -631,6 +631,25 @@ else:
     image_tag_cp = '-OSCP'
     pass
 
+#
+# XXX: special handling for ppc64le at Clemson because of special disk
+# image names, and because only >= Queens is available for them.
+#
+if params.osNodeType == 'ibm8335':
+    image_urn = 'clemson.cloudlab.us'
+    if params.fromScratch:
+        image_os = 'UBUNTU18-PPC64LE'
+        image_tag_cn = image_tag_nm = image_tag_cp = ''
+    else:
+        image_os = 'UBUNTU18-PPC'
+
+    if params.release not in [ 'queens' ]:
+        perr = portal.ParameterError(
+            "You can only run the Queens release (or greater) on `ibm8335` (POWER8) hardware!",
+            ['release','osNodeType'])
+        pc.reportError(perr)
+        pc.verifyParameters()
+
 nodes = dict({})
 
 fwrules = [
