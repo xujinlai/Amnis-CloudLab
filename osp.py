@@ -650,6 +650,13 @@ if params.osNodeType == 'ibm8335':
         pc.reportError(perr)
         pc.verifyParameters()
 
+    if params.ml2plugin != 'linuxbridge':
+        perr = portal.ParameterWarning(
+            "The openvswitch plugin may not work correct on POWER8; you might consider changing to the linuxbridge plugin, which works fine.  If you do change, make sure to specify VXLANs instead of GRE tunnels.",
+            ['greDataLanCount','ml2plugin','vxlanDataLanCount'])
+        pc.reportWarning(perr)
+        pc.verifyParameters()
+
 nodes = dict({})
 
 fwrules = [
