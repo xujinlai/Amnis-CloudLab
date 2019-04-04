@@ -930,7 +930,7 @@ if [ -z "${GLANCE_DBPASS}" ]; then
     #
     # Possibly create a larger image storage space.
     #
-    if [ -n "$GLANCE_EXTRA_SPACE" -a ! $GLANCE_EXTRA_SPACE = 0 ]; then
+    if [ -n "$GLANCE_LV_SIZE" -a ! $GLANCE_LV_SIZE = 0 ]; then
 	service_stop glance-registry
 	service_stop glance-api
 
@@ -941,7 +941,7 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	chmod 770 ${STORAGEDIR}/glance
 
 	if [ $LVM = 1 ]; then
-	    lvcreate -l ${GLANCE_EXTRA_SPACE}G -n glance $VGNAME
+	    lvcreate -L ${GLANCE_LV_SIZE}G -n glance $VGNAME
 	    if [ -f /sbin/mkfs.ext4 ]; then
 		ftype=ext4
 	    else
@@ -950,7 +950,7 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	    mkfs.${ftype} /dev/$VGNAME/glance
 	    echo "/dev/$VGNAME/glance ${STORAGEDIR}/glance none defaults 0 0" \
 	        >> /etc/fstab
-	    mount /dev/$VGNAME/nova ${STORAGEDIR}/glance
+	    mount /dev/$VGNAME/glance ${STORAGEDIR}/glance
 	fi
 	rsync -avz /var/lib/glance/ ${STORAGEDIR}/glance/
 	rm -rf /var/lib/glance/*

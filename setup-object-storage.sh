@@ -53,10 +53,10 @@ if [ $LVM -eq 0 ] ; then
     losetup $LDEV ${STORAGEDIR}/swiftv1-2
     LDEVS="${LDEVS} ${LDEV}"
 else
-    lvcreate -n swiftv1 -L 4G $VGNAME
+    lvcreate -n swiftv1 -L ${SWIFT_LV_SIZE}G $VGNAME
     LDEV=/dev/${VGNAME}/swiftv1
     LDEVS="${LDEV}"
-    lvcreate -n swiftv1-2 -L 4G $VGNAME
+    lvcreate -n swiftv1-2 -L ${SWIFT_LV_SIZE}G $VGNAME
     LDEV=/dev/${VGNAME}/swiftv1-2
     LDEVS="${LDEVS} ${LDEV}"
 fi
