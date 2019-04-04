@@ -120,7 +120,7 @@ pc.defineParameter("swiftLVSize", "Swift Logical Volume Size",
                    portal.ParameterType.INTEGER,4,advanced=True,
                    longDescription="The necessary space in GB to reserve for each of two Swift backing store volumes, when it is possible to use logical volumes.  Nearly all Cloudlab machines do support logical volumes.  Ensure that the total disk space requested (20GB root + 2x Swift LV size + 1x Glance LV size) is less than the total disk space available on the node type you want to run on.")
 pc.defineParameter("glanceLVSize", "Glance Logical Volume Size",
-                   portal.ParameterType.INTEGER,4,advanced=True,
+                   portal.ParameterType.INTEGER,32,advanced=True,
                    longDescription="The necessary space in GB to reserve for a Glance backing store for disk images, when it is possible to use logical volumes.  Nearly all Cloudlab machines do support logical volumes.  Ensure that the total disk space requested (20GB root + 2x Swift LV size + 1x Glance LV size) is less than the total disk space available on the node type you want to run on.")
 pc.defineParameter("tempBlockstoreMountPoint", "Temporary Filesystem Mount Point",
                    portal.ParameterType.STRING,"",advanced=True,
