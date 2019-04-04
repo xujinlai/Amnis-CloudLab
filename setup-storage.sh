@@ -23,6 +23,11 @@ if [ -f $OURDIR/setup-storage-host-done ]; then
     exit 0
 fi
 
+#
+# Ensure extra space, *before* we source LOCALSETTINGS.
+#
+$DIRNAME/setup-extra-space.sh
+
 logtstart "storage"
 
 if [ -f $SETTINGS ]; then
@@ -40,61 +45,17 @@ if [ $OSVERSION -ge $OSOCATA ]; then
 fi
 
 #
-# First try to make LVM volumes; fall back to loop device in /storage.  We use
-# /storage for swift later, so we make the dir either way.
+# Handle the case where we have no LVM.
 #
-mkdir -p /storage
-VGNAME="openstack-volumes"
-# Check to see if we already have an `emulab` VG.  This would occur
-# if the user requested a temp dataset.  If this happens, we simple
-# rename it to the VG name we expect.
-vgdisplay emulab
-if [ $? -eq 0 ]; then
-    vgrename emulab $VGNAME
-    sed -i -re "s/^(.*)(\/dev\/emulab)(.*)$/\1\/dev\/$VGNAME\3/" /etc/fstab
-    LVM=1
-elif [ -z "$LVM" ] ; then
-    LVM=1
-    MKEXTRAFS_ARGS="-l -v ${VGNAME} -m util -z 1024"
-    # On Cloudlab ARM machines, there is no second disk nor extra disk space
-    # Well, now there's a new partition layout; try it.
-    if [ "$ARCH" = "aarch64" ]; then
-	maybe_install_packages gdisk
-	sgdisk -i 1 /dev/sda
-	if [ $? -eq 0 ] ; then
-	    sgdisk -N 2 /dev/sda
-	    partprobe /dev/sda
-	    if [ $? -eq 0 ] ; then
-		partprobe /dev/sda
-		# Add the second partition specifically
-		MKEXTRAFS_ARGS="${MKEXTRAFS_ARGS} -s 2"
-	    else
-		MKEXTRAFS_ARGS=""
-		LVM=0
-	    fi
-	else
-	    MKEXTRAFS_ARGS=""
-	    LVM=0
-	fi
-    fi
-
-    /usr/local/etc/emulab/mkextrafs.pl ${MKEXTRAFS_ARGS}
-    if [ $? -ne 0 ]; then
-	/usr/local/etc/emulab/mkextrafs.pl ${MKEXTRAFS_ARGS} -f
-	if [ $? -ne 0 ]; then
-	    /usr/local/etc/emulab/mkextrafs.pl -f /storage
-	    LVM=0
-	fi
-    fi
-fi
-
+CINDERVGNAME=${VGNAME}
 if [ $LVM -eq 0 ] ; then
+    CINDERVGNAME=cinder-volumes
     dd if=/dev/zero of=/storage/pvloop.1 bs=32768 count=131072
     LDEV=`losetup -f`
     losetup $LDEV /storage/pvloop.1
 
-    pvcreate /dev/loop0
-    vgcreate $VGNAME /dev/loop0
+    pvcreate $LDEV
+    vgcreate $CINDERVGNAME $LDEV
 fi
 
 maybe_install_packages cinder-volume $DBDPACKAGE
@@ -178,11 +139,11 @@ elif [ $OSVERSION -ge $OSLIBERTY ]; then
 fi
 
 if [ $OSVERSION -eq $OSJUNO ]; then
-    crudini --set /etc/cinder/cinder.conf DEFAULT volume_group openstack-volumes
+    crudini --set /etc/cinder/cinder.conf DEFAULT volume_group ${CINDERVGNAME}
 else
     crudini --set /etc/cinder/cinder.conf lvm \
 	volume_driver cinder.volume.drivers.lvm.LVMVolumeDriver
-    crudini --set /etc/cinder/cinder.conf lvm volume_group openstack-volumes
+    crudini --set /etc/cinder/cinder.conf lvm volume_group ${CINDERVGNAME}
     crudini --set /etc/cinder/cinder.conf lvm iscsi_protocol iscsi
     crudini --set /etc/cinder/cinder.conf lvm iscsi_helper tgtadm
     crudini --set /etc/cinder/cinder.conf DEFAULT enabled_backends lvm
@@ -194,8 +155,7 @@ service_restart cinder-volume
 service_enable cinder-volume
 rm -f /var/lib/cinder/cinder.sqlite
 
-echo "LVM=$LVM" >> $LOCALSETTINGS
-echo "VGNAME=${VGNAME}" >> $LOCALSETTINGS
+echo "CINDERVGNAME=${CINDERVGNAME}" >> $LOCALSETTINGS
 
 touch $OURDIR/setup-storage-host-done
 
