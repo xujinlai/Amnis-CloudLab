@@ -116,6 +116,12 @@ pc.defineParameter("computeNodeCountSite2", "Number of compute nodes at Site 2",
                    portal.ParameterType.INTEGER, 0,advanced=True,
                    longDescription="You can add additional compute nodes from other CloudLab clusters, allowing you to experiment with remote VMs controlled from the central controller at the first site.")
 
+pc.defineParameter("swiftLVSize", "Swift Logical Volume Size",
+                   portal.ParameterType.INTEGER,4,advanced=True,
+                   longDescription="The necessary space in GB to reserve for each of two Swift backing store volumes, when it is possible to use logical volumes.  Nearly all Cloudlab machines do support logical volumes.  Ensure that the total disk space requested (20GB root + 2x Swift LV size + 1x Glance LV size) is less than the total disk space available on the node type you want to run on.")
+pc.defineParameter("glanceLVSize", "Glance Logical Volume Size",
+                   portal.ParameterType.INTEGER,32,advanced=True,
+                   longDescription="The necessary space in GB to reserve for a Glance backing store for disk images, when it is possible to use logical volumes.  Nearly all Cloudlab machines do support logical volumes.  Ensure that the total disk space requested (20GB root + 2x Swift LV size + 1x Glance LV size) is less than the total disk space available on the node type you want to run on.")
 pc.defineParameter("tempBlockstoreMountPoint", "Temporary Filesystem Mount Point",
                    portal.ParameterType.STRING,"",advanced=True,
                    longDescription="Mounts an ephemeral, temporary filesystem at this mount point, on the nodes which you specify below.  If you specify no nodes, and specify a mount point here, all nodes will get a temp filesystem.  Be careful where you mount it -- something might already be there (i.e., /storage is already taken).")
@@ -1106,6 +1112,12 @@ class Parameters(RSpec.Resource):
 
         param = ET.SubElement(el,paramXML)
         param.text = "OSRELEASE='%s'" % (str(params.release))
+
+        param = ET.SubElement(el,paramXML)
+        param.text = "SWIFT_LV_SIZE=%d" % (int(params.swiftLVSize))
+
+        param = ET.SubElement(el,paramXML)
+        param.text = "GLANCE_LV_SIZE=%d" % (int(params.glanceLVSize))
 
         return el
     pass

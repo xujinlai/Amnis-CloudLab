@@ -96,65 +96,21 @@ crudini --set /etc/manila/manila.conf oslo_concurrency \
 maybe_install_packages lvm2 nfs-kernel-server
 
 if [ "$MANILADRIVER" = "lvm" ]; then
-    #
-    # First try to make LVM volumes; fall back to loop device in /storage.  We use
-    # /storage for swift later, so we make the dir either way.
-    #
-    mkdir -p /storage
-    if [ -z "$MNLVM" ] ; then
-	MNLVM=1
-	MNVGNAME="manila-volumes"
-	MKEXTRAFS_ARGS="-l -v ${MNVGNAME}" # -m util -z 1G"
-        # On Cloudlab ARM machines, there is no second disk nor extra disk space
-        # Well, now there's a new partition layout; try it.
-	if [ "$ARCH" = "aarch64" ]; then
-	    sgdisk -i 1 /dev/sda
-	    if [ $? -eq 0 ] ; then
-		sgdisk -N 2 /dev/sda
-		if [ $? -eq 0 ] ; then
-		    partprobe
-    		    # Add the second partition specifically
-		    MKEXTRAFS_ARGS="${MKEXTRAFS_ARGS} -s 2"
-		else
-		    MKEXTRAFS_ARGS=""
-		    MNLVM=0
-		fi
-	    else
-		MKEXTRAFS_ARGS=""
-		MNLVM=0
-	    fi
-	fi
+    $DIRNAME/setup-extra-space.sh
+    . $LOCALSETTINGS
+    MANILAVGNAME=${VGNAME}
 
-	# Check to see if we already have an `emulab` VG.  This would occur
-	# if the user requested a temp dataset.  If this happens, we simple
-	# rename it to the VG name we expect.
-	vgdisplay emulab
-	if [ $? -eq 0 ]; then
-	    vgrename emulab $VGNAME
-	    sed -i -re "s/^(.*)(\/dev\/emulab)(.*)$/\1\/dev\/$VGNAME\3/" /etc/fstab
-	fi
-	
-	/usr/local/etc/emulab/mkextrafs.pl ${MKEXTRAFS_ARGS}
-	if [ $? -ne 0 ]; then
-	    /usr/local/etc/emulab/mkextrafs.pl ${MKEXTRAFS_ARGS} -f
-	    if [ $? -ne 0 ]; then
-		/usr/local/etc/emulab/mkextrafs.pl -f /storage
-		MNLVM=0
-	    fi
-	fi
-    fi
-
-    if [ $MNLVM -eq 0 ] ; then
+    if [ $LVM -eq 0 ] ; then
+	MANILAVGNAME=manila-volumes
 	dd if=/dev/zero of=/storage/pvloop.2 bs=32768 count=131072
 	LDEV=`losetup -f`
 	losetup $LDEV /storage/pvloop.2
 	
 	pvcreate $LDEV
-	vgcreate $MNVGNAME $LDEV
+	vgcreate $MANILAVGNAME $LDEV
     fi
 
-    echo "MNLVM=$MNLVM" >> $LOCALSETTINGS
-    echo "MNVGNAME=${MNVGNAME}" >> $LOCALSETTINGS
+    echo "MANILAVGNAME=${MANILAVGNAME}" >> $LOCALSETTINGS
 fi
 
 if [ "$MANILADRIVER" = "lvm" ]; then
@@ -167,7 +123,7 @@ if [ "$MANILADRIVER" = "lvm" ]; then
 	share_driver manila.share.drivers.lvm.LVMShareDriver
     crudini --set /etc/manila/manila.conf lvm \
 	driver_handles_share_servers False
-    crudini --set /etc/manila/manila.conf lvm lvm_share_volume_group manila-volumes
+    crudini --set /etc/manila/manila.conf lvm lvm_share_volume_group ${MANILAVGNAME}
     crudini --set /etc/manila/manila.conf lvm lvm_share_export_ip ${MGMTIP}
     crudini --set /etc/manila/manila.conf lvm 
 else

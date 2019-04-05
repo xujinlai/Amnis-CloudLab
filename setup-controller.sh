@@ -927,6 +927,38 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 
     su -s /bin/sh -c "/usr/bin/glance-manage db_sync" glance
 
+    #
+    # Possibly create a larger image storage space.
+    #
+    if [ -n "$GLANCE_LV_SIZE" -a ! $GLANCE_LV_SIZE = 0 ]; then
+	service_stop glance-registry
+	service_stop glance-api
+
+	$DIRNAME/setup-extra-space.sh
+	. $LOCALSETTINGS
+	mkdir -p ${STORAGEDIR}/glance
+	chown glance:glance ${STORAGEDIR}/glance
+	chmod 770 ${STORAGEDIR}/glance
+
+	if [ $LVM = 1 ]; then
+	    lvcreate -L ${GLANCE_LV_SIZE}G -n glance $VGNAME
+	    if [ -f /sbin/mkfs.ext4 ]; then
+		ftype=ext4
+	    else
+		ftype=ext3
+	    fi
+	    mkfs.${ftype} /dev/$VGNAME/glance
+	    echo "/dev/$VGNAME/glance ${STORAGEDIR}/glance none defaults 0 0" \
+	        >> /etc/fstab
+	    mount /dev/$VGNAME/glance ${STORAGEDIR}/glance
+	fi
+	rsync -avz /var/lib/glance/ ${STORAGEDIR}/glance/
+	rm -rf /var/lib/glance/*
+	mount -o bind ${STORAGEDIR}/glance /var/lib/glance
+	echo "${STORAGEDIR}/glance /var/lib/glance none defaults,bind 0 0" \
+	    >> /etc/fstab
+    fi
+
     service_restart glance-registry
     service_enable glance-registry
     service_restart glance-api
