@@ -597,14 +597,18 @@ else:
 # Construct the disk image URNs we're going to set the various nodes to load.
 #
 image_project = 'emulab-ops'
-image_urn = 'utah.cloudlab.us'
+image_urn = 'emulab.net'
 image_tag_rel = ''
 if params.release == "juno":
     image_os = 'UBUNTU14-10-64'
+    # Use the old "wildcard" image URN behavior up to Mitaka.
+    image_urn = 'utah.cloudlab.us'
 elif params.release == "kilo":
     image_os = 'UBUNTU15-04-64'
+    image_urn = 'utah.cloudlab.us'
 elif params.release == 'liberty':
     image_os = 'UBUNTU15-10-64'
+    image_urn = 'utah.cloudlab.us'
 elif params.release == 'mitaka':
     image_os = 'UBUNTU16-64'
 elif params.release == 'newton':
