@@ -91,7 +91,7 @@ elif [ -z "$LVM" ] ; then
 	fi
     fi
     # Get integer total space (G) available.
-    VGTOTAL=`vgs -o vg_size --noheadings --units G $VGNAME | sed -ne 's/ *\([0-9]*\)[0-9\.]*G/\1/p`
+    VGTOTAL=`vgs -o vg_size --noheadings --units G $VGNAME | sed -ne 's/ *\([0-9]*\)[0-9\.]*G/\1/p'`
     echo "VGNAME=${VGNAME}" >> $LOCALSETTINGS
     echo "VGTOTAL=${VGTOTAL}" >> $LOCALSETTINGS
     echo "LVM=${LVM}" >> $LOCALSETTINGS
