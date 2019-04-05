@@ -56,6 +56,11 @@ if [ $LVM -eq 0 ] ; then
 
     pvcreate $LDEV
     vgcreate $CINDERVGNAME $LDEV
+else
+    # Create our own, because we cannot control the size of the
+    # autocreated one.  But create it with the name Cinder expects,
+    # based on what we configure below.
+    lvcreate -L ${CINDER_LV_SIZE}G -T ${VGNAME}/${VGNAME}-pool
 fi
 
 maybe_install_packages cinder-volume $DBDPACKAGE

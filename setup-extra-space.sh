@@ -90,8 +90,53 @@ elif [ -z "$LVM" ] ; then
 	    LVM=0
 	fi
     fi
+    # Get integer total space (G) available.
+    VGTOTAL=`vgs -o vg_size --noheadings --units G $VGNAME | sed -ne 's/ *\([0-9]*\)[0-9\.]*G/\1/p`
     echo "VGNAME=${VGNAME}" >> $LOCALSETTINGS
+    echo "VGTOTAL=${VGTOTAL}" >> $LOCALSETTINGS
     echo "LVM=${LVM}" >> $LOCALSETTINGS
+fi
+
+#
+# If using LVM, recalculate GLANCE_LV_SIZE, SWIFT_LV_SIZE, and
+# CINDER_LV_SIZE.  User gets to specify first two, and we must allocate
+# 2x of the swift pools.  If
+#   ($VGTOTAL - 1 - GLANCE_LV_SIZE - SWIFT_LV_SIZE * 2) < 20
+# we reset SWIFT_LV_SIZE to 4GB; if GLANCE_LV_SIZE == default (32G),
+# set that to 0, else set it to 70%free; then set cinder to 15%free.
+# Not ideal, but we have to do something other than fail.
+#
+if [ $LVM -eq 1 ]; then
+    vgt=`expr $VGTOTAL - 1`
+
+    if [ "$HOSTNAME" = "$OBJECTHOST" ]; then
+	vgt=`expr $vgt - $SWIFT_LV_SIZE \* 2`
+    fi
+    if [ "$HOSTNAME" = "$CONTROLLER" ]; then
+	vgt=`expr $vgt - $GLANCE_LV_SIZE`
+    fi
+    if [ $vgt -lt 20 ]; then
+	if [ "$HOSTNAME" = "$OBJECTHOST" ]; then
+	    SWIFT_LV_SIZE=4
+	    vgt=`expr $vgt - $SWIFT_LV_SIZE \* 2`
+	fi
+	if [ "$HOSTNAME" = "$CONTROLLER" ]; then
+	    if [ $GLANCE_LV_SIZE -eq 32 ]; then
+		GLANCE_LV_SIZE=0
+		CINDER_LV_SIZE=`perl -e "print 0.85 * $vgt;"`
+	    else
+		GLANCE_LV_SIZE=`perl -e "print 0.70 * $vgt;"`
+		CINDER_LV_SIZE=`perl -e "print 0.15 * $vgt;"`
+	    fi
+	else
+	    CINDER_LV_SIZE=`perl -e "print 0.85 * $vgt;"`
+	fi
+    else
+	CINDER_LV_SIZE=`perl -e "print 0.75 * $vgt;"`
+    fi
+    echo "SWIFT_LV_SIZE=${SWIFT_LV_SIZE}" >> $LOCALSETTINGS
+    echo "GLANCE_LV_SIZE=${GLANCE_LV_SIZE}" >> $LOCALSETTINGS
+    echo "CINDER_LV_SIZE=${CINDER_LV_SIZE}" >> $LOCALSETTINGS
 fi
 
 logtend "extra-space"
