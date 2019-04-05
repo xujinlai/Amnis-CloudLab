@@ -60,20 +60,24 @@ elif [ -z "$LVM" ] ; then
     MKEXTRAFS_ARGS="-l -v ${VGNAME} -m util -z 1024"
     # On Cloudlab ARM machines, there is no second disk nor extra disk space
     # Well, now there's a new partition layout; try it.
-    if [ "$ARCH" = "aarch64" ]; then
+    if [ "$ARCH" = "aarch64" -o "$ARCH" = "ppc64le" ]; then
 	maybe_install_packages gdisk
 	sgdisk -i 1 /dev/sda
 	if [ $? -eq 0 ] ; then
-	    sgdisk -N 2 /dev/sda
-	    partprobe /dev/sda
-	    if [ $? -eq 0 ] ; then
+	    nparts=`sgdisk -p /dev/sda | grep -E '^ +[0-9]+ +.*$' | wc -l`
+	    if [ $nparts -lt 4 ]; then
+		newpart=`expr $nparts + 1`
+		sgdisk -N $newpart /dev/sda
 		partprobe /dev/sda
-		# Add the second partition specifically
-		MKEXTRAFS_ARGS="${MKEXTRAFS_ARGS} -s 2"
-	    else
-		MKEXTRAFS_ARGS=""
-		VGNAME=
-		LVM=0
+		if [ $? -eq 0 ] ; then
+		    partprobe /dev/sda
+		    # Add the new partition specifically
+		    MKEXTRAFS_ARGS="${MKEXTRAFS_ARGS} -s $newpart"
+		else
+		    MKEXTRAFS_ARGS=""
+		    VGNAME=
+		    LVM=0
+		fi
 	    fi
 	else
 	    MKEXTRAFS_ARGS=""
