@@ -57,43 +57,65 @@ if [ $? -eq 0 ]; then
     echo "LVM=1" >> $LOCALSETTINGS
 elif [ -z "$LVM" ] ; then
     LVM=1
-    MKEXTRAFS_ARGS="-l -v ${VGNAME} -m util -z 1024"
-    # On Cloudlab ARM machines, there is no second disk nor extra disk space
-    # Well, now there's a new partition layout; try it.
-    if [ "$ARCH" = "aarch64" -o "$ARCH" = "ppc64le" ]; then
-	maybe_install_packages gdisk
-	sgdisk -i 1 /dev/sda
-	if [ $? -eq 0 ] ; then
-	    nparts=`sgdisk -p /dev/sda | grep -E '^ +[0-9]+ +.*$' | wc -l`
-	    if [ $nparts -lt 4 ]; then
-		newpart=`expr $nparts + 1`
-		sgdisk -N $newpart /dev/sda
-		partprobe /dev/sda
-		if [ $? -eq 0 ] ; then
-		    partprobe /dev/sda
-		    # Add the new partition specifically
-		    MKEXTRAFS_ARGS="${MKEXTRAFS_ARGS} -s $newpart"
-		else
-		    MKEXTRAFS_ARGS=""
-		    VGNAME=
-		    LVM=0
-		fi
-	    fi
+    DONE=0
+
+    #
+    # See if we can try to use an LVM instead of just the 4th partition.
+    #
+    lsblk -n -P -o NAME,FSTYPE,MOUNTPOINT,PARTTYPE,PARTUUID,TYPE,PKNAME | perl -e 'my %devs = (); while (<STDIN>) { $_ =~ s/([A-Z0-9a-z]+=)/;\$$1/g; eval "$_"; if (!($TYPE eq "disk" || $TYPE eq "part")) { next; }; if (exists($devs{$PKNAME})) { delete $devs{$PKNAME}; } if ($FSTYPE eq "" && $MOUNTPOINT eq "" && ($PARTTYPE eq "" || $PARTTYPE eq "0x0")) { $devs{$NAME} = "/dev/$NAME"; } }; print join(" ",values(%devs))."\n"' > /tmp/devs
+    DEVS=`cat /tmp/devs`
+    if [ -n "$DEVS" ]; then
+	pvcreate $DEVS && vgcreate $VGNAME $DEVS
+	if [ ! $? -eq 0 ]; then
+	    echo "ERROR: failed to create PV/VG with '$DEVS'; falling back to mkextrafs.pl"
+	    vgremove $VGNAME
+	    pvremove $DEVS
+	    DONE=0
 	else
-	    MKEXTRAFS_ARGS=""
-	    VGNAME=
-	    LVM=0
+	    DONE=1
 	fi
     fi
 
-    /usr/local/etc/emulab/mkextrafs.pl ${MKEXTRAFS_ARGS}
-    if [ $? -ne 0 ]; then
-	/usr/local/etc/emulab/mkextrafs.pl ${MKEXTRAFS_ARGS} -f
+    if [ $DONE -eq 0 ]; then
+        MKEXTRAFS_ARGS="-l -v ${VGNAME} -m util -z 1024"
+	# On Cloudlab ARM machines, there is no second disk nor extra disk space
+	# Well, now there's a new partition layout; try it.
+	if [ "$ARCH" = "aarch64" -o "$ARCH" = "ppc64le" ]; then
+	    maybe_install_packages gdisk
+	    sgdisk -i 1 /dev/sda
+	    if [ $? -eq 0 ] ; then
+		nparts=`sgdisk -p /dev/sda | grep -E '^ +[0-9]+ +.*$' | wc -l`
+		if [ $nparts -lt 4 ]; then
+		    newpart=`expr $nparts + 1`
+		    sgdisk -N $newpart /dev/sda
+		    partprobe /dev/sda
+		    if [ $? -eq 0 ] ; then
+			partprobe /dev/sda
+			# Add the new partition specifically
+			MKEXTRAFS_ARGS="${MKEXTRAFS_ARGS} -s $newpart"
+		    else
+			MKEXTRAFS_ARGS=""
+			VGNAME=
+			LVM=0
+		    fi
+		fi
+	    else
+		MKEXTRAFS_ARGS=""
+		VGNAME=
+		LVM=0
+	    fi
+	fi
+
+	/usr/local/etc/emulab/mkextrafs.pl ${MKEXTRAFS_ARGS}
 	if [ $? -ne 0 ]; then
-	    /usr/local/etc/emulab/mkextrafs.pl -f ${STORAGEDIR}
-	    LVM=0
+	    /usr/local/etc/emulab/mkextrafs.pl ${MKEXTRAFS_ARGS} -f
+	    if [ $? -ne 0 ]; then
+		/usr/local/etc/emulab/mkextrafs.pl -f ${STORAGEDIR}
+		LVM=0
+	    fi
 	fi
     fi
+
     # Get integer total space (G) available.
     VGTOTAL=`vgs -o vg_size --noheadings --units G $VGNAME | sed -ne 's/ *\([0-9]*\)[0-9\.]*G/\1/p'`
     echo "VGNAME=${VGNAME}" >> $LOCALSETTINGS
