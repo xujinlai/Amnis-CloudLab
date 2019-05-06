@@ -29,13 +29,13 @@ fi
 
 cd $IMAGEDIR
 
-echo "*** Configuring a trusty-server x86_64 image ..."
-imgfile=trusty-server-cloudimg-amd64-disk1.img
-imgname=trusty-server
+echo "*** Configuring a xenial-server x86_64 image ..."
+imgfile=xenial-server-cloudimg-amd64-disk1.img
+imgname=xenial-server
 #
 # First try the local boss, then Apt, then just grab from Ubuntu.
 #
-imgfile=`get_url "http://boss.${OURDOMAIN}/downloads/openstack/$imgfile http://boss.apt.emulab.net/downloads/openstack/$imgfile https://cloud-images.ubuntu.com/trusty/current/$imgfile"`
+imgfile=`get_url "http://boss.${OURDOMAIN}/downloads/openstack/$imgfile http://boss.apt.emulab.net/downloads/openstack/$imgfile https://cloud-images.ubuntu.com/xenial/current/$imgfile"`
 if [ ! $? -eq 0 ]; then
     echo "ERROR: failed to download $imgfile from Cloudlab or Ubuntu!"
 else
