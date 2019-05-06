@@ -78,8 +78,11 @@ crudini --set /etc/neutron/dhcp_agent.ini DEFAULT \
 if [ "${ML2PLUGIN}" = "openvswitch" ]; then
     crudini --set /etc/neutron/dhcp_agent.ini DEFAULT use_namespaces True
     #crudini --set /etc/neutron/dhcp_agent.ini DEFAULT dhcp_delete_namespaces True
-else
-    crudini --set /etc/neutron/dhcp_agent.ini DEFAULT enable_isolated_metadata True
+fi
+# Enable this by default for >= Ocata; that's all I have tested.
+if [ $OSVERSION -ge $OCATA ]; then
+    crudini --set /etc/neutron/dhcp_agent.ini DEFAULT \
+        enable_isolated_metadata True
 fi
 crudini --set /etc/neutron/dhcp_agent.ini DEFAULT verbose ${VERBOSE_LOGGING}
 crudini --set /etc/neutron/dhcp_agent.ini DEFAULT debug ${DEBUG_LOGGING}
