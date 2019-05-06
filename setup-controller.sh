@@ -1205,9 +1205,13 @@ EOF
     if [ $OSVERSION -lt $OSLIBERTY ]; then
 	crudini --set /etc/nova/nova.conf DEFAULT vncserver_listen ${MGMTIP}
 	crudini --set /etc/nova/nova.conf DEFAULT vncserver_proxyclient_address ${MGMTIP}
-    else
+    elif [ $OSVERSION -lt $OSQUEENS ]; then
 	crudini --set /etc/nova/nova.conf vnc vncserver_listen ${MGMTIP}
 	crudini --set /etc/nova/nova.conf vnc vncserver_proxyclient_address ${MGMTIP}
+    else
+	crudini --set /etc/nova/nova.conf vnc enabled true
+	crudini --set /etc/nova/nova.conf vnc server_listen ${MGMTIP}
+	crudini --set /etc/nova/nova.conf vnc server_proxyclient_address ${MGMTIP}
     fi
 
     #

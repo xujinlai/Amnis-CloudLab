@@ -263,8 +263,18 @@ if [ $OSVERSION -ge $OSLIBERTY ]; then
 fi
 
 cname=`getfqdn $CONTROLLER`
-crudini --set /etc/nova/nova.conf $VNCSECTION vncserver_listen ${MGMTIP}
-crudini --set /etc/nova/nova.conf $VNCSECTION vncserver_proxyclient_address ${MGMTIP}
+if [ $OSVERSION -lt $OSQUEENS ]; then
+    crudini --set /etc/nova/nova.conf $VNCSECTION \
+        vncserver_listen ${MGMTIP}
+    crudini --set /etc/nova/nova.conf $VNCSECTION \
+	vncserver_proxyclient_address ${MGMTIP}
+else
+    crudini --set /etc/nova/nova.conf $VNCSECTION \
+        server_listen ${MGMTIP}
+    crudini --set /etc/nova/nova.conf $VNCSECTION \
+	server_proxyclient_address ${MGMTIP}
+fi
+
 #
 # https://bugs.launchpad.net/nova/+bug/1635131
 #
