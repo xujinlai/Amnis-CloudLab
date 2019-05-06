@@ -868,8 +868,13 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
 	    admin_password "${GLANCE_PASS}"
     else
-	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
-	    auth_uri http://${CONTROLLER}:5000
+	if [ $OSVERSION -le $OSROCKY ]; then
+	    crudini --set /etc/glance/glance-api.conf keystone_authtoken \
+	        auth_uri http://${CONTROLLER}:5000
+	else
+	    crudini --set /etc/glance/glance-api.conf keystone_authtoken \
+	        www_authenticate_uri http://${CONTROLLER}:5000
+	fi
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
