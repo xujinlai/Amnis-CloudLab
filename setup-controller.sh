@@ -320,23 +320,37 @@ EOF
     logtend "memcache"
 fi
 
-if [ ! $ARCH -eq "aarch64" -a $OSVERSION -ge $OSQUEENS -a -z "${ETCD_DONE}" ]; then
+if [ ! $ARCH = "aarch64" -a $OSVERSION -ge $OSQUEENS -a -z "${ETCD_DONE}" ]; then
     logtstart "etcd"
     maybe_install_packages etcd etcd-server etcd-client
-    mkdir -p /etc/etcd
-    cat <<EOF >> /etc/etcd/etcd.conf.yaml
+    if [ $OSVERSION -le $OSQUEENS ]; then
+	mkdir -p /etc/etcd
+	cat <<EOF >> /etc/etcd/etcd.conf.yaml
 name: ${CONTROLLER}
 data-dir: /var/lib/etcd
 initial-cluster-state: 'new'
 initial-cluster-token: 'etcd-cluster-01'
-initial-cluster: ${CONTROLLER}=http://${MGMTIP}:2380
+initial-cluster: ${CONTROLLER}=http:/:2380
 initial-advertise-peer-urls: http://${MGMTIP}:2380
 advertise-client-urls: http://${MGMTIP}:2379
 listen-peer-urls: http://0.0.0.0:2380
 listen-client-urls: http://${MGMTIP}:2379
 EOF
-    chown -R etcd:etcd /etc/etcd
-    chmod 750 /etc/etcd
+	chown -R etcd:etcd /etc/etcd
+	chmod 750 /etc/etcd
+    else
+	cat <<EOF >/etc/default/etcd
+ETCD_NAME="controller"
+ETCD_DATA_DIR="/var/lib/etcd"
+ETCD_INITIAL_CLUSTER_STATE="new"
+ETCD_INITIAL_CLUSTER_TOKEN="etcd-cluster-01"
+ETCD_INITIAL_CLUSTER="${CONTROLLER}=http://${MGMTIP}:2380"
+ETCD_INITIAL_ADVERTISE_PEER_URLS="http://${MGMTIP}:2380"
+ETCD_ADVERTISE_CLIENT_URLS="http://${MGMTIP}:2379"
+ETCD_LISTEN_PEER_URLS="http://${MGMTIP}:2380"
+ETCD_LISTEN_CLIENT_URLS="http://${MGMTIP}:2379"
+EOF
+    fi
 
     service_enable etcd
     service_restart etcd
