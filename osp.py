@@ -111,7 +111,12 @@ pc.defineParameter("multiplexFlatLans", "Multiplex Flat Networks",
                    portal.ParameterType.BOOLEAN, False,
                    longDescription="Multiplex any flat networks (i.e., management and all of the flat data networks) over physical interfaces, using VLANs.  These VLANs are invisible to OpenStack, unlike the NUmber of VLAN Data Networks option, where OpenStack assigns the real VLAN tags to create its networks.  On CloudLab, many physical machines have only a single experiment network interface, so if you want multiple flat networks, you have to multiplex.  Currently, if you select this option, you *must* specify 0 for VLAN Data Networks; we cannot support both simultaneously yet.",
                    advanced=True)
-
+pc.defineParameter("connectSharedVlan","Connect Shared VLAN",
+                   portal.ParameterType.STRING,"foo",
+                   longDescription="Connect the controller node to a shared VLAN.  This allows your OpenStack experiment to connect to one more separate experiments.  This requires a non-multiplexed physical network interface, so you can only use this parameter on node types that provide two or more physical network interfaces!  If the shared VLAN does not yet exist (e.g. was not manually created for you by an administrator, or created in another experiment), enable the next option to create it.")
+pc.defineParameter("createSharedVlan","Create Shared VLAN",
+                   portal.ParameterType.BOOLEAN,True,
+                   longDescription="Create a new shared VLAN with the name above, and connect the controller node to it.  This requires a non-multiplexed physical network interface, so you can only use this parameter on node types that provide two or more physical network interfaces!")
 pc.defineParameter("computeNodeCountSite2", "Number of compute nodes at Site 2",
                    portal.ParameterType.INTEGER, 0,advanced=True,
                    longDescription="You can add additional compute nodes from other CloudLab clusters, allowing you to experiment with remote VMs controlled from the central controller at the first site.")
@@ -761,6 +766,15 @@ if params.tempBlockstoreMountPoint \
         params.controllerHost+"-temp-bs",params.tempBlockstoreMountPoint)
     bs.size = str(params.tempBlockstoreSize) + "GB"
     bs.placement = "any"
+sharedvlan = None
+if params.connectSharedVlan:
+    iface = controller.addInterface("ifSharedVlan")
+    sharedvlan = RSpec.LAN('shared-vlan')
+    sharedvlan.addInterface(iface)
+    if params.createSharedVlan:
+        sharedvlan.createSharedVlan(params.connectSharedVlan)
+    else:
+        sharedvlan.connectSharedVlan(params.connectSharedVlan)
 
 if params.controllerHost != params.networkManagerHost:
     #
@@ -958,6 +972,8 @@ if mgmtlan:
 if bslink:
     rspec.addResource(bslink)
     pass
+if sharedvlan:
+    rspec.addResource(sharedvlan)
 
 #
 # Grab a few public IP addresses.
