@@ -119,6 +119,10 @@ pc.defineParameter("createSharedVlan","Create Shared VLAN",
                    portal.ParameterType.BOOLEAN,False,
                    longDescription="Create a new shared VLAN with the name above, and connect the controller node to it.  This requires a non-multiplexed physical network interface, so you can only use this parameter on node types that provide two or more physical network interfaces!",
                    advanced=True)
+pc.defineParameter("sharedVlanAddress","Shared VLAN IP Address",
+                   portal.ParameterType.STRING,"10.10.10.1/255.255.255.0",
+                   longDescription="Set the IP address and subnet mask for the shared VLAN interface.  Make sure you choose an unused address within the subnet of an existing shared vlan!  Also ensure that you specify the subnet mask as a dotted quad.",
+                   advanced=True)
 pc.defineParameter("computeNodeCountSite2", "Number of compute nodes at Site 2",
                    portal.ParameterType.INTEGER, 0,advanced=True,
                    longDescription="You can add additional compute nodes from other CloudLab clusters, allowing you to experiment with remote VMs controlled from the central controller at the first site.")
@@ -496,6 +500,11 @@ ipdb = {}
 if params.managementLanType == 'flat':
     ipdb['mgmt-lan'] = { 'base':'192.168','netmask':'255.255.0.0','values':[-1,-1,0,0] }
     pass
+#
+# Note that some things below the dataOffset of 10, we use for other
+# things; for instance, shared vlan addresses should be allocated in the
+# 10.10/16 or 10.10.10/24 subnets.
+#
 dataOffset = 10
 ipSubnetsUsed = 0
 for i in range(1,params.flatDataLanCount + 1):
@@ -725,6 +734,22 @@ if params.tempBlockstoreMountPoint != "":
     pass
 
 #
+# Handle shared vlan address param.
+#
+(sharedVlanAddress,sharedVlanNetmask) = (None,None)
+if params.sharedVlanAddress:
+    aa = params.sharedVlanAddress.split('/')
+    if len(aa) != 2:
+        perr = portal.ParameterError(
+            "Invalid shared VLAN address!",
+            ['sharedVlanAddress'])
+        pc.reportError(perr)
+        pc.verifyParameters()
+    else:
+        (sharedVlanAddress,sharedVlanNetmask) = (aa[0],aa[1])
+    pass
+
+#
 # Add the controller node.
 #
 controller = RSpec.RawPC(params.controllerHost)
@@ -771,6 +796,9 @@ if params.tempBlockstoreMountPoint \
 sharedvlan = None
 if params.connectSharedVlan:
     iface = controller.addInterface("ifSharedVlan")
+    if sharedVlanAddress:
+        iface.addAddress(
+            RSpec.IPv4Address(sharedVlanAddress,sharedVlanNetmask))
     sharedvlan = RSpec.LAN('shared-vlan')
     sharedvlan.addInterface(iface)
     if params.createSharedVlan:
