@@ -595,6 +595,8 @@ else:
 
 #
 # Construct the disk image URNs we're going to set the various nodes to load.
+# NB: we stopped generating OSNM images at Rocky for x86/aarch64; and at
+# Queens for ppc64le.
 #
 image_project = 'emulab-ops'
 image_urn = 'emulab.net'
@@ -641,6 +643,10 @@ if params.fromScratch:
 else:
     image_tag_cn = '-OSCN'
     image_tag_nm = '-OSNM'
+    if params.release in [ 'rocky' ]:
+        # See above comment; we stopped generating OSNM images at Rocky
+        # for x86/aarch64; and at Queens for ppc64le.
+        image_tag_nm = '-STD'
     image_tag_cp = '-OSCP'
     pass
 
@@ -655,6 +661,9 @@ if params.osNodeType == 'ibm8335':
         image_tag_cn = image_tag_nm = image_tag_cp = ''
     else:
         image_os = 'UBUNTU18-PPC'
+        # See above comment; we stopped generating OSNM images at Rocky
+        # for x86/aarch64; and at Queens for ppc64le.
+        image_tag_nm = ''
 
     if params.release not in [ 'queens','rocky' ]:
         perr = portal.ParameterError(
