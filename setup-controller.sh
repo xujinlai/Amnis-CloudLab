@@ -4624,7 +4624,8 @@ if [ $OSVERSION -ge $OSROCKY -a -z "${MAGNUM_DBPASS}" ]; then
     __openstack user create $DOMARG --password $MAGNUM_PASS magnum
     __openstack role add --user magnum --project service admin
     __openstack service create --name magnum \
-	--description "OpenStack Container Infrastructure Management Service" dns
+        --description "OpenStack Container Infrastructure Management Service" \
+	container-infra
 
     if [ $KEYSTONEAPIVERSION -lt 3 ]; then
 	__openstack endpoint create \
