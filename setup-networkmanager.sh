@@ -57,6 +57,13 @@ if [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
     maybe_install_packages neutron-lbaasv2-agent
 fi
 
+if [ $OSVERSION -eq $OSROCKY ]; then
+    crudini --set /etc/neutron/neutron.conf oslo_concurrency \
+	lock_path /var/lib/neutron/lock
+    mkdir -p /var/lib/neutron/lock/
+    chown neutron:neutron /var/lib/neutron/lock
+fi
+
 # Configure the L3 agent.
 crudini --set /etc/neutron/l3_agent.ini DEFAULT \
     interface_driver $interface_driver
