@@ -320,8 +320,20 @@ EOF
     logtend "memcache"
 fi
 
-if [ ! $ARCH = "aarch64" -a $OSVERSION -ge $OSQUEENS -a -z "${ETCD_DONE}" ]; then
+if [ $OSVERSION -ge $OSROCKY -a -z "${ETCD_DONE}" ]; then
     logtstart "etcd"
+    if [ $ARCH = "aarch64" ]; then
+	#
+	# We need to set a particular env var for unsupported
+	# architectures, BEFORE we install.  Otherwise apt-get will
+	# return error.
+	#
+	mkdir -p /etc/systemd/system/etcd.service.d
+	cat <<EOF >/etc/systemd/system/etcd.service.d/local.conf
+[Service]
+Environment=ETCD_UNSUPPORTED_ARCH=arm64
+EOF
+    fi
     maybe_install_packages etcd etcd-server etcd-client
     if [ $OSVERSION -le $OSQUEENS ]; then
 	mkdir -p /etc/etcd
