@@ -2011,9 +2011,9 @@ EOF
     # default.
     #
     if [ $OSVERSION -ge $OSNEWTON ]; then
-	patch -p0 -d / < $DIRNAME/etc/horizon-${OSCODENAME}-no-default-volcreate.patch
-	# Rebuild after patching javascripts.
-	/usr/share/openstack-dashboard/manage.py collectstatic --noinput \
+	# Rebuild after successfully patching javascripts.
+	patch -p0 -d / < $DIRNAME/etc/horizon-${OSCODENAME}-no-default-volcreate.patch \
+	    && /usr/share/openstack-dashboard/manage.py collectstatic --noinput \
 	    && /usr/share/openstack-dashboard/manage.py compress
     fi
 
