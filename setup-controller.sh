@@ -4591,6 +4591,123 @@ EOF
 fi
 
 #
+# Maybe install Magnum
+#
+if [ $OSVERSION -ge $OSROCKY -a -z "${MAGNUM_DBPASS}" ]; then
+    logtstart "magnum"
+    MAGNUM_DBPASS=`$PSWDGEN`
+    MAGNUM_PASS=`$PSWDGEN`
+
+    echo "create database magnum" | mysql -u root --password="$DB_ROOT_PASS"
+    echo "grant all privileges on magnum.* to 'magnum'@'localhost' identified by '$MAGNUM_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+    echo "grant all privileges on magnum.* to 'magnum'@'%' identified by '$MAGNUM_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+
+    __openstack user create $DOMARG --password $MAGNUM_PASS magnum
+    __openstack role add --user magnum --project service admin
+    __openstack service create --name magnum \
+	--description "OpenStack Container Infrastructure Management Service" dns
+
+    if [ $KEYSTONEAPIVERSION -lt 3 ]; then
+	__openstack endpoint create \
+	    --publicurl http://${CONTROLLER}:9001/v2 \
+	    --internalurl http://${CONTROLLER}:9001/v2 \
+	    --adminurl http://${CONTROLLER}:9001/v2 \
+	    --region $REGION \
+	    container-infra
+    else
+	__openstack endpoint create --region $REGION \
+	    container-infra public http://${CONTROLLER}:9511/v1
+	__openstack endpoint create --region $REGION \
+	    container-infra internal http://${CONTROLLER}:9511/v1
+	__openstack endpoint create --region $REGION \
+	    container-infra admin http://${CONTROLLER}:9511/v1
+    fi
+
+    MAGNUM_DOMAIN_NAME=magnum
+    MAGNUM_DOMADMIN_PASS=`$PSWDGEN`
+    MAGNUM_DOMADMIN_USER="magnum_domain_admin"
+    __openstack domain create \
+        --description "Owns users and projects created by magnum" \
+	$MAGNUM_DOMAIN_NAME
+    __openstack user create --domain $MAGNUM_DOMAIN_NAME \
+	--password $MAGNUM_DOMADMIN_PASS \
+	$MAGNUM_DOMADMIN_USER
+    __openstack role add --domain $MAGNUM_DOMAIN_NAME \
+	--user-domain $MAGNUM_DOMAIN_NAME \
+	--user $MAGNUM_DOMADMIN_USER admin
+
+    maybe_install_packages magnum-api magnum-conductor python-magnumclient
+
+    crudini --set /etc/magnum/magnum.conf api host ${MGMTIP}
+    crudini --set /etc/magnum/magnum.conf certificates \
+	cert_manager_type x509keypair
+    crudini --set /etc/magnum/magnum.conf cinder_client region_name $REGION
+    crudini --set /etc/magnum/magnum.conf database \
+	connection "${DBDSTRING}://magnum:$MAGNUM_DBPASS@$CONTROLLER/magnum"
+    crudini --set /etc/magnum/magnum.conf DEFAULT verbose ${VERBOSE_LOGGING}
+    crudini --set /etc/magnum/magnum.conf DEFAULT debug ${DEBUG_LOGGING}
+
+    crudini --set /etc/magnum/magnum.conf oslo_messaging_notifications \
+	driver messaging
+    crudini --set /etc/magnum/magnum.conf DEFAULT \
+	transport_url $RABBIT_URL
+
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	memcached_servers ${CONTROLLER}:11211
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	auth_version $KAPISTR
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	auth_uri http://${CONTROLLER}:5000/$KAPISTR
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	${PROJECT_DOMAIN_PARAM} default
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	${USER_DOMAIN_PARAM} default
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	project_name service
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	username magnum
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	password "${MAGNUM_PASS}"
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	auth_url http://${CONTROLLER}:${KADMINPORT}
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	${AUTH_TYPE_PARAM} password
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	admin_user magnum
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	admin_password "${MAGNUM_PASS}"
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	admin_tenant_name service
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	region_name $REGION
+
+    crudini --set /etc/magnum/magnum.conf trust \
+	trustee_domain_name $MAGNUM_DOMAIN_NAME
+    crudini --set /etc/magnum/magnum.conf trust \
+	trustee_domain_admin_name $MAGNUM_DOMADMIN_USER
+    crudini --set /etc/magnum/magnum.conf trust \
+	trustee_domain_admin_password $MAGNUM_DOMADMIN_PASS
+    crudini --set /etc/magnum/magnum.conf trust \
+	trustee_keystone_interface public
+
+    su -s /bin/sh -c "magnum-db-manage upgrade" magnum
+
+    service_restart magnum-api
+    service_enable magnum-api
+    service_restart magnum-conductor
+    service_enable magnum-conductor
+
+    rm -f /var/lib/magnum/magnum.sqlite
+
+    echo "MAGNUM_DBPASS=\"${MAGNUM_DBPASS}\"" >> $SETTINGS
+    echo "MAGNUM_PASS=\"${MAGNUM_PASS}\"" >> $SETTINGS
+    echo "MAGNUM_DOMAIN_NAME=\"${MAGNUM_DOMAIN_NAME}\"" >> $SETTINGS
+    echo "MAGNUM_DOMADMIN_USER=\"${MAGNUM_DOMADMIN_USER}\"" >> $SETTINGS
+    echo "MAGNUM_DOMADMIN_PASS=\"${MAGNUM_DOMADMIN_PASS}\"" >> $SETTINGS
+    logtend "magnum"
+fi
+
+#
 # Setup some basic images and networks
 #
 if [ -z "${SETUP_BASIC_DONE}" ]; then
