@@ -40,8 +40,12 @@ EOF
 
 sysctl -p
 
-maybe_install_packages neutron-plugin-ml2 neutron-plugin-linuxbridge-agent \
-    conntrack
+maybe_install_packages neutron-plugin-ml2 conntrack
+if [ $OSVERSION -ge $OSROCKY ]; then
+    maybe_install_packages neutron-linuxbridge-agent
+else
+    maybe_install_packages neutron-plugin-linuxbridge-agent
+fi
 
 # Only the controller node runs neutron-server and needs the DB.
 if [ "$HOSTNAME" != "$CONTROLLER" ]; then
