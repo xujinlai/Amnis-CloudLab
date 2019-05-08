@@ -1033,7 +1033,7 @@ if [ -z "${NOVA_DBPASS}" ]; then
 	PLACEMENT_DBPASS=`$PSWDGEN`
 	echo "create database placement" | mysql -u root --password="$DB_ROOT_PASS"
 	echo "grant all privileges on placement.* to 'placement'@'localhost' identified by '$PLACEMENT_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
-	echo "grant all privileges on placement.* to 'nova'@'%' identified by '$PLACEMENT_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+	echo "grant all privileges on placement.* to 'placement'@'%' identified by '$PLACEMENT_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
     fi
 
     if [ $OSVERSION -eq $OSJUNO ]; then
@@ -1143,7 +1143,7 @@ EOF
     fi
     if [ $OSVERSION -ge $OSROCKY ]; then
 	crudini --set /etc/nova/nova.conf placement_database connection \
-	    "${DBDSTRING}://nova:$PLACEMENT_DBPASS@$CONTROLLER/placement"
+	    "${DBDSTRING}://placement:$PLACEMENT_DBPASS@$CONTROLLER/placement"
     fi
     crudini --set /etc/nova/nova.conf DEFAULT auth_strategy keystone
     crudini --set /etc/nova/nova.conf DEFAULT my_ip ${MGMTIP}
