@@ -4098,7 +4098,7 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 	keystone user-create --name sahara --pass $SAHARA_PASS
 	keystone user-role-add --user sahara --tenant service --role admin
 
-	keystone service-create --name sahara --type data_processing \
+	keystone service-create --name sahara --type data-processing \
 	    --description "OpenStack Data Processing Service"
 	keystone endpoint-create \
 	    --service-id $(keystone service-list | awk '/ sahara / {print $2}') \
@@ -4110,7 +4110,7 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 	__openstack user create $DOMARG --password $SAHARA_PASS sahara
 	__openstack role add --user sahara --project service admin
 	__openstack service create --name sahara \
-	    --description "OpenStack Data Processing Service" data_processing
+	    --description "OpenStack Data Processing Service" data-processing
 
 	if [ $KEYSTONEAPIVERSION -lt 3 ]; then
 	    __openstack endpoint create \
@@ -4118,14 +4118,14 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 		--internalurl http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s \
 		--adminurl http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s \
 		--region $REGION \
-		data_processing
+		data-processing
 	else
 	    __openstack endpoint create --region $REGION \
-		data_processing public http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s
+		data-processing public http://${CONTROLLER}:8386/v1.1/%\(project_id\)s
 	    __openstack endpoint create --region $REGION \
-		data_processing internal http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s
+		data-processing internal http://${CONTROLLER}:8386/v1.1/%\(project_id\)s
 	    __openstack endpoint create --region $REGION \
-		data_processing admin http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s
+		data-processing admin http://${CONTROLLER}:8386/v1.1/%\(project_id\)s
 	fi
     fi
 
@@ -4216,6 +4216,8 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
+	    www_authenticate_uri http://${CONTROLLER}:5000
+	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    ${AUTH_TYPE_PARAM} password
@@ -4229,6 +4231,24 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 	    username sahara
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    password "${SAHARA_PASS}"
+	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
+	    region_name $REGION
+	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
+	    os_region_name $REGION
+
+	crudini --set /etc/sahara/sahara.conf trustee \
+	    auth_url http://${CONTROLLER}:${KADMINPORT}
+	crudini --set /etc/sahara/sahara.conf trustee \
+	    username sahara
+	crudini --set /etc/sahara/sahara.conf trustee \
+	    password ${SAHARA_PASS}
+	crudini --set /etc/sahara/sahara.conf trustee \
+	    project_name admin
+	crudini --set /etc/sahara/sahara.conf trustee \
+	    ${PROJECT_DOMAIN_PARAM} default
+	crudini --set /etc/sahara/sahara.conf trustee \
+	    ${USER_DOMAIN_PARAM} default
+
     fi
     if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
