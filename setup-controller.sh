@@ -3088,6 +3088,7 @@ EOF
 	    systemctl restart gnocchi-api
 	else
 	    maybe_install_packages gnocchi-api
+	    maybe_install_packages python-gnocchi
 	fi
     fi
 
