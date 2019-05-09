@@ -57,6 +57,13 @@ if [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
     maybe_install_packages neutron-lbaasv2-agent
 fi
 
+if [ $OSVERSION -eq $OSROCKY ]; then
+    crudini --set /etc/neutron/neutron.conf oslo_concurrency \
+	lock_path /var/lib/neutron/lock
+    mkdir -p /var/lib/neutron/lock/
+    chown neutron:neutron /var/lib/neutron/lock
+fi
+
 # Configure the L3 agent.
 crudini --set /etc/neutron/l3_agent.ini DEFAULT \
     interface_driver $interface_driver
@@ -78,8 +85,11 @@ crudini --set /etc/neutron/dhcp_agent.ini DEFAULT \
 if [ "${ML2PLUGIN}" = "openvswitch" ]; then
     crudini --set /etc/neutron/dhcp_agent.ini DEFAULT use_namespaces True
     #crudini --set /etc/neutron/dhcp_agent.ini DEFAULT dhcp_delete_namespaces True
-else
-    crudini --set /etc/neutron/dhcp_agent.ini DEFAULT enable_isolated_metadata True
+fi
+# Enable this by default for >= Ocata; that's all I have tested.
+if [ $OSVERSION -ge $OCATA ]; then
+    crudini --set /etc/neutron/dhcp_agent.ini DEFAULT \
+        enable_isolated_metadata True
 fi
 crudini --set /etc/neutron/dhcp_agent.ini DEFAULT verbose ${VERBOSE_LOGGING}
 crudini --set /etc/neutron/dhcp_agent.ini DEFAULT debug ${DEBUG_LOGGING}

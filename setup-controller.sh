@@ -320,23 +320,49 @@ EOF
     logtend "memcache"
 fi
 
-if [ ! $ARCH -eq "aarch64" -a $OSVERSION -ge $OSQUEENS -a -z "${ETCD_DONE}" ]; then
+if [ $OSVERSION -ge $OSROCKY -a -z "${ETCD_DONE}" ]; then
     logtstart "etcd"
+    if [ $ARCH = "aarch64" ]; then
+	#
+	# We need to set a particular env var for unsupported
+	# architectures, BEFORE we install.  Otherwise apt-get will
+	# return error.
+	#
+	mkdir -p /etc/systemd/system/etcd.service.d
+	cat <<EOF >/etc/systemd/system/etcd.service.d/local.conf
+[Service]
+Environment=ETCD_UNSUPPORTED_ARCH=arm64
+EOF
+    fi
     maybe_install_packages etcd etcd-server etcd-client
-    mkdir -p /etc/etcd
-    cat <<EOF >> /etc/etcd/etcd.conf.yaml
+    if [ $OSVERSION -le $OSQUEENS ]; then
+	mkdir -p /etc/etcd
+	cat <<EOF >> /etc/etcd/etcd.conf.yaml
 name: ${CONTROLLER}
 data-dir: /var/lib/etcd
 initial-cluster-state: 'new'
 initial-cluster-token: 'etcd-cluster-01'
-initial-cluster: ${CONTROLLER}=http://${MGMTIP}:2380
+initial-cluster: ${CONTROLLER}=http:/:2380
 initial-advertise-peer-urls: http://${MGMTIP}:2380
 advertise-client-urls: http://${MGMTIP}:2379
 listen-peer-urls: http://0.0.0.0:2380
 listen-client-urls: http://${MGMTIP}:2379
 EOF
-    chown -R etcd:etcd /etc/etcd
-    chmod 750 /etc/etcd
+	chown -R etcd:etcd /etc/etcd
+	chmod 750 /etc/etcd
+    else
+	cat <<EOF >/etc/default/etcd
+ETCD_NAME="controller"
+ETCD_DATA_DIR="/var/lib/etcd"
+ETCD_INITIAL_CLUSTER_STATE="new"
+ETCD_INITIAL_CLUSTER_TOKEN="etcd-cluster-01"
+ETCD_INITIAL_CLUSTER="${CONTROLLER}=http://${MGMTIP}:2380"
+ETCD_INITIAL_ADVERTISE_PEER_URLS="http://${MGMTIP}:2380"
+ETCD_ADVERTISE_CLIENT_URLS="http://${MGMTIP}:2379"
+ETCD_LISTEN_PEER_URLS="http://${MGMTIP}:2380"
+ETCD_LISTEN_CLIENT_URLS="http://${MGMTIP}:2379"
+EOF
+    fi
 
     service_enable etcd
     service_restart etcd
@@ -854,8 +880,13 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
 	    admin_password "${GLANCE_PASS}"
     else
-	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
-	    auth_uri http://${CONTROLLER}:5000
+	if [ $OSVERSION -le $OSROCKY ]; then
+	    crudini --set /etc/glance/glance-api.conf keystone_authtoken \
+	        auth_uri http://${CONTROLLER}:5000
+	else
+	    crudini --set /etc/glance/glance-api.conf keystone_authtoken \
+	        www_authenticate_uri http://${CONTROLLER}:5000
+	fi
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
@@ -998,6 +1029,13 @@ if [ -z "${NOVA_DBPASS}" ]; then
 	echo "grant all privileges on nova_cell0.* to 'nova'@'%' identified by '$NOVA_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
     fi
 
+    if [ $OSVERSION -ge $OSROCKY ]; then
+	PLACEMENT_DBPASS=`$PSWDGEN`
+	echo "create database placement" | mysql -u root --password="$DB_ROOT_PASS"
+	echo "grant all privileges on placement.* to 'placement'@'localhost' identified by '$PLACEMENT_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+	echo "grant all privileges on placement.* to 'placement'@'%' identified by '$PLACEMENT_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+    fi
+
     if [ $OSVERSION -eq $OSJUNO ]; then
 	keystone user-create --name nova --pass $NOVA_PASS
 	keystone user-role-add --user nova --tenant service --role admin
@@ -1103,6 +1141,10 @@ EOF
 	crudini --set /etc/nova/nova.conf api_database connection \
 	    "${DBDSTRING}://nova:$NOVA_DBPASS@$CONTROLLER/nova_api"
     fi
+    if [ $OSVERSION -ge $OSROCKY ]; then
+	crudini --set /etc/nova/nova.conf placement_database connection \
+	    "${DBDSTRING}://placement:$PLACEMENT_DBPASS@$CONTROLLER/placement"
+    fi
     crudini --set /etc/nova/nova.conf DEFAULT auth_strategy keystone
     crudini --set /etc/nova/nova.conf DEFAULT my_ip ${MGMTIP}
     if [ $OSVERSION -lt $OSMITAKA ]; then
@@ -1175,9 +1217,13 @@ EOF
     if [ $OSVERSION -lt $OSLIBERTY ]; then
 	crudini --set /etc/nova/nova.conf DEFAULT vncserver_listen ${MGMTIP}
 	crudini --set /etc/nova/nova.conf DEFAULT vncserver_proxyclient_address ${MGMTIP}
-    else
+    elif [ $OSVERSION -lt $OSQUEENS ]; then
 	crudini --set /etc/nova/nova.conf vnc vncserver_listen ${MGMTIP}
 	crudini --set /etc/nova/nova.conf vnc vncserver_proxyclient_address ${MGMTIP}
+    else
+	crudini --set /etc/nova/nova.conf vnc enabled true
+	crudini --set /etc/nova/nova.conf vnc server_listen ${MGMTIP}
+	crudini --set /etc/nova/nova.conf vnc server_proxyclient_address ${MGMTIP}
     fi
 
     #
@@ -1326,6 +1372,7 @@ EOF
     fi
 
     echo "NOVA_DBPASS=\"${NOVA_DBPASS}\"" >> $SETTINGS
+    echo "PLACEMENT_DBPASS=\"${PLACEMENT_DBPASS}\"" >> $SETTINGS
     echo "NOVA_PASS=\"${NOVA_PASS}\"" >> $SETTINGS
     echo "PLACEMENT_PASS=\"${PLACEMENT_PASS}\"" >> $SETTINGS
     logtend "nova"
@@ -1579,6 +1626,13 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	crudini --set /etc/neutron/neutron.conf database max_pool_size $ncpus
     fi
 
+    if [ $OSVERSION -eq $OSROCKY ]; then
+	crudini --set /etc/neutron/neutron.conf oslo_concurrency \
+	    lock_path /var/lib/neutron/lock
+	mkdir -p /var/lib/neutron/lock/
+	chown neutron:neutron /var/lib/neutron/lock
+    fi
+
     crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
 	type_drivers ${network_types}
     crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
@@ -1682,17 +1736,20 @@ EOF
     # Install the neutron lbaas dashboard panel, and update the neutron
     # db for lbaas.
     if [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
-	git clone https://git.openstack.org/openstack/neutron-lbaas-dashboard
-	cd neutron-lbaas-dashboard
-	git checkout stable/${OSRELEASE}
-	python setup.py install
-	cp -p neutron_lbaas_dashboard/enabled/_1481_project_ng_loadbalancersv2_panel.py \
-	   /usr/share/openstack-dashboard/openstack_dashboard/local/enabled/
+	maybe_install_packages python-neutron-lbaas-dashboard
+	if [ $? -eq 1 ]; then
+	    git clone https://git.openstack.org/openstack/neutron-lbaas-dashboard
+	    cd neutron-lbaas-dashboard
+	    git checkout stable/${OSRELEASE}
+	    python setup.py install
+	    cp -p neutron_lbaas_dashboard/enabled/_1481_project_ng_loadbalancersv2_panel.py \
+	       /usr/share/openstack-dashboard/openstack_dashboard/local/enabled/
+	    /usr/share/openstack-dashboard/manage.py collectstatic --noinput \
+		&& /usr/share/openstack-dashboard/manage.py compress
+	    service_restart apache2
+	fi
 	echo "OPENSTACK_NEUTRON_NETWORK['enable_lb'] = True" \
 	     >> /etc/openstack-dashboard/local_settings.py
-	/usr/share/openstack-dashboard/manage.py collectstatic --noinput \
-	    && /usr/share/openstack-dashboard/manage.py compress
-	service_restart apache2
 
 	su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --subproject neutron-lbaas upgrade head" neutron
     fi
@@ -1954,9 +2011,9 @@ EOF
     # default.
     #
     if [ $OSVERSION -ge $OSNEWTON ]; then
-	patch -p0 -d / < $DIRNAME/etc/horizon-${OSCODENAME}-no-default-volcreate.patch
-	# Rebuild after patching javascripts.
-	/usr/share/openstack-dashboard/manage.py collectstatic --noinput \
+	# Rebuild after successfully patching javascripts.
+	patch -p0 -d / < $DIRNAME/etc/horizon-${OSCODENAME}-no-default-volcreate.patch \
+	    && /usr/share/openstack-dashboard/manage.py collectstatic --noinput \
 	    && /usr/share/openstack-dashboard/manage.py compress
     fi
 
@@ -2698,7 +2755,7 @@ if [ -z "${HEAT_DBPASS}" ]; then
 		--publicurl http://$CONTROLLER:8000/v1 \
 		--internalurl http://$CONTROLLER:8000/v1 \
 		--adminurl http://$CONTROLLER:8000/v1 \
-		--region RegionOne \
+		--region $REGION \
 		cloudformation
 	else
 	    __openstack endpoint create --region $REGION \
@@ -3031,6 +3088,7 @@ EOF
 	    systemctl restart gnocchi-api
 	else
 	    maybe_install_packages gnocchi-api
+	    maybe_install_packages python-gnocchi
 	fi
     fi
 
@@ -4041,7 +4099,7 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 	keystone user-create --name sahara --pass $SAHARA_PASS
 	keystone user-role-add --user sahara --tenant service --role admin
 
-	keystone service-create --name sahara --type data_processing \
+	keystone service-create --name sahara --type data-processing \
 	    --description "OpenStack Data Processing Service"
 	keystone endpoint-create \
 	    --service-id $(keystone service-list | awk '/ sahara / {print $2}') \
@@ -4053,7 +4111,7 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 	__openstack user create $DOMARG --password $SAHARA_PASS sahara
 	__openstack role add --user sahara --project service admin
 	__openstack service create --name sahara \
-	    --description "OpenStack Data Processing Service" data_processing
+	    --description "OpenStack Data Processing Service" data-processing
 
 	if [ $KEYSTONEAPIVERSION -lt 3 ]; then
 	    __openstack endpoint create \
@@ -4061,14 +4119,14 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 		--internalurl http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s \
 		--adminurl http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s \
 		--region $REGION \
-		data_processing
+		data-processing
 	else
 	    __openstack endpoint create --region $REGION \
-		data_processing public http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s
+		data-processing public http://${CONTROLLER}:8386/v1.1/%\(project_id\)s
 	    __openstack endpoint create --region $REGION \
-		data_processing internal http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s
+		data-processing internal http://${CONTROLLER}:8386/v1.1/%\(project_id\)s
 	    __openstack endpoint create --region $REGION \
-		data_processing admin http://${CONTROLLER}:8386/v1.1/%\(tenant_id\)s
+		data-processing admin http://${CONTROLLER}:8386/v1.1/%\(project_id\)s
 	fi
     fi
 
@@ -4159,6 +4217,8 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    auth_uri http://${CONTROLLER}:5000
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
+	    www_authenticate_uri http://${CONTROLLER}:5000
+	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    ${AUTH_TYPE_PARAM} password
@@ -4172,6 +4232,24 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 	    username sahara
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    password "${SAHARA_PASS}"
+	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
+	    region_name $REGION
+	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
+	    os_region_name $REGION
+
+	crudini --set /etc/sahara/sahara.conf trustee \
+	    auth_url http://${CONTROLLER}:${KADMINPORT}
+	crudini --set /etc/sahara/sahara.conf trustee \
+	    username sahara
+	crudini --set /etc/sahara/sahara.conf trustee \
+	    password ${SAHARA_PASS}
+	crudini --set /etc/sahara/sahara.conf trustee \
+	    project_name admin
+	crudini --set /etc/sahara/sahara.conf trustee \
+	    ${PROJECT_DOMAIN_PARAM} default
+	crudini --set /etc/sahara/sahara.conf trustee \
+	    ${USER_DOMAIN_PARAM} default
+
     fi
     if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
@@ -4553,6 +4631,124 @@ EOF
     echo "DESIGNATE_DBPASS=\"${DESIGNATE_DBPASS}\"" >> $SETTINGS
     echo "DESIGNATE_PASS=\"${DESIGNATE_PASS}\"" >> $SETTINGS
     logtend "designate"
+fi
+
+#
+# Maybe install Magnum
+#
+if [ $OSVERSION -ge $OSROCKY -a -z "${MAGNUM_DBPASS}" ]; then
+    logtstart "magnum"
+    MAGNUM_DBPASS=`$PSWDGEN`
+    MAGNUM_PASS=`$PSWDGEN`
+
+    echo "create database magnum" | mysql -u root --password="$DB_ROOT_PASS"
+    echo "grant all privileges on magnum.* to 'magnum'@'localhost' identified by '$MAGNUM_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+    echo "grant all privileges on magnum.* to 'magnum'@'%' identified by '$MAGNUM_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
+
+    __openstack user create $DOMARG --password $MAGNUM_PASS magnum
+    __openstack role add --user magnum --project service admin
+    __openstack service create --name magnum \
+        --description "OpenStack Container Infrastructure Management Service" \
+	container-infra
+
+    if [ $KEYSTONEAPIVERSION -lt 3 ]; then
+	__openstack endpoint create \
+	    --publicurl http://${CONTROLLER}:9001/v2 \
+	    --internalurl http://${CONTROLLER}:9001/v2 \
+	    --adminurl http://${CONTROLLER}:9001/v2 \
+	    --region $REGION \
+	    container-infra
+    else
+	__openstack endpoint create --region $REGION \
+	    container-infra public http://${CONTROLLER}:9511/v1
+	__openstack endpoint create --region $REGION \
+	    container-infra internal http://${CONTROLLER}:9511/v1
+	__openstack endpoint create --region $REGION \
+	    container-infra admin http://${CONTROLLER}:9511/v1
+    fi
+
+    MAGNUM_DOMAIN_NAME=magnum
+    MAGNUM_DOMADMIN_PASS=`$PSWDGEN`
+    MAGNUM_DOMADMIN_USER="magnum_domain_admin"
+    __openstack domain create \
+        --description "Owns users and projects created by magnum" \
+	$MAGNUM_DOMAIN_NAME
+    __openstack user create --domain $MAGNUM_DOMAIN_NAME \
+	--password $MAGNUM_DOMADMIN_PASS \
+	$MAGNUM_DOMADMIN_USER
+    __openstack role add --domain $MAGNUM_DOMAIN_NAME \
+	--user-domain $MAGNUM_DOMAIN_NAME \
+	--user $MAGNUM_DOMADMIN_USER admin
+
+    maybe_install_packages magnum-api magnum-conductor python-magnumclient
+
+    crudini --set /etc/magnum/magnum.conf api host ${MGMTIP}
+    crudini --set /etc/magnum/magnum.conf certificates \
+	cert_manager_type x509keypair
+    crudini --set /etc/magnum/magnum.conf cinder_client region_name $REGION
+    crudini --set /etc/magnum/magnum.conf database \
+	connection "${DBDSTRING}://magnum:$MAGNUM_DBPASS@$CONTROLLER/magnum"
+    crudini --set /etc/magnum/magnum.conf DEFAULT verbose ${VERBOSE_LOGGING}
+    crudini --set /etc/magnum/magnum.conf DEFAULT debug ${DEBUG_LOGGING}
+
+    crudini --set /etc/magnum/magnum.conf oslo_messaging_notifications \
+	driver messaging
+    crudini --set /etc/magnum/magnum.conf DEFAULT \
+	transport_url $RABBIT_URL
+
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	memcached_servers ${CONTROLLER}:11211
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	auth_version $KAPISTR
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	auth_uri http://${CONTROLLER}:5000/$KAPISTR
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	${PROJECT_DOMAIN_PARAM} default
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	${USER_DOMAIN_PARAM} default
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	project_name service
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	username magnum
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	password "${MAGNUM_PASS}"
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	auth_url http://${CONTROLLER}:${KADMINPORT}
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	${AUTH_TYPE_PARAM} password
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	admin_user magnum
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	admin_password "${MAGNUM_PASS}"
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	admin_tenant_name service
+    crudini --set /etc/magnum/magnum.conf keystone_authtoken \
+	region_name $REGION
+
+    crudini --set /etc/magnum/magnum.conf trust \
+	trustee_domain_name $MAGNUM_DOMAIN_NAME
+    crudini --set /etc/magnum/magnum.conf trust \
+	trustee_domain_admin_name $MAGNUM_DOMADMIN_USER
+    crudini --set /etc/magnum/magnum.conf trust \
+	trustee_domain_admin_password $MAGNUM_DOMADMIN_PASS
+    crudini --set /etc/magnum/magnum.conf trust \
+	trustee_keystone_interface public
+
+    su -s /bin/sh -c "magnum-db-manage upgrade" magnum
+
+    service_restart magnum-api
+    service_enable magnum-api
+    service_restart magnum-conductor
+    service_enable magnum-conductor
+
+    rm -f /var/lib/magnum/magnum.sqlite
+
+    echo "MAGNUM_DBPASS=\"${MAGNUM_DBPASS}\"" >> $SETTINGS
+    echo "MAGNUM_PASS=\"${MAGNUM_PASS}\"" >> $SETTINGS
+    echo "MAGNUM_DOMAIN_NAME=\"${MAGNUM_DOMAIN_NAME}\"" >> $SETTINGS
+    echo "MAGNUM_DOMADMIN_USER=\"${MAGNUM_DOMADMIN_USER}\"" >> $SETTINGS
+    echo "MAGNUM_DOMADMIN_PASS=\"${MAGNUM_DOMADMIN_PASS}\"" >> $SETTINGS
+    logtend "magnum"
 fi
 
 #

@@ -40,8 +40,12 @@ EOF
 
 sysctl -p
 
-maybe_install_packages neutron-plugin-ml2 neutron-plugin-openvswitch-agent \
-    conntrack
+maybe_install_packages neutron-plugin-ml2 conntrack
+if [ $OSVERSION -ge $OSROCKY ]; then
+    maybe_install_packages neutron-openvswitch-agent
+else
+    maybe_install_packages neutron-plugin-openvswitch-agent
+fi
 
 # Only the controller node runs neutron-server and needs the DB.
 if [ "$HOSTNAME" != "$CONTROLLER" ]; then

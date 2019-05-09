@@ -29,14 +29,14 @@ fi
 
 cd $IMAGEDIR
 
-imgfile=`get_url "http://boss.utah.cloudlab.us/downloads/openstack/trusty-server-cloudimg-arm64-disk1.img https://cloud-images.ubuntu.com/trusty/current/trusty-server-cloudimg-arm64-disk1.img"`
-imgname=trusty-server
+imgfile=`get_url "http://boss.utah.cloudlab.us/downloads/openstack/xenial-server-cloudimg-arm64-disk1.img https://cloud-images.ubuntu.com/xenial/current/xenial-server-cloudimg-arm64-disk1.img"`
+imgname=xenial-server
 if [ ! $? -eq 0 ]; then
-    echo "ERROR: failed to download trusty-server-cloudimg-arm64-disk1.img from Cloudlab or Ubuntu!"
+    echo "ERROR: failed to download xenial-server-cloudimg-arm64-disk1.img from Cloudlab or Ubuntu!"
 else
     imgfile=`extract_image "$imgfile"`
     if [ ! $? -eq 0 ]; then
-	echo "ERROR: failed to extract trusty-server-cloudimg-arm64-disk1.img"
+	echo "ERROR: failed to extract xenial-server-cloudimg-arm64-disk1.img"
     else
 	(fixup_image "$imgfile" \
 	    && sched_image "$IMAGEDIR/$imgfile" "$imgname" ) \
