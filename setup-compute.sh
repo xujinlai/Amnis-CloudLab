@@ -341,6 +341,8 @@ if [ "$ARCH" = "aarch64" ] ; then
 	crudini --set /etc/nova/nova-compute.conf DEFAULT pointer_model ps2mouse
     elif [ $OSVERSION -eq $OSQUEENS ]; then
 	patch -d / -p0 < $DIRNAME/etc/nova-queens-aarch64-libvirt-bios-default.patch
+    elif [ $OSVERSION -eq $OSROCKY ]; then
+	patch -d / -p0 < $DIRNAME/etc/nova-rocky-aarch64-libvirt-bios-default.patch
     fi
 elif [ "$ARCH" = "ppc64le" ] ; then
     ppc64_cpu --smt=off
