@@ -446,15 +446,20 @@ passwdHelp = "Your OpenStack admin and instance VM password is randomly-generate
 ###    pass
 passwdHelp += "  When logging in to the Dashboard, use the `admin` user; when logging into instance VMs, use the `ubuntu` user.  If you have selected Mitaka or newer, use 'default' as the Domain at the login prompt."
 
+grafanaInstructions = ""
+if params.release in [ "pike","queens","rocky" ]:
+    grafanaInstructions = "You can also login to [your experiment's Grafana WWW interface](http://{host-%s}:3000/dashboard/db/openstack-instance-statistics?orgId=1) and view OpenStack statistics once you've created some VMs." % (params.controllerHost)
+
 tourInstructions = \
   """
 ### Basic Instructions
-Once your experiment nodes have booted, and this profile's configuration scripts have finished configuring OpenStack inside your experiment, you'll be able to visit [the OpenStack Dashboard WWW interface](http://{host-%s}/horizon/auth/login/?next=/horizon/project/instances/) (approx. 5-15 minutes).  If you've selected the Pike release (or newer), you can also login to [your experiment's Grafana WWW interface](http://{host-%s}:3000/dashboard/db/openstack-instance-statistics?orgId=1) and view OpenStack instance VM statistics once you've created some VMs.  %s
+Once your experiment nodes have booted, and this profile's configuration scripts have finished configuring OpenStack inside your experiment, you'll be able to visit [the OpenStack Dashboard WWW interface](http://{host-%s}/horizon/auth/login/?next=/horizon/project/instances/) (approx. 5-15 minutes).  %s  %s
 
 Please wait to login to the OpenStack dashboard until the setup scripts have completed (we've seen Dashboard issues with content not appearing if you login before configuration is complete).  There are multiple ways to determine if the scripts have finished:
   - First, you can watch the experiment status page: the overall State will say \"booted (startup services are still running)\" to indicate that the nodes have booted up, but the setup scripts are still running.
   - Second, the Topology View will show you, for each node, the status of the startup command on each node (the startup command kicks off the setup scripts on each node).  Once the startup command has finished on each node, the overall State field will change to \"ready\".  If any of the startup scripts fail, you can mouse over the failed node in the topology viewer for the status code.
-  - Finally, the profile configuration scripts also send you two emails: once to notify you that controller setup has started, and a second to notify you that setup has completed.  Once you receive the second email, you can login to the Openstack Dashboard and begin your work.
+  - Third, the profile configuration scripts also send you two emails: once to notify you that controller setup has started, and a second to notify you that setup has completed.  Once you receive the second email, you can login to the Openstack Dashboard and begin your work.
+  - Finally, you can view [the profile setup script logfiles](http://{host-%s}:7999/) as the setup scripts run.  Use the `admin` username and the random password above.
 
 **NOTE:** If the web interface rejects your password or gives another error, the scripts might simply need more time to set up the backend. Wait a few minutes and try again.  If you don't receive any email notifications, you can SSH to the 'ctl' node, become root, and check the primary setup script's logfile (/root/setup/setup-controller.log).  If near the bottom there's a line that includes 'Your OpenStack instance has completed setup'), the scripts have finished, and it's safe to login to the Dashboard.
 
@@ -467,7 +472,7 @@ The profile's setup scripts are automatically installed on each node in `/tmp/se
 
 ### Detailed Parameter Documentation
 %s
-""" % (params.controllerHost,params.controllerHost,passwdHelp,detailedParamAutoDocs)
+""" % (params.controllerHost,grafanaInstructions,passwdHelp,params.controllerHost,detailedParamAutoDocs)
 
 #
 # Setup the Tour info with the above description and instructions.
