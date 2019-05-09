@@ -657,14 +657,15 @@ else:
 
 #
 # XXX: special handling for ppc64le at Clemson because of special disk
-# image names, and because only >= Queens is available for them.
+# image names for UBUNTU18-64-STD and UBUNTU18-*OSC*-Q, and because only
+# >= Queens is available for them.
 #
 if params.osNodeType == 'ibm8335':
     image_urn = 'clemson.cloudlab.us'
     if params.fromScratch:
         image_os = 'UBUNTU18-PPC64LE'
         image_tag_cn = image_tag_nm = image_tag_cp = ''
-    else:
+    elif params.release == 'queens':
         image_os = 'UBUNTU18-PPC'
         # See above comment; we stopped generating OSNM images at Rocky
         # for x86/aarch64; and at Queens for ppc64le.
