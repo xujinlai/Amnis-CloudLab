@@ -56,6 +56,8 @@ server {
 EOF
     ln -s /etc/nginx/sites-available/profile-setup-logs \
         /etc/nginx/sites-enabled/profile-setup-logs
+    service_enable nginx
+    service_restart nginx
 fi
 logtstart "driver"
 
