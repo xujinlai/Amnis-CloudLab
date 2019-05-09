@@ -2755,7 +2755,7 @@ if [ -z "${HEAT_DBPASS}" ]; then
 		--publicurl http://$CONTROLLER:8000/v1 \
 		--internalurl http://$CONTROLLER:8000/v1 \
 		--adminurl http://$CONTROLLER:8000/v1 \
-		--region RegionOne \
+		--region $REGION \
 		cloudformation
 	else
 	    __openstack endpoint create --region $REGION \
