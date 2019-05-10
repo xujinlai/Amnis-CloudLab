@@ -397,6 +397,16 @@ else
 fi
 
 #
+# We started using Python 3 packages at Stein.
+#
+PYPKGPREFIX="python"
+ISPYTHON3=0
+if [ $OSVERSION -ge $OSSTEIN ]; then
+    PYPKGPREFIX="python3"
+    ISPYTHON3=1
+fi
+
+#
 # See which keystone port has the admin capabilities.  This changed in
 # Queens to fully drop 35357 because it's now irrelevant and not
 # configured by default.

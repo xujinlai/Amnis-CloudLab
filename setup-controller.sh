@@ -91,7 +91,7 @@ $DIRNAME/setup-images.sh >> $OURDIR/setup-images.log 2>&1 &
 # If we're >= Kilo, we might need the openstack CLI command.
 #
 if [ $OSVERSION -ge $OSKILO ]; then
-    maybe_install_packages python-openstackclient
+    maybe_install_packages ${PYPKGPREFIX}-openstackclient
 fi
 
 #
@@ -99,7 +99,7 @@ fi
 # https://review.openstack.org/#/c/256267/
 #
 if [ $OSVERSION -ge $OSKILO -a $OSVERSION -lt $OSNEWTON ]; then
-    maybe_install_packages python-oslo.service
+    maybe_install_packages ${PYPKGPREFIX}-oslo.service
     patch -d / -p0 < $DIRNAME/etc/oslo_service-liberty-sig-MAINLOOP.patch
 fi
 
@@ -286,7 +286,7 @@ fi
 #
 if [ -z "${MEMCACHE_DONE}" ]; then
     logtstart "memcache"
-    maybe_install_packages memcached python-memcache
+    maybe_install_packages memcached ${PYPKGPREFIX}-memcache
 
     # Ensure memcached also listens on private controller network
     cat <<EOF >> /etc/memcached.conf
@@ -381,7 +381,7 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
     echo "grant all privileges on keystone.* to 'keystone'@'localhost' identified by '$KEYSTONE_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
     echo "grant all privileges on keystone.* to 'keystone'@'%' identified by '$KEYSTONE_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
 
-    maybe_install_packages keystone python-keystoneclient
+    maybe_install_packages keystone ${PYPKGPREFIX}-keystoneclient
     if [ $OSVERSION -ge $OSKILO ]; then
 	maybe_install_packages apache2
 	maybe_install_packages libapache2-mod-wsgi
@@ -859,7 +859,7 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	fi
     fi
 
-    maybe_install_packages glance python-glanceclient
+    maybe_install_packages glance ${PYPKGPREFIX}-glanceclient
 
     crudini --set /etc/glance/glance-api.conf database connection \
 	"${DBDSTRING}://glance:${GLANCE_DBPASS}@$CONTROLLER/glance"
@@ -1107,7 +1107,7 @@ if [ -z "${NOVA_DBPASS}" ]; then
     fi
 
     maybe_install_packages nova-api nova-conductor nova-consoleauth \
-	nova-novncproxy nova-scheduler python-novaclient
+	nova-novncproxy nova-scheduler ${PYPKGPREFIX}-novaclient
     if [ $OSVERSION -lt $OSQUEENS ]; then
 	maybe_install_packages nova-cert
     fi
@@ -1466,9 +1466,9 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	fi
     fi
 
-    maybe_install_packages neutron-server neutron-plugin-ml2 python-neutronclient
+    maybe_install_packages neutron-server neutron-plugin-ml2 ${PYPKGPREFIX}-neutronclient
     if [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
-	maybe_install_packages python-neutron-lbaas
+	maybe_install_packages ${PYPKGPREFIX}-neutron-lbaas
     fi
 
     #
@@ -1736,7 +1736,7 @@ EOF
     # Install the neutron lbaas dashboard panel, and update the neutron
     # db for lbaas.
     if [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
-	maybe_install_packages python-neutron-lbaas-dashboard
+	maybe_install_packages ${PYPKGPREFIX}-neutron-lbaas-dashboard
 	if [ $? -eq 1 ]; then
 	    git clone https://git.openstack.org/openstack/neutron-lbaas-dashboard
 	    cd neutron-lbaas-dashboard
@@ -2123,7 +2123,7 @@ if [ -z "${CINDER_DBPASS}" ]; then
 	fi
     fi
 
-    maybe_install_packages cinder-api cinder-scheduler python-cinderclient
+    maybe_install_packages cinder-api cinder-scheduler ${PYPKGPREFIX}-cinderclient
 
     crudini --set /etc/cinder/cinder.conf \
 	database connection "${DBDSTRING}://cinder:$CINDER_DBPASS@$CONTROLLER/cinder"
@@ -2293,7 +2293,7 @@ if [ $OSVERSION -ge $OSMITAKA -a -z "${MANILA_DBPASS}" ]; then
 	    sharev2 admin http://${CONTROLLER}:8786/v2/%\(tenant_id\)s
     fi
 
-    maybe_install_packages manila-api manila-scheduler python-manilaclient
+    maybe_install_packages manila-api manila-scheduler ${PYPKGPREFIX}-manilaclient
 
     crudini --set /etc/manila/manila.conf \
 	database connection "${DBDSTRING}://manila:$MANILA_DBPASS@$CONTROLLER/manila"
@@ -2372,13 +2372,13 @@ if [ $OSVERSION -ge $OSMITAKA -a -z "${MANILA_DBPASS}" ]; then
     # Note: we create the default share networks in setup-basic.sh
 
     # Install the UI... complicated by buggy packages.
-    maybe_install_packages python-manila-ui
+    maybe_install_packages ${PYPKGPREFIX}-manila-ui
     #
     # The initial mitaka manila-ui package does not include the template
     # files, ugh!
     #
     dpkg-query -L python-manila-ui | grep -q templates
-    if [ ! $? -eq 0 ]; then
+    if [ ! $? -eq 0 -a $OSVERSION -lt $OSPIKE ]; then
 	if [ ! $DO_APT_UPDATE -eq 0 ]; then
 	    # Enable the src repos
 	    cp -p /etc/apt/sources.list /etc/apt.sources.list.nosrc
@@ -2498,7 +2498,7 @@ if [ -z "${SWIFT_PASS}" ]; then
     fi
 
     maybe_install_packages swift swift-proxy python-swiftclient \
-	python-keystoneclient python-keystonemiddleware
+	${PYPKGPREFIX}-keystoneclient ${PYPKGPREFIX}-keystonemiddleware
 
     mkdir -p /etc/swift
 
@@ -2781,9 +2781,9 @@ if [ -z "${HEAT_DBPASS}" ]; then
 	fi
     fi
 
-    maybe_install_packages heat-api heat-api-cfn heat-engine python-heatclient
+    maybe_install_packages heat-api heat-api-cfn heat-engine ${PYPKGPREFIX}-heatclient
     if [ $OSVERSION -ge $OSQUEENS ]; then
-	maybe_install_packages python-heat-dashboard
+	maybe_install_packages ${PYPKGPREFIX}-heat-dashboard
     fi
 
     crudini --set /etc/heat/heat.conf database \
@@ -2938,7 +2938,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
     # Setup the database.
     #
     if [ $USING_GNOCCHI -eq 0 -a "${CEILOMETER_USE_MONGODB}" = "1" ]; then
-	maybe_install_packages mongodb-server python-pymongo
+	maybe_install_packages mongodb-server ${PYPKGPREFIX}-pymongo
 	maybe_install_packages mongodb-clients
 
 	sed -i -e "s/^.*bind_ip.*=.*$/bind_ip = ${MGMTIP}/" /etc/mongodb.conf
@@ -2956,7 +2956,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	    MDONE=$?
 	done
     elif [ $USING_GNOCCHI -eq 0 ]; then
-	maybe_install_packages mariadb-server python-mysqldb
+	maybe_install_packages mariadb-server ${PYPKGPREFIX}-mysqldb
 
 	echo "create database ceilometer" | mysql -u root --password="$DB_ROOT_PASS"
 	echo "grant all privileges on ceilometer.* to 'ceilometer'@'localhost' identified by '$CEILOMETER_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
@@ -2965,7 +2965,7 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
 	GNOCCHI_DBPASS=`$PSWDGEN`
 	GNOCCHI_PASS=`$PSWDGEN`
 
-	maybe_install_packages mariadb-server python-mysqldb
+	maybe_install_packages mariadb-server ${PYPKGPREFIX}-mysqldb
 	echo "create database gnocchi" | mysql -u root --password="$DB_ROOT_PASS"
 	echo "grant all privileges on gnocchi.* to 'gnocchi'@'localhost' identified by '$GNOCCHI_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
 	echo "grant all privileges on gnocchi.* to 'gnocchi'@'%' identified by '$GNOCCHI_DBPASS'" | mysql -u root --password="$DB_ROOT_PASS"
@@ -3040,17 +3040,17 @@ if [ -z "${CEILOMETER_DBPASS}" ]; then
     maybe_install_packages ceilometer-agent-central ceilometer-agent-notification
     if [ $USING_GNOCCHI -eq 0 ]; then
 	maybe_install_packages ceilometer-api ceilometer-collector \
-	    python-ceilometerclient python-bson
+	    ${PYPKGPREFIX}-ceilometerclient ${PYPKGPREFIX}-bson
 	if [ $OSVERSION -lt $OSMITAKA ]; then
 	    maybe_install_packages ceilometer-alarm-evaluator \
 	        ceilometer-alarm-notifier
 	fi
     else
-	maybe_install_packages gnocchi-metricd python-gnocchiclient
+	maybe_install_packages gnocchi-metricd ${PYPKGPREFIX}-gnocchiclient
 	if [ $OSVERSION = $OSQUEENS ]; then
 	    # gnocchi-api in Queens initially needs mod-wsgi-py3, which
 	    # conflicts with many other things and uninstalls them.
-	    maybe_install_packages python-gnocchi
+	    maybe_install_packages ${PYPKGPREFIX}-gnocchi
 	    # So, the workaround for now is to install the Apache config,
 	    # which is I guess the only relevant thing in gnocchi-api.  Hm.
 	    # My "Hm" was justified.  This is no fix; gnocchi cannot be run
@@ -3088,7 +3088,7 @@ EOF
 	    systemctl restart gnocchi-api
 	else
 	    maybe_install_packages gnocchi-api
-	    maybe_install_packages python-gnocchi
+	    maybe_install_packages ${PYPKGPREFIX}-gnocchi
 	fi
     fi
 
@@ -3689,9 +3689,9 @@ if [ -z "${TELEMETRY_SWIFT_DONE}" ]; then
     chmod g+w /var/log/ceilometer
 
     if [ ! $USING_GNOCCHI -eq 1 ]; then
-	maybe_install_packages python-ceilometerclient
+	maybe_install_packages ${PYPKGPREFIX}-ceilometerclient
     fi
-    maybe_install_packages python-ceilometermiddleware
+    maybe_install_packages ${PYPKGPREFIX}-ceilometermiddleware
 
     if [ $OSVERSION -le $OSJUNO ]; then
 	keystone role-create --name ResellerAdmin
@@ -3776,7 +3776,7 @@ if [ -z "${TROVE_DBPASS}" ]; then
 	maybe_install_packages trove-common
     fi
 
-    maybe_install_packages python-trove python-troveclient python-glanceclient \
+    maybe_install_packages ${PYPKGPREFIX}-trove ${PYPKGPREFIX}-troveclient ${PYPKGPREFIX}-glanceclient \
 	trove-api trove-taskmanager trove-conductor
     if [ $OSVERSION -ge $OSMITAKA ]; then
 	sepdashpkg=`apt-cache search --names-only ^python-trove-dashboard\$ | wc -l`
@@ -3791,7 +3791,7 @@ if [ -z "${TROVE_DBPASS}" ]; then
 		touch /var/lib/openstack-dashboard/secret-key/.secret_key_store
 	    fi
 
-	    maybe_install_packages python-trove-dashboard
+	    maybe_install_packages ${PYPKGPREFIX}-trove-dashboard
 
 	    if [ $madedir -eq 1 ]; then
 		rm -rf /var/lib/openstack-dashboard/secret-key
@@ -4152,7 +4152,7 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 	maybe_install_packages sahara-api sahara-engine
     fi
     if [ $OSVERSION -ge $OSMITAKA ]; then
-	sepdashpkg=`apt-cache search --names-only ^python-sahara-dashboard\$ | wc -l`
+	sepdashpkg=`apt-cache search --names-only ^${PYPKGPREFIX}-sahara-dashboard\$ | wc -l`
 	if [ ! "$sepdashpkg" = "0" ]; then
             # Bug in mitaka package -- postinstall fails to remove this file.
 	    madedir=0
@@ -4164,7 +4164,7 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 		touch /var/lib/openstack-dashboard/secret-key/.secret_key_store
 	    fi
 
-	    maybe_install_packages python-sahara-dashboard
+	    maybe_install_packages ${PYPKGPREFIX}-sahara-dashboard
 
 	    if [ $madedir -eq 1 ]; then
 		rm -rf /var/lib/openstack-dashboard/secret-key
@@ -4321,7 +4321,7 @@ if [ 0 = 1 -a "$OSCODENAME" = "kilo" -a -n "$BAREMETALNODES" -a -z "${IRONIC_DBP
 	--adminurl http://${CONTROLLER}:6385 \
 	--region $REGION
 
-    maybe_install_packages ironic-api ironic-conductor python-ironicclient python-ironic
+    maybe_install_packages ironic-api ironic-conductor ${PYPKGPREFIX}-ironicclient ${PYPKGPREFIX}-ironic
 
     crudini --set /etc/ironic/ironic.conf \
 	database connection "${DBDSTRING}://ironic:${IRONIC_DBPASS}@$CONTROLLER/ironic?charset=utf8"
@@ -4680,7 +4680,7 @@ if [ $OSVERSION -ge $OSROCKY -a -z "${MAGNUM_DBPASS}" ]; then
 	--user-domain $MAGNUM_DOMAIN_NAME \
 	--user $MAGNUM_DOMADMIN_USER admin
 
-    maybe_install_packages magnum-api magnum-conductor python-magnumclient
+    maybe_install_packages magnum-api magnum-conductor ${PYPKGPREFIX}-magnumclient
 
     crudini --set /etc/magnum/magnum.conf api host ${MGMTIP}
     crudini --set /etc/magnum/magnum.conf certificates \
