@@ -384,7 +384,11 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
     maybe_install_packages keystone ${PYPKGPREFIX}-keystoneclient
     if [ $OSVERSION -ge $OSKILO ]; then
 	maybe_install_packages apache2
-	maybe_install_packages libapache2-mod-wsgi
+	if [ $ISPYTHON3 -eq 1 ]; then
+	    maybe_install_packages libapache2-mod-wsgi-py3
+	else
+	    maybe_install_packages libapache2-mod-wsgi
+	fi
     fi
 
     ADMIN_TOKEN=`$PSWDGEN`
@@ -1903,7 +1907,12 @@ if [ -z "${DASHBOARD_DONE}" ]; then
     logtstart "horizon"
     DASHBOARD_DONE=1
 
-    maybe_install_packages openstack-dashboard apache2 libapache2-mod-wsgi
+    maybe_install_packages openstack-dashboard apache2
+    if [ $ISPYTHON3 -eq 1 ]; then
+	maybe_install_packages libapache2-mod-wsgi-py3
+    else
+	maybe_install_packages libapache2-mod-wsgi
+    fi
 
     echo "" >> /etc/openstack-dashboard/local_settings.py
     sed -i -e "s/OPENSTACK_HOST.*=.*\$/OPENSTACK_HOST = \"${CONTROLLER}\"/" \

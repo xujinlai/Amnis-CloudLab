@@ -42,7 +42,7 @@ $DIRNAME/setup-network-plugin.sh
 # https://review.openstack.org/#/c/256267/
 #
 if [ $OSVERSION -ge $OSKILO ]; then
-    maybe_install_packages python-oslo.service
+    maybe_install_packages ${PYPKGPREFIX}-oslo.service
     patch -d / -p0 < $DIRNAME/etc/oslo_service-liberty-sig-MAINLOOP.patch
 fi
 
