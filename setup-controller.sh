@@ -1626,7 +1626,7 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	crudini --set /etc/neutron/neutron.conf database max_pool_size $ncpus
     fi
 
-    if [ $OSVERSION -eq $OSROCKY ]; then
+    if [ $OSVERSION -ge $OSROCKY ]; then
 	crudini --set /etc/neutron/neutron.conf oslo_concurrency \
 	    lock_path /var/lib/neutron/lock
 	mkdir -p /var/lib/neutron/lock/
