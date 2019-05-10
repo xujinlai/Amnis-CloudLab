@@ -430,10 +430,12 @@ if [ -z "${KEYSTONE_DBPASS}" ]; then
 	    if [ $OSVERSION -lt $OSQUEENS ]; then
 		crudini --set /etc/keystone/keystone.conf token driver 'memcache'
 	    fi
-	    crudini --set /etc/keystone/keystone.conf cache \
-	        backend dogpile.cache.memcached
-	    crudini --set /etc/keystone/keystone.conf cache \
-		backend_argument url:127.0.0.1:11211
+	    if [ $OSVERSION -lt $OSSTEIN ]; then
+		crudini --set /etc/keystone/keystone.conf cache \
+		    backend dogpile.cache.memcached
+		crudini --set /etc/keystone/keystone.conf cache \
+		    backend_argument url:127.0.0.1:11211
+	    fi
 	    crudini --set /etc/keystone/keystone.conf cache \
 		enable true
 	    crudini --set /etc/keystone/keystone.conf cache \
