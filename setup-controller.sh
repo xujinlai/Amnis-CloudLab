@@ -2370,8 +2370,8 @@ if [ $OSVERSION -ge $OSMITAKA -a -z "${MANILA_DBPASS}" ]; then
     # Fix a bug in manila-api.  This isn't exactly the right fix, I'm
     # sure, but because we default neutron port_security off, it works
     # fine for us.
-    if [ $OSVERSION -eq $OSQUEENS ]; then
-	patch -p0 -d / < $DIRNAME/etc/manila-queens-port-security-bug.patch
+    if [ $OSVERSION -ge $OSQUEENS ]; then
+	patch -p0 -d / < $DIRNAME/etc/manila-${OSCODENAME}-port-security-bug.patch
     fi
 
     service_restart manila-scheduler
