@@ -81,11 +81,11 @@
 +            sc = self.request_cookie()
 +            self._preserved_cookies.add(sc)
 +            self._reserved_cookies.add(sc)
-+            f = file("/var/lib/neutron/ovs-default-flows.reserved_cookie",'w')
++            f = open("/var/lib/neutron/ovs-default-flows.reserved_cookie",'w')
 +            f.write(str(sc))
 +            f.close()
 +        else:
-+            f = file("/var/lib/neutron/ovs-default-flows.reserved_cookie",'r')
++            f = open("/var/lib/neutron/ovs-default-flows.reserved_cookie",'r')
 +            sc = int(f.read())
 +            f.close()
 +            self._preserved_cookies.add(sc)
