@@ -233,6 +233,12 @@ if [ -n "$fwdriver" ]; then
 	firewall_driver $fwdriver
 fi
 
+if [ $OSVERSION -ge $OSROCKY ]; then
+    crudini --set /etc/neutron/neutron.conf oslo_concurrency \
+	lock_path /var/lib/neutron/lock
+    mkdir -p /var/lib/neutron/lock/
+    chown neutron:neutron /var/lib/neutron/lock
+fi
 
 #
 # Ok, also put our FQDN into the hosts file so that local applications can

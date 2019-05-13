@@ -239,6 +239,13 @@ if [ $OSVERSION -ge $OSLIBERTY -a $OSVERSION -lt $OSNEWTON ]; then
     patch -d / -p0 < $DIRNAME/etc/neutron-liberty-ovs-agent-segmentation-id-None.patch
 fi
 
+if [ $OSVERSION -ge $OSROCKY ]; then
+    crudini --set /etc/neutron/neutron.conf oslo_concurrency \
+	lock_path /var/lib/neutron/lock
+    mkdir -p /var/lib/neutron/lock/
+    chown neutron:neutron /var/lib/neutron/lock
+fi
+
 #
 # Neutron depends on bridge module, but it doesn't autoload it.
 #
