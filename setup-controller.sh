@@ -920,46 +920,48 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	    memcached_servers ${CONTROLLER}:11211
     fi
 
-    crudini --set /etc/glance/glance-registry.conf database \
-	connection "${DBDSTRING}://glance:${GLANCE_DBPASS}@$CONTROLLER/glance"
-    crudini --set /etc/glance/glance-registry.conf DEFAULT auth_strategy keystone
-    crudini --set /etc/glance/glance-registry.conf DEFAULT verbose ${VERBOSE_LOGGING}
-    crudini --set /etc/glance/glance-registry.conf DEFAULT debug ${DEBUG_LOGGING}
-    crudini --set /etc/glance/glance-registry.conf paste_deploy flavor keystone
+    if [ $OSVERSION -lt $OSSTEIN ]; then
+	crudini --set /etc/glance/glance-registry.conf database \
+	    connection "${DBDSTRING}://glance:${GLANCE_DBPASS}@$CONTROLLER/glance"
+	crudini --set /etc/glance/glance-registry.conf DEFAULT auth_strategy keystone
+	crudini --set /etc/glance/glance-registry.conf DEFAULT verbose ${VERBOSE_LOGGING}
+	crudini --set /etc/glance/glance-registry.conf DEFAULT debug ${DEBUG_LOGGING}
+	crudini --set /etc/glance/glance-registry.conf paste_deploy flavor keystone
 
-    if [ $OSVERSION -eq $OSJUNO ]; then
-	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
-	    auth_uri http://${CONTROLLER}:5000/${KAPISTR}
-	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
-	    identity_uri http://${CONTROLLER}:${KADMINPORT}
-	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
-	    admin_tenant_name service
-	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
-	    admin_user glance
-	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
-	    admin_password "${GLANCE_PASS}"
-    else
-	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
-	    auth_uri http://${CONTROLLER}:5000
-	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
-	    auth_url http://${CONTROLLER}:${KADMINPORT}
-	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
-	    ${AUTH_TYPE_PARAM} password
-	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
-	    ${PROJECT_DOMAIN_PARAM} default
-	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
-	    ${USER_DOMAIN_PARAM} default
-	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
-	    project_name service
-	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
-	    username glance
-	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
-	    password "${GLANCE_PASS}"
-	#crudini --set /etc/glance/glance-registry.conf DEFAULT notification_driver noop
-    fi
-    if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
-	crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
-	    memcached_servers ${CONTROLLER}:11211
+	if [ $OSVERSION -eq $OSJUNO ]; then
+	    crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	        auth_uri http://${CONTROLLER}:5000/${KAPISTR}
+	    crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+		identity_uri http://${CONTROLLER}:${KADMINPORT}
+	    crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	        admin_tenant_name service
+	    crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	        admin_user glance
+	    crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	        admin_password "${GLANCE_PASS}"
+	else
+	    crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	        auth_uri http://${CONTROLLER}:5000
+	    crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+		auth_url http://${CONTROLLER}:${KADMINPORT}
+	    crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	        ${AUTH_TYPE_PARAM} password
+	    crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	        ${PROJECT_DOMAIN_PARAM} default
+	    crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	        ${USER_DOMAIN_PARAM} default
+	    crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	        project_name service
+	    crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	        username glance
+	    crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	        password "${GLANCE_PASS}"
+	    #crudini --set /etc/glance/glance-registry.conf DEFAULT notification_driver noop
+	fi
+	if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then
+	    crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
+	        memcached_servers ${CONTROLLER}:11211
+	fi
     fi
 
     su -s /bin/sh -c "/usr/bin/glance-manage db_sync" glance
@@ -968,7 +970,9 @@ if [ -z "${GLANCE_DBPASS}" ]; then
     # Possibly create a larger image storage space.
     #
     if [ -n "$GLANCE_LV_SIZE" -a ! $GLANCE_LV_SIZE = 0 ]; then
-	service_stop glance-registry
+	if [ $OSVERSION -lt $OSSTEIN ]; then
+	    service_stop glance-registry
+	fi
 	service_stop glance-api
 
 	$DIRNAME/setup-extra-space.sh
@@ -996,8 +1000,10 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	    >> /etc/fstab
     fi
 
-    service_restart glance-registry
-    service_enable glance-registry
+    if [ $OSVERSION -lt $OSSTEIN ]; then
+	service_restart glance-registry
+	service_enable glance-registry
+    fi
     service_restart glance-api
     service_enable glance-api
     rm -f /var/lib/glance/glance.sqlite
@@ -3643,7 +3649,7 @@ if [ -z "${TELEMETRY_GLANCE_DONE}" ]; then
     if [ $OSVERSION -lt $OSMITAKA ]; then
 	crudini --set /etc/glance/glance-registry.conf DEFAULT \
 	    notification_driver messagingv2
-    else
+    elif [ $OSVERSION -lt $OSSTEIN ]; then
 	crudini --set /etc/glance/glance-registry.conf \
 	    oslo_messaging_notifications driver messagingv2
     fi
@@ -3656,11 +3662,13 @@ if [ -z "${TELEMETRY_GLANCE_DONE}" ]; then
 	    rabbit_userid ${RABBIT_USER}
 	crudini --set /etc/glance/glance-registry.conf $RIS \
 	    rabbit_password ${RABBIT_PASS}
-    else
+    elif [ $OSVERSION -lt $OSSTEIN ]; then
 	crudini --set /etc/glance/glance-registry.conf DEFAULT transport_url $RABBIT_URL
     fi
 
-    service_restart glance-registry
+    if [ $OSVERSION -lt $OSSTEIN ]; then
+	service_restart glance-registry
+    fi
     service_restart glance-api
 
     echo "TELEMETRY_GLANCE_DONE=\"${TELEMETRY_GLANCE_DONE}\"" >> $SETTINGS
