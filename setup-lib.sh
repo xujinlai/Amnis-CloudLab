@@ -401,9 +401,11 @@ fi
 #
 PYPKGPREFIX="python"
 ISPYTHON3=0
+PYTHONBINNAME="python"
 if [ $OSVERSION -ge $OSSTEIN ]; then
     PYPKGPREFIX="python3"
     ISPYTHON3=1
+    PYTHONBINNAME="python3"
 fi
 
 #

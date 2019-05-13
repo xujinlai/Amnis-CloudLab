@@ -1761,8 +1761,8 @@ EOF
 	    python setup.py install
 	    cp -p neutron_lbaas_dashboard/enabled/_1481_project_ng_loadbalancersv2_panel.py \
 	       /usr/share/openstack-dashboard/openstack_dashboard/local/enabled/
-	    /usr/share/openstack-dashboard/manage.py collectstatic --noinput \
-		&& /usr/share/openstack-dashboard/manage.py compress
+	    $PYTHONBINNAME /usr/share/openstack-dashboard/manage.py collectstatic --noinput \
+		&& $PYTHONBINNAME /usr/share/openstack-dashboard/manage.py compress
 	    service_restart apache2
 	fi
 	echo "OPENSTACK_NEUTRON_NETWORK['enable_lb'] = True" \
@@ -2035,8 +2035,8 @@ EOF
     if [ $OSVERSION -ge $OSNEWTON ]; then
 	# Rebuild after successfully patching javascripts.
 	patch -p0 -d / < $DIRNAME/etc/horizon-${OSCODENAME}-no-default-volcreate.patch \
-	    && /usr/share/openstack-dashboard/manage.py collectstatic --noinput \
-	    && /usr/share/openstack-dashboard/manage.py compress
+	    && $PYTHONBINNAME /usr/share/openstack-dashboard/manage.py collectstatic --noinput \
+	    && $PYTHONBINNAME /usr/share/openstack-dashboard/manage.py compress
     fi
 
     service_restart apache2
