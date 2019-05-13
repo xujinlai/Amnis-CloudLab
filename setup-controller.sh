@@ -2353,6 +2353,8 @@ if [ $OSVERSION -ge $OSMITAKA -a -z "${MANILA_DBPASS}" ]; then
 	username manila
     crudini --set /etc/manila/manila.conf keystone_authtoken \
 	password "${MANILA_PASS}"
+    crudini --set /etc/manila/manila.conf keystone_authtoken \
+	region_name $REGION
 
     crudini --set /etc/manila/manila.conf oslo_concurrency \
 	lock_path /var/lib/manila/tmp
