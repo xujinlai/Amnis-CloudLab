@@ -71,7 +71,7 @@ fi
 crudini --set /etc/manila/manila.conf keystone_authtoken \
     memcached_servers ${CONTROLLER}:11211
 crudini --set /etc/manila/manila.conf keystone_authtoken \
-    auth_uri http://${CONTROLLER}:5000
+    ${AUTH_URI_KEY} http://${CONTROLLER}:5000
 crudini --set /etc/manila/manila.conf keystone_authtoken \
     auth_url http://${CONTROLLER}:${KADMINPORT}
 crudini --set /etc/manila/manila.conf keystone_authtoken \
@@ -177,7 +177,7 @@ else
 	service_network_cidr 10.133.0.0/16
 
     crudini --set /etc/manila/manila.conf nova \
-	auth_uri http://${CONTROLLER}:5000
+	${AUTH_URI_KEY} http://${CONTROLLER}:5000
     crudini --set /etc/manila/manila.conf nova \
 	auth_url http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/manila/manila.conf nova \
@@ -198,7 +198,7 @@ else
 	region_name $REGION
 
     crudini --set /etc/manila/manila.conf cinder \
-	auth_uri http://${CONTROLLER}:5000
+	${AUTH_URI_KEY} http://${CONTROLLER}:5000
     crudini --set /etc/manila/manila.conf cinder \
 	auth_url http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/manila/manila.conf cinder \
@@ -221,7 +221,7 @@ else
     crudini --set /etc/manila/manila.conf neutron \
 	url http://${CONTROLLER}:9696
     crudini --set /etc/manila/manila.conf neutron \
-	auth_uri http://${CONTROLLER}:5000
+	${AUTH_URI_KEY} http://${CONTROLLER}:5000
     crudini --set /etc/manila/manila.conf neutron \
 	auth_url http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/manila/manila.conf neutron \

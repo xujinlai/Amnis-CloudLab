@@ -82,7 +82,7 @@ if [ $OSVERSION -lt $OSKILO ]; then
 	admin_password "${CEILOMETER_PASS}"
 else
     crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
-	auth_uri http://${CONTROLLER}:5000
+	${AUTH_URI_KEY} http://${CONTROLLER}:5000
     crudini --set /etc/ceilometer/ceilometer.conf keystone_authtoken \
 	auth_url http://${CONTROLLER}:${KADMINPORT}
     if [ $OSVERSION -ge $OSMITAKA -o $KEYSTONEUSEMEMCACHE -eq 1 ]; then

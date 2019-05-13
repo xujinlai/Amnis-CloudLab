@@ -886,13 +886,8 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
 	    admin_password "${GLANCE_PASS}"
     else
-	if [ $OSVERSION -le $OSROCKY ]; then
-	    crudini --set /etc/glance/glance-api.conf keystone_authtoken \
-	        auth_uri http://${CONTROLLER}:5000
-	else
-	    crudini --set /etc/glance/glance-api.conf keystone_authtoken \
-	        www_authenticate_uri http://${CONTROLLER}:5000
-	fi
+	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
+	    ${AUTH_URI_KEY} http://${CONTROLLER}:5000
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/glance/glance-api.conf keystone_authtoken \
@@ -941,7 +936,7 @@ if [ -z "${GLANCE_DBPASS}" ]; then
 	        admin_password "${GLANCE_PASS}"
 	else
 	    crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
-	        auth_uri http://${CONTROLLER}:5000
+	        ${AUTH_URI_KEY} http://${CONTROLLER}:5000
 	    crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
 		auth_url http://${CONTROLLER}:${KADMINPORT}
 	    crudini --set /etc/glance/glance-registry.conf keystone_authtoken \
@@ -1197,13 +1192,8 @@ EOF
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
 	    admin_password "${NOVA_PASS}"
     else
-	if [ $OSVERSION -ge $OSSTEIN ]; then
-	    crudini --set /etc/nova/nova.conf keystone_authtoken \
-		www_authenticate_uri http://${CONTROLLER}:5000
-	else
-	    crudini --set /etc/nova/nova.conf keystone_authtoken \
-	        auth_uri http://${CONTROLLER}:5000
-	fi
+	crudini --set /etc/nova/nova.conf keystone_authtoken \
+	    ${AUTH_URI_KEY} http://${CONTROLLER}:5000
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/nova/nova.conf keystone_authtoken \
@@ -1553,7 +1543,7 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	    admin_password "${NEUTRON_PASS}"
     else
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
-	    auth_uri http://${CONTROLLER}:5000
+	    ${AUTH_URI_KEY} http://${CONTROLLER}:5000
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/neutron/neutron.conf keystone_authtoken \
@@ -2189,7 +2179,7 @@ if [ -z "${CINDER_DBPASS}" ]; then
 	    admin_password "${CINDER_PASS}"
     else
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
-	    auth_uri http://${CONTROLLER}:5000
+	    ${AUTH_URI_KEY} http://${CONTROLLER}:5000
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/cinder/cinder.conf keystone_authtoken \
@@ -2348,7 +2338,7 @@ if [ $OSVERSION -ge $OSMITAKA -a -z "${MANILA_DBPASS}" ]; then
     crudini --set /etc/manila/manila.conf keystone_authtoken \
 	memcached_servers ${CONTROLLER}:11211
     crudini --set /etc/manila/manila.conf keystone_authtoken \
-	auth_uri http://${CONTROLLER}:5000
+	${AUTH_URI_KEY} http://${CONTROLLER}:5000
     crudini --set /etc/manila/manila.conf keystone_authtoken \
 	auth_url http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/manila/manila.conf keystone_authtoken \
@@ -2846,7 +2836,7 @@ if [ -z "${HEAT_DBPASS}" ]; then
 	    admin_password "${HEAT_PASS}"
     else
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
-	    auth_uri http://${CONTROLLER}:5000
+	    ${AUTH_URI_KEY} http://${CONTROLLER}:5000
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/heat/heat.conf keystone_authtoken \
@@ -2885,7 +2875,7 @@ if [ -z "${HEAT_DBPASS}" ]; then
 	    ${USER_DOMAIN_PARAM} default
 
 	crudini --set /etc/heat/heat.conf clients_keystone \
-	    auth_uri http://${CONTROLLER}:5000
+	    ${AUTH_URI_KEY} http://${CONTROLLER}:5000
     fi
 
     crudini --set /etc/heat/heat.conf DEFAULT \
@@ -3289,7 +3279,7 @@ EOF
 
 	crudini --set /etc/gnocchi/gnocchi.conf api auth_mode keystone
 	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
-	    auth_uri http://${CONTROLLER}:5000
+	    ${AUTH_URI_KEY} http://${CONTROLLER}:5000
 	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/gnocchi/gnocchi.conf keystone_authtoken \
@@ -4036,7 +4026,7 @@ signing_dir = /var/cache/trove
 EOF
     else
 	crudini --set /etc/trove/trove.conf keystone_authtoken \
-	    auth_uri http://${CONTROLLER}:5000
+	    ${AUTH_URI_KEY} http://${CONTROLLER}:5000
 	crudini --set /etc/trove/trove.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/trove/trove.conf keystone_authtoken \
@@ -4239,9 +4229,7 @@ if [ -z "${SAHARA_DBPASS}" ]; then
 	    admin_password "${SAHARA_PASS}"
     else
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
-	    auth_uri http://${CONTROLLER}:5000
-	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
-	    www_authenticate_uri http://${CONTROLLER}:5000
+	    ${AUTH_URI_KEY} http://${CONTROLLER}:5000
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
 	    auth_url http://${CONTROLLER}:${KADMINPORT}
 	crudini --set /etc/sahara/sahara.conf keystone_authtoken \
@@ -4366,7 +4354,7 @@ if [ 0 = 1 -a "$OSCODENAME" = "kilo" -a -n "$BAREMETALNODES" -a -z "${IRONIC_DBP
 
     crudini --set /etc/ironic/ironic.conf DEFAULT auth_strategy keystone
     crudini --set /etc/ironic/ironic.conf \
-	keystone_authtoken auth_uri "http://$CONTROLLER:5000/"
+	keystone_authtoken ${AUTH_URI_KEY} "http://$CONTROLLER:5000/"
     crudini --set /etc/ironic/ironic.conf \
 	keystone_authtoken identity_uri "http://$CONTROLLER:${KADMINPORT}"
     crudini --set /etc/ironic/ironic.conf \
@@ -4518,7 +4506,7 @@ EOF
     crudini --del /etc/designate/designate.conf keystone_authtoken \
 	user_domain_id
     crudini --set /etc/designate/designate.conf keystone_authtoken \
-	auth_uri http://${CONTROLLER}:5000
+	${AUTH_URI_KEY} http://${CONTROLLER}:5000
     crudini --set /etc/designate/designate.conf keystone_authtoken \
 	auth_url http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/designate/designate.conf keystone_authtoken \
@@ -4725,7 +4713,7 @@ if [ $OSVERSION -ge $OSROCKY -a -z "${MAGNUM_DBPASS}" ]; then
     crudini --set /etc/magnum/magnum.conf keystone_authtoken \
 	auth_version $KAPISTR
     crudini --set /etc/magnum/magnum.conf keystone_authtoken \
-	auth_uri http://${CONTROLLER}:5000/$KAPISTR
+	${AUTH_URI_KEY} http://${CONTROLLER}:5000/$KAPISTR
     crudini --set /etc/magnum/magnum.conf keystone_authtoken \
 	${PROJECT_DOMAIN_PARAM} default
     crudini --set /etc/magnum/magnum.conf keystone_authtoken \

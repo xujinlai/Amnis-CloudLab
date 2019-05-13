@@ -194,7 +194,7 @@ if [ $OSVERSION -lt $OSKILO ]; then
 	admin_password "${NOVA_PASS}"
 else
     crudini --set /etc/nova/nova.conf keystone_authtoken \
-	auth_uri http://${CONTROLLER}:5000
+	${AUTH_URI_KEY} http://${CONTROLLER}:5000
     crudini --set /etc/nova/nova.conf keystone_authtoken \
 	auth_url http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/nova/nova.conf keystone_authtoken \

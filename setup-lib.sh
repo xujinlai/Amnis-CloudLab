@@ -397,6 +397,14 @@ else
 fi
 
 #
+# Stop using auth_uri in favor of www_authenticate_uri at Stein.
+#
+AUTH_URI_KEY="auth_uri"
+if [ $OSVERSION -ge $OSSTEIN ]; then
+    AUTH_URI_KEY="www_authenticate_uri"
+fi
+
+#
 # We started using Python 3 packages at Stein.
 #
 PYPKGPREFIX="python"

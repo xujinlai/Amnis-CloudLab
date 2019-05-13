@@ -99,7 +99,7 @@ if [ $OSVERSION -lt $OSKILO ]; then
 	admin_password "${NEUTRON_PASS}"
 else
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
-	auth_uri http://${CONTROLLER}:5000
+	${AUTH_URI_KEY} http://${CONTROLLER}:5000
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
 	auth_url http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/neutron/neutron.conf keystone_authtoken \
@@ -139,7 +139,7 @@ if [ $OSVERSION -lt $OSKILO ]; then
 	admin_password "${NOVA_PASS}"
 else
     crudini --set /etc/neutron/neutron.conf nova \
-	auth_uri http://${CONTROLLER}:5000
+	${AUTH_URI_KEY} http://${CONTROLLER}:5000
     crudini --set /etc/neutron/neutron.conf nova \
 	auth_url http://${CONTROLLER}:${KADMINPORT}
     crudini --set /etc/neutron/neutron.conf nova \

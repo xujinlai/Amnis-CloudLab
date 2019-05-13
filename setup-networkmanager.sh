@@ -127,7 +127,7 @@ if [ $OSVERSION -lt $OSKILO ]; then
 	admin_password ${NEUTRON_PASS}
 else
     crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
-	auth_uri http://${CONTROLLER}:5000
+	${AUTH_URI_KEY} http://${CONTROLLER}:5000
     crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
 	auth_url http://${CONTROLLER}:${KADMINPORT}/v2.0
     crudini --set /etc/neutron/metadata_agent.ini DEFAULT \
