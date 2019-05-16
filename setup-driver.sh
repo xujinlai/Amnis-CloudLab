@@ -26,9 +26,9 @@ if [ "$HOSTNAME" = "$CONTROLLER" ]; then
     # Handle case where nginx won't start because the default site
     # (which is enabled!) needs port 80, and apache might be listening
     # there.
+    rm -f /etc/nginx/sites-available/default \
+        /etc/nginx/sites-enabled/default
     if [ ! $? -eq 0 ]; then
-        rm -f /etc/nginx/sites-available/default \
-	    /etc/nginx/sites-enabled/default
 	maybe_install_packages nginx
     fi
     echo "$ADMIN_PASS" | htpasswd -n -i admin > /etc/nginx/htpasswd
