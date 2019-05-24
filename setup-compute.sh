@@ -83,7 +83,7 @@ if [ $? -eq 0 -a "$COMPUTE_EXTRA_NOVA_DISK_SPACE" = "1" ]; then
 	mkfs.ext3 /dev/$VGNAME/nova
     fi
     mkdir -p /mnt/var-lib-nova
-    echo "/dev/$VGNAME/nova /mnt/var-lib-nova none defaults,bind 0 0" \
+    echo "/dev/$VGNAME/nova /mnt/var-lib-nova none defaults 0 0" \
 	 >> /etc/fstab
     mount /dev/$VGNAME/nova /mnt/var-lib-nova
     chown nova:nova /mnt/var-lib-nova
