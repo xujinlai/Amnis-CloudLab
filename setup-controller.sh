@@ -352,7 +352,7 @@ EOF
 	chmod 750 /etc/etcd
     else
 	cat <<EOF >/etc/default/etcd
-ETCD_NAME="controller"
+ETCD_NAME="$CONTROLLER"
 ETCD_DATA_DIR="/var/lib/etcd"
 ETCD_INITIAL_CLUSTER_STATE="new"
 ETCD_INITIAL_CLUSTER_TOKEN="etcd-cluster-01"
