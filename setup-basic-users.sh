@@ -31,7 +31,7 @@ fi
 
 if [ $GENIUSER -eq 1 ] ; then
     echo "*** Importing GENI user keys for admin user..."
-    $DIRNAME/setup-user-info.py
+    $PYTHONBINNAME $DIRNAME/setup-user-info.py
 
     #
     # XXX: ugh, this is ugly, but now that we have two admin users, we have
@@ -57,7 +57,7 @@ if [ $GENIUSER -eq 1 ] ; then
 
     # Ok, do it again!
     echo "*** Importing GENI user keys, for ${ADMIN_API} user..."
-    $DIRNAME/setup-user-info.py
+    $PYTHONBINNAME $DIRNAME/setup-user-info.py
 fi
 
 logtend "basic-users"
