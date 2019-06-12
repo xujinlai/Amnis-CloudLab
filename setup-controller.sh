@@ -2501,19 +2501,30 @@ if [ -z "${SWIFT_PASS}" ]; then
 		--adminurl http://${CONTROLLER}:8080 \
 		--region $REGION \
 		object-store
-	else
+	elif [ $OSVERSION -lt $OSSTEIN ]; then
 	    __openstack endpoint create --region $REGION \
 		object-store public http://${CONTROLLER}:8080/v1/AUTH_%\(tenant_id\)s
 	    __openstack endpoint create --region $REGION \
 		object-store internal http://${CONTROLLER}:8080/v1/AUTH_%\(tenant_id\)s
 	    __openstack endpoint create --region $REGION \
 		object-store admin http://${CONTROLLER}:8080/v1
+	else
+	    __openstack endpoint create --region $REGION \
+		object-store public http://${CONTROLLER}:8080/v1/AUTH_%\(project_id\)s
+	    __openstack endpoint create --region $REGION \
+		object-store internal http://${CONTROLLER}:8080/v1/AUTH_%\(project_id\)s
+	    __openstack endpoint create --region $REGION \
+		object-store admin http://${CONTROLLER}:8080/v1
+
 	fi
     fi
 
     maybe_install_packages swift swift-proxy python-swiftclient \
 	${PYPKGPREFIX}-keystoneclient ${PYPKGPREFIX}-keystonemiddleware
-
+    # Swift still wants python2, so install some openstack client deps.
+    if [ $OSVERSION -ge $OSSTEIN ]; then
+	maybe_install_packages python-ceilometermiddleware
+    fi
     mkdir -p /etc/swift
 
     wget -O /etc/swift/proxy-server.conf \
