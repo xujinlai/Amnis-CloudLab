@@ -3951,6 +3951,8 @@ if [ -z "${TROVE_DBPASS}" ]; then
 	database connection ${DBDSTRING}://trove:${TROVE_DBPASS}@${CONTROLLER}/trove
     crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
 	notifier_queue_hostname ${CONTROLLER}
+    crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
+	os_region_name $REGION
 
     # trove-conductor.conf core stuff
     crudini --set /etc/trove/trove-conductor.conf DEFAULT \
@@ -4006,10 +4008,7 @@ if [ -z "${TROVE_DBPASS}" ]; then
 	nova_proxy_admin_tenant_name service
     crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
 	taskmanager_manager trove.taskmanager.manager.Manager
-    crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
-	
-    crudini --set /etc/trove/trove-taskmanager.conf DEFAULT \
-	
+
     # A few more things for the main conf file
     crudini --set /etc/trove/trove.conf DEFAULT default_datastore mysql
     crudini --set /etc/trove/trove.conf DEFAULT add_addresses True
