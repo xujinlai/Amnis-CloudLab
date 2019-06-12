@@ -4424,19 +4424,27 @@ if [ $OSVERSION -ge $OSNEWTON -a -z "${DESIGNATE_DBPASS}" ]; then
 	    --adminurl http://${CONTROLLER}:9001/v2 \
 	    --region $REGION \
 	    dns
-    else
+    elif [ $OSVERSION -lt $OSSTEIN ]; then
 	__openstack endpoint create --region $REGION \
 	    dns public http://${CONTROLLER}:9001/v2
 	__openstack endpoint create --region $REGION \
 	    dns internal http://${CONTROLLER}:9001/v2
 	__openstack endpoint create --region $REGION \
 	    dns admin http://${CONTROLLER}:9001/v2
+    else
+	__openstack endpoint create --region $REGION \
+	    dns public http://${CONTROLLER}:9001/
+	__openstack endpoint create --region $REGION \
+	    dns internal http://${CONTROLLER}:9001/
+	__openstack endpoint create --region $REGION \
+	    dns admin http://${CONTROLLER}:9001/
     fi
 
     maybe_install_packages designate bind9 bind9utils bind9-doc
     rndc-confgen -a -k designate -c /etc/designate/rndc.key
     chgrp bind /etc/designate/rndc.key
     chmod g+r /etc/designate/rndc.key
+    usermod -a -G designate bind
 
     mydomain=`hostname | sed -n -e 's/[^\.]*\.\(.*\)$/\1/p'`
     mynameserver=`sed -n -e 's/^nameserver \([0-9]*\.[0-9]*\.[0-9]*\.[0-9]*\).*$/\1/p' < /etc/resolv.conf | head -1`
