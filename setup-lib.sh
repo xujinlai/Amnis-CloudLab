@@ -209,18 +209,18 @@ fi
 ## Grab our geni creds, and create a GENI credential cert
 ##
 #
-# NB: force the install of python-m2crypto if geniuser
+# NB: force the install of python-cryptography if geniuser
 #
 if [ $GENIUSER -eq 1 ]; then
-    dpkg -s python-m2crypto >/dev/null 2>&1
+    dpkg -s python-cryptography >/dev/null 2>&1
     if [ ! $? -eq 0 ]; then
-	apt-get $DPKGOPTS install $APTGETINSTALLOPTS python-m2crypto
+	apt-get $DPKGOPTS install $APTGETINSTALLOPTS python-cryptography
 	# Keep trying again with updated cache forever;
 	# we must have this package.
 	success=$?
 	while [ ! $success -eq 0 ]; do
 	    apt-get update
-	    apt-get $DPKGOPTS install $APTGETINSTALLOPTS python-m2crypto
+	    apt-get $DPKGOPTS install $APTGETINSTALLOPTS python-cryptography
 	    success=$?
 	done
     fi

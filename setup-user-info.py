@@ -15,8 +15,6 @@ import getopt
 import os
 import os.path
 import re
-import xmlrpclib
-from M2Crypto import X509
 import os.path
 #import keystoneclient
 #import novaclient
