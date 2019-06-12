@@ -20,6 +20,9 @@ import os.path
 #import novaclient
 import traceback
 import logging
+import six
+
+myprint = six.print_
 
 LOG = logging.getLogger(__name__)
 # Define a default handler at INFO logging level
@@ -33,11 +36,11 @@ KEYSTONE_OPTS = [ 'OS_PROJECT_DOMAIN_ID','OS_USER_DOMAIN_ID',
                   'OS_USERNAME','OS_PASSWORD','OS_AUTH_URL' ]
 #'OS_IDENTITY_API_VERSION'
 
-execfile(CLOUDLAB_SETTINGS_FILE)
-execfile(CLOUDLAB_AUTH_FILE)
+exec(open(CLOUDLAB_SETTINGS_FILE).read())
+exec(open(CLOUDLAB_AUTH_FILE).read())
 
 dirname = os.path.abspath(os.path.dirname(sys.argv[0]))
-execfile("%s/test-common.py" % (dirname,))
+exec(open("%s/test-common.py" % (dirname,)).read())
 
 #
 # Convert the certificate into a credential.
@@ -137,7 +140,7 @@ for userdict in response['value']:
     urn = userdict['urn']
     login = userdict['login']
     for keydict in userdict['keys']:
-        if not keydict.has_key('type') or keydict['type'] != 'ssh':
+        if not 'type' in keydict or keydict['type'] != 'ssh':
             continue
         
         key = keydict['key']
@@ -152,7 +155,7 @@ for userdict in response['value']:
                 rname += 'X'
             pass
         
-        if not keysdone.has_key(rname):
+        if not rname in keysdone:
             try:
                 nova.keypairs.create(rname,key)
                 keysdone[rname] = key
@@ -189,14 +192,14 @@ else:
 #  where user_id=\'${AUID}\'
 cmd = 'export AAUID="`%s | awk \'/ adminapi / {print $2}\'`" ; export AUID="`%s | awk \'/ admin / {print $2}\'`" ; mysqldump -u nova --password=%s nova -t key_pairs --skip-comments --quote-names --no-create-info --no-create-db --complete-insert --compact | sed -e \'s/,[0-9]*,/,NULL,/gi\' | sed -e "s/,\'${AAUID}\',/,\'${AUID}\',/gi" | mysql -u nova --password=%s nova ; echo "update key_pairs set deleted=0" | mysql -u nova --password=%s nova' % (os_cred_stuff,os_cred_stuff,NOVA_DBPASS,NOVA_DBPASS,NOVA_DBPASS,)
 #cmd = 'export OS_PASSWORD="%s" ; export OS_AUTH_URL="%s" ; export OS_USERNAME="%s" ; export OS_TENANT_NAME="%s" ; export AAUID="`keystone user-list | awk \'/ adminapi / {print $2}\'`" ; export AUID="`keystone user-list | awk \'/ admin / {print $2}\'`" ; mysqldump -u nova --password=%s nova -t key_pairs --skip-comments --quote-names --no-create-info --no-create-db --complete-insert --compact | sed -e \'s/,[0-9]*,/,NULL,/gi\' | sed -e "s/,\'${AAUID}\',/,\'${AUID}\',/gi" | mysql -u nova --password=%s nova ; echo "update key_pairs set deleted=0 where user_id=\'${AUID}\'" | mysql -u nova --password=%s nova' % (OS_PASSWORD,OS_AUTH_URL,OS_USERNAME,OS_PASSWORD,NOVA_DBPASS,NOVA_DBPASS,NOVA_DBPASS,)
-print "Running adminapi -> admin key import: %s..." % (cmd,)
+myprint("Running adminapi -> admin key import: %s..." % (cmd,))
 os.system(cmd)
 
 #
 # Ugh, the tables are now split between nova and nova_api ... so just do this too.
 #
 cmd = 'export AAUID="`%s | awk \'/ adminapi / {print $2}\'`" ; export AUID="`%s | awk \'/ admin / {print $2}\'`" ; mysqldump -u nova --password=%s nova_api -t key_pairs --skip-comments --quote-names --no-create-info --no-create-db --complete-insert --compact | sed -e \'s/,[0-9]*,/,NULL,/gi\' | sed -e "s/,\'${AAUID}\',/,\'${AUID}\',/gi" | mysql -u nova --password=%s nova_api ; echo "update key_pairs set deleted=0" | mysql -u nova_api --password=%s nova' % (os_cred_stuff,os_cred_stuff,NOVA_DBPASS,NOVA_DBPASS,NOVA_DBPASS,)
-print "Running adminapi -> admin key import: %s..." % (cmd,)
+myprint("Running adminapi -> admin key import: %s..." % (cmd,))
 os.system(cmd)
 
 sys.exit(0)

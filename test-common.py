@@ -27,11 +27,21 @@
 # }}}
 #
 
-from urlparse import urlsplit, urlunsplit
-from urllib import splitport
-import xmlrpclib
+import six
+try:
+    from urlparse import urlsplit, urlunsplit
+    from urllib import splitport
+    import xmlrpclib
+    import httplib
+except:
+    from urllib.parse import urlsplit, urlunsplit
+    from urllib.request import splitport
+    import xmlrpc.client as xmlrpclib
+    import http.client as httplib
+import os
+import getopt
+import sys
 import time
-import httplib
 import traceback
 import ssl
 from cryptography import x509
@@ -73,16 +83,18 @@ authenticate=DEFAULTAUTHENTICATE
 verify = False
 cacertificate = None
 
+myprint = six.print_
+
 if "Usage" not in dir():
     def Usage():
-        print "usage: " + sys.argv[ 0 ] + " [option...]"
-        print "Options:"
+        myprint("usage: " + sys.argv[ 0 ] + " [option...]")
+        myprint("Options:")
         BaseOptions()
         pass
     pass
 
 def BaseOptions():
-    print """
+    myprint("""
     -a file, --admincredentials=file    read admin credentials from file
     -A, --authenticated                 authenticate client
     -c file, --credentials=file         read self-credentials from file
@@ -94,12 +106,12 @@ def BaseOptions():
     -l uri, --sa=uri                    specify uri of slice authority
                                             [default: local]
     -m uri, --cm=uri                    specify uri of component manager
-                                            [default: local]"""
+                                            [default: local]""")
     if "ACCEPTSLICENAME" in globals():
-        print """    -n name, --slicename=name           specify human-readable name of slice
-                                            [default: mytestslice]"""
+        myprint("""    -n name, --slicename=name           specify human-readable name of slice
+                                            [default: mytestslice]""")
         pass
-    print """    -p file, --passphrase=file          read passphrase from file
+    myprint("""    -p file, --passphrase=file          read passphrase from file
                                             [default: ~/.ssl/password]
     -r file, --read-commands=file       specify additional configuration file
     -s file, --slicecredentials=file    read slice credentials from file
@@ -107,7 +119,7 @@ def BaseOptions():
     -S file, --speaksfor=file           read speaksfor credential from file
     -U, --unauthenticated               do not authenticate client
         --verify                        enable server verification
-        --cacertificate=file            read CA certificate from file"""
+        --cacertificate=file            read CA certificate from file""")
     pass
 
 try:
@@ -120,8 +132,8 @@ try:
                                          "speaksfor=", "unauthenticated",
                                          "delete", "verify", "cacertificate=" ] )
 
-except getopt.GetoptError, err:
-    print >> sys.stderr, str( err )
+except getopt.GetoptError:
+    myprint(str(sys.exc_info()[1]),file=sys.stderr)
     Usage()
     sys.exit( 1 )
 
@@ -186,16 +198,17 @@ try:
     fd = open(CERTIFICATE)
     certdata = fd.read()
     fd.close()
-except IOError, e:
-    print 'Error reading certificate file %s: %s' % (CERTIFICATE,e.strerror)
+except IOError:
+    myprint('Error reading certificate file %s: %s' % (CERTIFICATE,sys.exc_info()[1].strerror))
+cert = None
 try:
-    cert = x509.load_pem_x509_certificate(certdata,default_backend())
-except Exception, e:
-    print 'Error loading certificate: %s' % (str(e))
+    cert = x509.load_pem_x509_certificate(six.b(certdata),default_backend())
+except Exception:
+    myprint('Error loading certificate: %s' % (str(sys.exc_info()[1])))
 
 if verify and cacertificate is not None:
     if not os.access(cacertificate, os.R_OK):
-        print "CA Certificate cannot be accessed: " + cacertificate
+        myprint("CA Certificate cannot be accessed: " + cacertificate)
         sys.exit(-1);
 
 # XMLRPC server: use www.emulab.net for the clearinghouse.
@@ -222,9 +235,9 @@ try:
         if port:
             path = ":" + port + path
         SERVER_PATH["default"] = path
-except Exception, err:
+except Exception:
     if debug:
-        print "Warning: error getting authInfoAccess extension value:"
+        myprint("Warning: error getting authInfoAccess extension value:")
         traceback.print_exc()
     pass
 
@@ -255,17 +268,17 @@ if os.path.exists(PASSPHRASEFILE):
         passphrase = open(PASSPHRASEFILE).readline()
         passphrase = passphrase.strip()
         if passphrase == '':
-            print 'Passphrase file empty; you may be prompted'
+            myprint('Passphrase file empty; you may be prompted')
             passphrase = None
-    except IOError, e:
-        print 'Error reading passphrase file %s: %s' % (
-            PASSPHRASEFILE,e.strerror)
+    except IOError:
+        myprint('Error reading passphrase file %s: %s' % (
+            PASSPHRASEFILE,sys.exc_info()[1].strerror))
 else:
     if debug:
-        print 'Passphrase file %s does not exist' % (PASSPHRASEFILE)
+        myprint('Passphrase file %s does not exist' % (PASSPHRASEFILE))
 
 def Fatal(message):
-    print >> sys.stderr, message
+    myprint(message,file=sys.stderr)
     sys.exit(1)
 
 def geni_am_response_handler(method, method_args):
@@ -327,12 +340,12 @@ def do_method(module, method, params, URI=None, quiet=False, version=None,
     url = urlsplit(URI, "https")
 
     if debug:
-        print str( url ) + " " + method
+        myprint(str( url ) + " " + method)
 
     if url.scheme == "https":
         if authenticate and not cert:
             if not quiet:
-                print >> sys.stderr, "error: missing emulab certificate: " + CERTIFICATE
+                myprint("error: missing emulab certificate: " + CERTIFICATE,file=sys.stderr)
             return (-1, None)
 
         port = url.port if url.port else 443
@@ -371,32 +384,34 @@ def do_method(module, method, params, URI=None, quiet=False, version=None,
             response = server.getresponse()
             if response.status == 503:
                 if not quiet:
-                    print >> sys.stderr, "Will try again in a moment. Be patient!"
+                    myprint("Will try again in a moment. Be patient!",file=sys.stderr)
                 time.sleep(5.0)
                 continue
             elif response.status != 200:
                 if not quiet:
-                    print >> sys.stderr, str(response.status) + " " + response.reason
+                    myprint(str(response.status) + " " + response.reason,file=sys.stderr)
                 return (-1,None)
             response = xmlrpclib.loads( response.read() )[ 0 ][ 0 ]
             break
-        except httplib.HTTPException, e:
-            if not quiet: print >> sys.stderr, e
+        except httplib.HTTPException:
+            if not quiet: myprint(sys.exc_info()[1],file=sys.stderr)
             return (-1, None)
-        except xmlrpclib.Fault, e:
+        except xmlrpclib.Fault:
+            e = sys.exc_info()[1]
             if e.faultCode == 503:
-                print >> sys.stderr, e.faultString + " Retrying\n";
+                myprint(e.faultString + " Retrying\n",file=sys.stderr)
                 time.sleep(5.0)
                 continue;
-            if not quiet: print >> sys.stderr, e.faultString
+            if not quiet: myprint(e.faultString,file=sys.stderr)
             return (-1, None)
-        except ssl.CertificateError, e:
+        except ssl.CertificateError:
+            e = sys.exc_info()[1]
             if not quiet:
-                print >> sys.stderr, "Warning: possible certificate host name mismatch."
-                print >> sys.stderr, "Please consult:"
-                print >> sys.stderr, "    http://www.protogeni.net/trac/protogeni/wiki/HostNameMismatch"            
-                print >> sys.stderr, "for recommended solutions."
-                print >> sys.stderr, e
+                myprint("Warning: possible certificate host name mismatch.",file=sys.stderr)
+                myprint("Please consult:",file=sys.stderr)
+                myprint("    http://www.protogeni.net/trac/protogeni/wiki/HostNameMismatch",file=sys.stderr)
+                myprint("for recommended solutions.",file=sys.stderr)
+                myprint(e,file=sys.stderr)
                 pass
             return (-1, None)
 
@@ -406,7 +421,7 @@ def do_method(module, method, params, URI=None, quiet=False, version=None,
     # Dictionary, hence the code below. 
     # 
     if response[ "code" ] and len(response["output"]):
-        if not quiet: print >> sys.stderr, response["output"] + ":",
+        if not quiet: myprint(response["output"] + ":",file=sys.stderr)
         pass
 
     rval = response["code"]
@@ -440,7 +455,7 @@ def do_method_retry(suffix, method, params):
   rval, response = do_method(suffix, method, params)
   while count > 0 and response and response["code"] == 14:
       count = count - 1
-      print " Will try again in a few seconds\n"
+      myprint(" Will try again in a few seconds\n")
       time.sleep(5.0)
       rval, response = do_method(suffix, method, params)
   return (rval, response)
@@ -448,7 +463,7 @@ def do_method_retry(suffix, method, params):
 def resolve_slice( name, selfcredential ):
     if slicecredentialfile:
         myslice = {}
-	myslice["urn"] = SLICEURN
+        myslice["urn"] = SLICEURN
         return myslice
     params = {}
     params["credential"] = mycredential

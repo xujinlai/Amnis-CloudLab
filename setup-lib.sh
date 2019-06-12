@@ -414,6 +414,28 @@ if [ $OSVERSION -ge $OSSTEIN ]; then
     PYPKGPREFIX="python3"
     ISPYTHON3=1
     PYTHONBINNAME="python3"
+
+    #
+    # If our openstack python libs will be python3, we also need
+    # python3-cryptography for setup-user-info.py, because that file
+    # must be run by whatever python version contains the novaclient
+    # library.  And we don't know that we need that until here, unlike
+    # above where we install the v2 python-cryptography.
+    #
+    if [ $GENIUSER -eq 1 ]; then
+	dpkg -s python-cryptography >/dev/null 2>&1
+	if [ ! $? -eq 0 ]; then
+	    apt-get $DPKGOPTS install $APTGETINSTALLOPTS ${PYTHONBINNAME}-cryptography
+	    # Keep trying again with updated cache forever;
+	    # we must have this package.
+	    success=$?
+	    while [ ! $success -eq 0 ]; do
+		apt-get update
+		apt-get $DPKGOPTS install $APTGETINSTALLOPTS ${PYTHONBINNAME}-cryptography
+		success=$?
+	    done
+	fi
+    fi
 fi
 
 #
