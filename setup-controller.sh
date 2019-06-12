@@ -2799,8 +2799,8 @@ if [ -z "${HEAT_DBPASS}" ]; then
     if [ $OSVERSION -ge $OSQUEENS ]; then
 	maybe_install_packages ${PYPKGPREFIX}-heat-dashboard
     fi
-    if [ $OSVERSION -ge $OSSTEIN ]; then
-	patch -d / -p0 < $DIRNAME/etc/heat-dashboard-python3-bytes.patch
+    if [ $OSVERSION -eq $OSSTEIN ]; then
+	patch -d / -p0 < $DIRNAME/etc/stein-heat-dashboard-python3-bytes.patch
 	service_restart apache2
     fi
 
