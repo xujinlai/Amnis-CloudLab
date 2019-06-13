@@ -3343,11 +3343,13 @@ EOF
 	    # For some reason, gnocchi-api needs to be running to do
 	    # upgrades, it seems.
 	    service_restart gnocchi-api
+	    service_restart gnocchi-metricd
 	    sleep 4
 	    gnocchi-upgrade --config-file=/etc/gnocchi/gnocchi.conf
 	    # Restart after the upgrades...
 	    chown -R gnocchi:gnocchi /var/lib/gnocchi
 	    service_restart gnocchi-api
+	    service_restart gnocchi-metricd
 	    ceilometer-upgrade --debug
 	fi
     fi
@@ -3689,8 +3691,13 @@ if [ -z "${TELEMETRY_CINDER_DONE}" ]; then
     logtstart "ceilometer-cinder"
     TELEMETRY_CINDER_DONE=1
 
-    crudini --set /etc/cinder/cinder.conf DEFAULT control_exchange cinder
-    crudini --set /etc/cinder/cinder.conf DEFAULT notification_driver messagingv2
+    if [ $OSVERSION -lt $OSSTEIN ]; then
+	crudini --set /etc/cinder/cinder.conf DEFAULT control_exchange cinder
+	crudini --set /etc/cinder/cinder.conf DEFAULT notification_driver messagingv2
+    else
+	crudini --set /etc/cinder/cinder.conf oslo_messaging_notifications \
+	    driver messagingv2
+    fi
 
     service_restart cinder-api
     service_restart cinder-scheduler
