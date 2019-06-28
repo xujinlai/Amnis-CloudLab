@@ -837,7 +837,14 @@ if params.controllerHost != params.networkManagerHost:
     if params.networkManagerDiskImage:
         networkManager.disk_image = params.networkManagerDiskImage
     else:
-        networkManager.disk_image = "urn:publicid:IDN+%s+image+%s//%s%s%s" % (image_urn,image_project,image_os,image_tag_nm,image_tag_rel)
+        nmreltag = image_tag_rel
+        # If we don't have an image tag, or we are using a standard
+        # image, there will be no release tag either.  The latter case
+        # is possible because we no longer build OSNM images for >=
+        # Rocky.
+        if image_tag_nm == '' or image_tag_nm == '-STD':
+            nmreltag = ''
+        networkManager.disk_image = "urn:publicid:IDN+%s+image+%s//%s%s%s" % (image_urn,image_project,image_os,image_tag_nm,nmreltag)
     if firewalling and setfwdesire:
         networkManager.Desire('firewallable','1.0')
     i = 0
