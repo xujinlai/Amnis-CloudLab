@@ -564,6 +564,23 @@ EOF
 
 	ln -s /etc/apache2/sites-available/wsgi-keystone.conf \
 	    /etc/apache2/sites-enabled
+    else
+	# Make sure various symlinks for keystone/wsgi are in place.
+	if [ ! -e /etc/apache2/sites-enabled/keystone.conf -a \
+	       -e /etc/apache2/sites-available/keystone.conf ]; then
+	    ln -s /etc/apache2/sites-available/keystone.conf \
+	        /etc/apache2/sites-enabled/
+	fi
+	if [ ! -e /etc/apache2/mods-enabled/wsgi.conf -a \
+	       -e /etc/apache2/mods-available/wsgi.conf ]; then
+	    ln -s /etc/apache2/mods-available/wsgi.conf \
+	        /etc/apache2/mods-enabled/
+	fi
+	if [ ! -e /etc/apache2/mods-enabled/wsgi.load -a \
+	       -e /etc/apache2/mods-available/wsgi.load ]; then
+	    ln -s /etc/apache2/mods-available/wsgi.load \
+	        /etc/apache2/mods-enabled/
+	fi
     fi
 
     if [ $OSVERSION -le $OSJUNO -o $KEYSTONEUSEWSGI -eq 0 ]; then
