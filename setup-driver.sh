@@ -23,14 +23,14 @@ fi
 #
 if [ "$HOSTNAME" = "$CONTROLLER" ]; then
     maybe_install_packages nginx
-    # Handle case where nginx won't start because the default site
-    # (which is enabled!) needs port 80, and apache might be listening
-    # there.
+    # Always remove default nginx site-enabled file, since apache must
+    # listen on port 80.  But if apache2 ran prior to nginx, nginx
+    # install may have failed; if so, remove its default enabled site.
     if [ ! $? -eq 0 ]; then
-        rm -f /etc/nginx/sites-available/default \
-	    /etc/nginx/sites-enabled/default
+        rm -f /etc/nginx/sites-enabled/default
 	maybe_install_packages nginx
     fi
+    rm -f /etc/nginx/sites-enabled/default
     echo "$ADMIN_PASS" | htpasswd -n -i admin > /etc/nginx/htpasswd
     chown www-data:root /etc/nginx/htpasswd
     chmod 660 /etc/nginx/htpasswd
