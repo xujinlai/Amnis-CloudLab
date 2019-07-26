@@ -61,6 +61,11 @@ EOF
 fi
 logtstart "driver"
 
+#
+# Maybe expand the rootfs.
+#
+$DIRNAME/setup-grow-rootfs.sh 1> $OURDIR/setup-grow-rootfs.log 2>&1
+
 # Copy our source code into $OURDIR for future use:
 echo "*** Copying source code into $OURDIR/bin ..."
 mkdir -p $OURDIR/bin
