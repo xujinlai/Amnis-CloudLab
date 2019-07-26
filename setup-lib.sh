@@ -127,6 +127,11 @@ USE_NEUTRON_LBAAS=1
 ENABLE_OPENSTACK_SLOTHD=0
 # The input OpenStack release, if any, from profile params.
 OSRELEASE=""
+# If "", no resizing.  If set to number, that is GB.  Even if you
+# specify MB, the MB will be stripped and assumed to be GB.  If set to
+# 0, the max amount of space after removing swap and extra partitions
+# will be used.
+RESIZEROOT=""
 
 #
 # We have an 'adminapi' user that gets a random password.  Then, we have

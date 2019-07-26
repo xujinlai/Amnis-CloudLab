@@ -127,6 +127,9 @@ pc.defineParameter("computeNodeCountSite2", "Number of compute nodes at Site 2",
                    portal.ParameterType.INTEGER, 0,advanced=True,
                    longDescription="You can add additional compute nodes from other CloudLab clusters, allowing you to experiment with remote VMs controlled from the central controller at the first site.")
 
+pc.defineParameter("resizeRoot","Resize Root Filesystem",
+                   portal.ParameterType.STRING,"",advanced=True,
+                   longDescription="If set to 0 or integer, this will expand your root filesystem on each node.  In order to make the expansion possible, the swap and other unused partitions will be deleted.  If you set this parameter to 0, the maximum amount of space on the device hosting the root filesystem will be used.  If set to integer >0, your root filesystem will be expanding to that size in GB.  Do not append a postfix; even if you do, it will be ignored and the integer value will be interpreted in GB.")
 pc.defineParameter("swiftLVSize", "Swift Logical Volume Size",
                    portal.ParameterType.INTEGER,4,advanced=True,
                    longDescription="The necessary space in GB to reserve for each of two Swift backing store volumes, when it is possible to use logical volumes.  Nearly all Cloudlab machines do support logical volumes.  Ensure that the total disk space requested (20GB root + 2x Swift LV size + 1x Glance LV size) is less than the total disk space available on the node type you want to run on.")
@@ -1193,6 +1196,9 @@ class Parameters(RSpec.Resource):
 
         param = ET.SubElement(el,paramXML)
         param.text = "GLANCE_LV_SIZE=%d" % (int(params.glanceLVSize))
+
+        param = ET.SubElement(el,paramXML)
+        param.text = "RESIZEROOT=%s" % (params.resizeRoot)
 
         return el
     pass
