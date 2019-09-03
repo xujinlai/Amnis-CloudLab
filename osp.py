@@ -83,7 +83,7 @@ pc.defineParameter("fromScratch","Install OpenStack packages on a bare image",
                    portal.ParameterType.BOOLEAN,False,advanced=True,
                    longDescription="If you do not mind waiting awhile for your experiment and OpenStack instance to be available, you can select this option to start from one of our standard Ubuntu disk images; the profile setup scripts will then install all necessary packages.  NOTE: this option may only be used at x86 cluster (i.e., not the \"Utah Cluster\") for now!  NOTE: this option requires that you select both the Apt update and install package options above!")
 pc.defineParameter("publicIPCount", "Number of public IP addresses",
-                   portal.ParameterType.INTEGER, 7,advanced=True,
+                   portal.ParameterType.INTEGER, 10,advanced=True,
                    longDescription="Make sure to include both the number of floating IP addresses you plan to need for instances; and also for OpenVSwitch interface IP addresses.  Each OpenStack network this profile creates for you is bridged to the external, public network, so you also need a public IP address for each of those switch interfaces.  So, if you ask for one GRE tunnel network, and one flat data network (the default configuration), you would need two public IPs for switch interfaces, and then you request two additional public IPs that can be bound to instances as floating IPs.  If you ask for more networks, make sure to increase this number appropriately.")
 pc.defineParameter("flatDataLanCount","Number of Flat Data Networks",
                    portal.ParameterType.INTEGER,1,advanced=True,
