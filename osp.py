@@ -38,7 +38,7 @@ pc.defineParameter("release","OpenStack Release",
                    portal.ParameterType.STRING,"rocky",[("rocky","Rocky"),("queens","Queens"),("pike","Pike"),("ocata","Ocata"),("newton","Newton"),("mitaka","Mitaka"),("liberty","Liberty (deprecated)"),("kilo","Kilo (deprecated)"),("juno","Juno (deprecated)")],
                    longDescription="We provide OpenStack Rocky, Queens (Ubuntu 18.04), Pike, Ocata, Newton, Mitaka (Ubuntu 16.04); Liberty (Ubuntu 15.10); Kilo (Ubuntu 15.04); or Juno (Ubuntu 14.10).  OpenStack is installed from packages available on these distributions.")
 pc.defineParameter("computeNodeCount", "Number of compute nodes (at Site 1)",
-                   portal.ParameterType.INTEGER, 1)
+                   portal.ParameterType.INTEGER, 9)
 pc.defineParameter("osNodeType", "Hardware Type",
                    portal.ParameterType.NODETYPE, "",
                    longDescription="A specific hardware type to use for each node.  Cloudlab clusters all have machines of specific types.  When you set this field to a value that is a specific hardware type, you will only be able to instantiate this profile on clusters with machines of that type.  If unset, when you instantiate the profile, the resulting experiment may have machines of any available type allocated.")
