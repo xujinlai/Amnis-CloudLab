@@ -61,7 +61,7 @@ crudini --set /etc/neutron/neutron.conf DEFAULT debug ${DEBUG_LOGGING}
 crudini --set /etc/neutron/neutron.conf DEFAULT core_plugin ml2
 if [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
     crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins \
-        'router,metering,neutron_lbaas.services.loadbalancer.plugin.LoadBalancerPluginv2'
+        'router,qos,metering,neutron_lbaas.services.loadbalancer.plugin.LoadBalancerPluginv2,neutron.services.l3_router.l3_router_plugin.L3RouterPlugin,neutron.services.metering.metering_plugin.MeteringPlugin,neutron.services.qos.qos_plugin.QoSPlugin'
 else
     crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins \
         'router,metering'
@@ -146,7 +146,7 @@ crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
     mechanism_drivers openvswitch
 extdrivers=
 if [ $OSVERSION -ge $OSNEWTON ]; then
-    extdrivers="dns"
+    extdrivers="dns,qos"
 fi
 if [ -n "$extdrivers" ]; then
     crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
@@ -202,6 +202,9 @@ ${bridge_mappings}
 
 [agent]
 ${tunnel_types}
+extensions = qos
+dscp = 8
+dscp_inherit = true
 EOF
 fi
 
