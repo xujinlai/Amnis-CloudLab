@@ -50,6 +50,27 @@ else
     fi
 fi
 
+echo "*** Configuring a bionic-server x86_64 image ..."
+imgfile=bionic-server-cloudimg-amd64.vmdk
+imgname=bionic-server
+#
+# First try the local boss, then Apt, then just grab from Ubuntu.
+#
+imgfile=`get_url "http://boss.${OURDOMAIN}/downloads/openstack/$imgfile http://boss.apt.emulab.net/downloads/openstack/$imgfile https://cloud-images.ubuntu.com/bionic/current/$imgfile"`
+if [ ! $? -eq 0 ]; then
+    echo "ERROR: failed to download $imgfile from Cloudlab or Ubuntu!"
+else
+    old="$imgfile"
+    imgfile=`extract_image "$imgfile"`
+    if [ ! $? -eq 0 ]; then
+	echo "ERROR: failed to extract $old"
+    else
+	(fixup_image "$imgfile" \
+	    && sched_image "$IMAGEDIR/$imgfile" "$imgname" ) \
+	    || echo "ERROR: could not configure default VM image $imgfile !"
+    fi
+fi
+
 #
 # Setup the Manila service image so that Manila works out of the box.
 #
