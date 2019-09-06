@@ -61,7 +61,7 @@ crudini --set /etc/neutron/neutron.conf DEFAULT debug ${DEBUG_LOGGING}
 crudini --set /etc/neutron/neutron.conf DEFAULT core_plugin ml2
 if [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
     crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins \
-        'router,qos,metering,neutron_lbaas.services.loadbalancer.plugin.LoadBalancerPluginv2,neutron.services.l3_router.l3_router_plugin.L3RouterPlugin,neutron.services.metering.metering_plugin.MeteringPlugin,neutron.services.qos.qos_plugin.QoSPlugin'
+        'router,qos,metering,neutron_lbaas.services.loadbalancer.plugin.LoadBalancerPluginv2'
 else
     crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins \
         'router,metering'
