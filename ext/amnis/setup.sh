@@ -26,6 +26,9 @@ AMNIS_DEMO_BRANCH="master"
 # Grab our parameters.
 . $OURDIR/parameters
 
+# Local vars.
+AMNIS_ENV=$OURDIR/amnis/amnis-oom.env
+
 # Local functions.
 __openstack() {
     __err=1
@@ -80,11 +83,19 @@ else
     done
 fi
 
-
 #
 # Also, change the OS_AUTH_URL value to point to the FQDN, for later use
 # in the Amnis env file.
 #
 export OS_AUTH_URL=`echo "$OS_AUTH_URL" | sed -e "s/$CONTROLLER:/$HDOMAIN:/"`
 
+#
+# Grab Storm binary.
+#
+export STORM_DIR=storm
+if [ ! -d $STORM_DIR ]; then
+    wget $AMNIS_STORM_TAR
+    tar zxvf "apache-storm-2.0.0.tar.gz"
+    ln -s "apache-storm-2.0.0.tar.gz" $STORM_DIR
+fi
 
