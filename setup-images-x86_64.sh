@@ -33,9 +33,9 @@ echo "*** Configuring a xenial-server x86_64 image ..."
 imgfile=xenial-server-cloudimg-amd64-disk1.img
 imgname=xenial-server
 #
-# First try the local boss, then Apt, then just grab from Ubuntu.
+# First try  just grab from Ubuntu.
 #
-imgfile=`get_url "http://boss.${OURDOMAIN}/downloads/openstack/$imgfile http://boss.apt.emulab.net/downloads/openstack/$imgfile https://cloud-images.ubuntu.com/xenial/current/$imgfile"`
+imgfile=`get_url "https://cloud-images.ubuntu.com/xenial/current/$imgfile"`
 if [ ! $? -eq 0 ]; then
     echo "ERROR: failed to download $imgfile from Cloudlab or Ubuntu!"
 else
@@ -54,9 +54,9 @@ echo "*** Configuring a bionic-server x86_64 image ..."
 imgfile=bionic-server-cloudimg-amd64.vmdk
 imgname=bionic-server
 #
-# First try the local boss, then Apt, then just grab from Ubuntu.
+# First try just grab from Ubuntu.
 #
-imgfile=`get_url "http://boss.${OURDOMAIN}/downloads/openstack/$imgfile http://boss.apt.emulab.net/downloads/openstack/$imgfile https://cloud-images.ubuntu.com/bionic/current/$imgfile"`
+imgfile=`get_url "https://cloud-images.ubuntu.com/bionic/current/$imgfile"`
 if [ ! $? -eq 0 ]; then
     echo "ERROR: failed to download $imgfile from Cloudlab or Ubuntu!"
 else
@@ -77,7 +77,7 @@ fi
 echo "*** Configuring the manila-service-image image ..."
 imgfile=manila-service-image-master.qcow2
 imgname=manila-service-image
-imgfile=`get_url "http://boss.${OURDOMAIN}/downloads/openstack/$imgfile http://boss.apt.emulab.net/downloads/openstack/$imgfile http://tarballs.openstack.org/manila-image-elements/images/$imgfile"`
+imgfile=`get_url "http://tarballs.openstack.org/manila-image-elements/images/$imgfile"`
 if [ ! $? -eq 0 ]; then
     echo "ERROR: failed to download $imgfile from Cloudlab or Ubuntu!"
 else
