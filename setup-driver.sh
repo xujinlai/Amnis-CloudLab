@@ -187,6 +187,8 @@ if [ "$HOSTNAME" = "$CONTROLLER" ]; then
 
     exec /bin/sh -c "$DIRNAME/setup-controller.sh 1> $OURDIR/setup-controller.log 2>&1 </dev/null"
 
+    exec /bin/sh -c "$DIRNAME/setup-qos-policy.sh 1> $OURDIR/setup-qos-policy.log 2>&1 </dev/null"
+
     exit 1
 elif [ "$HOSTNAME" != "$NETWORKMANAGER" ]; then
     logtend "driver"

@@ -203,8 +203,6 @@ ${bridge_mappings}
 [agent]
 ${tunnel_types}
 extensions = qos
-dscp = 8
-dscp_inherit = true
 EOF
 fi
 
