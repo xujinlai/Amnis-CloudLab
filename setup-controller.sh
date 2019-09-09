@@ -1495,7 +1495,7 @@ if [ -z "${NEUTRON_DBPASS}" ]; then
 	crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins 'router,metering'
     elif [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
 	crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins \
-	    'router,metering,neutron_lbaas.services.loadbalancer.plugin.LoadBalancerPluginv2'
+        'router,qos,metering,neutron_lbaas.services.loadbalancer.plugin.LoadBalancerPluginv2'
     else
 	crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins \
 	    'router,metering'
