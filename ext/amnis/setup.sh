@@ -121,3 +121,21 @@ systemctl restart nova-api nova-scheduler nova-conductor
 create_flavor 101 16 32768 40 "a1.2xlarge"
 create_flavor 102 8 16384 40 "a1.xlarge"
 create_flavor 103 2 4096 40 "a1.median"
+
+#
+# Add the qos policies for network
+#
+# create the policy for mega datacenter
+openstack network qos policy create bw-limiter-megadc
+openstack network qos rule create --type bandwidth-limit --egress bw-limiter-megadc --max-kbps 100000 --max-burst-kbits 80000
+openstack network qos rule create --type bandwidth-limit --ingress bw-limiter-megadc --max-kbps 100000 --max-burst-kbits 80000
+
+# create the policy for micro datacenter
+neutron qos-policy-create bw-limiter-mdc
+openstack network qos rule create --type bandwidth-limit --egress bw-limiter-mdc --max-kbps 100000 --max-burst-kbits 80000
+openstack network qos rule create --type bandwidth-limit --ingress bw-limiter-mdc --max-kbps 100000 --max-burst-kbits 80000
+
+# create the policy for micro datacenter
+neutron qos-policy-create bw-limiter-sg
+openstack network qos rule create --type bandwidth-limit --egress bw-limiter-sg --max-kbps 1000 --max-burst-kbits 800
+openstack network qos rule create --type bandwidth-limit --ingress bw-limiter-sg --max-kbps 1000 --max-burst-kbits 800
