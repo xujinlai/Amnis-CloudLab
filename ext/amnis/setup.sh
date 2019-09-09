@@ -27,7 +27,7 @@ AMNIS_DEMO_BRANCH="master"
 . $OURDIR/parameters
 
 # Local vars.
-AMNIS_ENV=$OURDIR/amnis/amnis-oom.env
+AMNIS_ENV=$OURDIR/ext/amnis/amnis-oom.env
 
 # Local functions.
 __openstack() {
@@ -47,6 +47,12 @@ __openstack() {
             sleep 8
         fi
     done
+}
+
+# create flavor function
+# usage  create_flavor <ID> <vCPU> <RAM> <DISK> <NAME>
+create_flavor() {
+    __openstack flavor create --id $1 --vcpus $2 --ram $3 --disk $4 $5
 }
 
 mkdir -p $OURDIR/amnis
@@ -90,12 +96,28 @@ fi
 export OS_AUTH_URL=`echo "$OS_AUTH_URL" | sed -e "s/$CONTROLLER:/$HDOMAIN:/"`
 
 #
+# Change the RAM policy *not* to overcommit.  At least some of the ONAP
+# VMs need what they ask for.
+#
+crudini --set /etc/nova/nova.conf DEFAULT ram_allocation_ratio 1.0
+systemctl restart nova-api nova-scheduler nova-conductor
+
+#
 # Grab Storm binary.
 #
-export STORM_DIR=storm
-if [ ! -d $STORM_DIR ]; then
-    wget $AMNIS_STORM_TAR
-    tar zxvf "apache-storm-2.0.0.tar.gz"
-    ln -s "apache-storm-2.0.0.tar.gz" $STORM_DIR
-fi
+#export STORM_DIR=storm
+#if [ ! -d $STORM_DIR ]; then
+#    wget $AMNIS_STORM_TAR
+#    tar zxvf "apache-storm-2.0.0.tar.gz"
+#    ln -s "apache-storm-2.0.0.tar.gz" $STORM_DIR
+#fi
 
+#
+# Add the flavors to openstack all with 40GB disk
+# a1.2xlarge  ->  16 CPUs with 32GB memory
+# a1.xlarge   -> 8 CPUs with 16GB memory
+# a1.median   -> 2 CPUs with 4GB memory
+
+create_flavor 101 16 32768 40 "a1.2xlarge"
+create_flavor 102 8 16384 40 "a1.xlarge"
+create_flavor 103 2 4096 40 "a1.median"
