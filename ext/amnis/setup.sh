@@ -131,11 +131,11 @@ openstack network qos rule create --type bandwidth-limit --egress bw-limiter-meg
 openstack network qos rule create --type bandwidth-limit --ingress bw-limiter-megadc --max-kbps 100000 --max-burst-kbits 80000
 
 # create the policy for micro datacenter
-neutron qos-policy-create bw-limiter-mdc
+openstack network qos policy create bw-limiter-mdc
 openstack network qos rule create --type bandwidth-limit --egress bw-limiter-mdc --max-kbps 100000 --max-burst-kbits 80000
 openstack network qos rule create --type bandwidth-limit --ingress bw-limiter-mdc --max-kbps 100000 --max-burst-kbits 80000
 
 # create the policy for micro datacenter
-neutron qos-policy-create bw-limiter-sg
+openstack network qos policy create bw-limiter-sg
 openstack network qos rule create --type bandwidth-limit --egress bw-limiter-sg --max-kbps 1000 --max-burst-kbits 800
 openstack network qos rule create --type bandwidth-limit --ingress bw-limiter-sg --max-kbps 1000 --max-burst-kbits 800
