@@ -51,7 +51,7 @@ else
 fi
 
 echo "*** Configuring a bionic-server x86_64 image ..."
-imgfile=bionic-server-cloudimg-amd64.vmdk
+imgfile=bionic-server-cloudimg-amd64.img
 imgname=bionic-server
 #
 # First try just grab from Ubuntu.

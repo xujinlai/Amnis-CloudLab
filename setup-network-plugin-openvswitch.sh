@@ -206,9 +206,6 @@ extensions = qos
 EOF
 fi
 
-## set the l3 agent
-crudini --set /etc/neutron/l3_agent.ini agent extensions "fip_qos"
-crudini --set /etc/neutron/l3_agent.ini DEFAULT ovs_use_veth True
 
 #
 # Ok, also put our FQDN into the hosts file so that local applications can
