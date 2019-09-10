@@ -71,6 +71,7 @@ crudini --set /etc/neutron/l3_agent.ini DEFAULT use_namespaces True
 if [ "${ML2PLUGIN}" = "openvswitch" ]; then
     crudini --set /etc/neutron/l3_agent.ini DEFAULT external_network_bridge br-ex
     crudini --set /etc/neutron/l3_agent.ini DEFAULT ovs_use_veth True
+    crudini --set /etc/neutron/l3_agent.ini agent extensions fip_qos
 else
     crudini --set /etc/neutron/l3_agent.ini DEFAULT external_network_bridge ''
 fi
