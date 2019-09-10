@@ -42,3 +42,7 @@ openstack network qos rule create --type bandwidth-limit --ingress bw-limiter-md
 openstack network qos policy create bw-limiter-sg
 openstack network qos rule create --type bandwidth-limit --egress bw-limiter-sg --max-kbps 1000 --max-burst-kbits 800
 openstack network qos rule create --type bandwidth-limit --ingress bw-limiter-sg --max-kbps 1000 --max-burst-kbits 800
+
+
+logtend "qos"
+exit 0
