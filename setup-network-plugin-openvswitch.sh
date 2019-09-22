@@ -151,7 +151,7 @@ fi
 if [ -n "$extdrivers" ]; then
     crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
         extension_drivers $extdrivers
-    crudini --set /etc/neutron/l3_agent.ini agent extensions fip_qos
+    #crudini --set /etc/neutron/l3_agent.ini agent extensions fip_qos
     crudini --set /etc/neutron/l3_agent.ini DEFAULT ovs_use_veth True
 fi
 crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat \
