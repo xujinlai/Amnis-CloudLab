@@ -47,7 +47,7 @@ pc.defineParameter("osLinkSpeed", "Experiment Link Speed",
                    [(0,"Any"),(1000000,"1Gb/s"),(10000000,"10Gb/s")],
                    longDescription="A specific link speed to use for each node.  All experiment network interfaces will request this speed.")
 pc.defineParameter("ml2plugin","ML2 Plugin",
-                   portal.ParameterType.STRING,"openvswitch",
+                   portal.ParameterType.STRING,"linuxbridge",
                    [("openvswitch","OpenVSwitch"),
                     ("linuxbridge","Linux Bridge")],
                    longDescription="Starting in Liberty and onwards, we support both the OpenVSwitch and LinuxBridge ML2 plugins to create virtual networks in Neutron.  OpenVSwitch remains our default and best-supported option.  Note: you cannot use GRE tunnels with the LinuxBridge driver; you'll need to use VXLAN tunnels instead.  And by default, the profile allocates 1 GRE tunnel -- so you must change that immediately, or you will see an error.")
@@ -89,13 +89,13 @@ pc.defineParameter("flatDataLanCount","Number of Flat Data Networks",
                    portal.ParameterType.INTEGER,1,advanced=True,
                    longDescription="Create a number of flat OpenStack networks.  If you do not select the Multiplex Flat Networks option below, each of these networks requires a physical network interface.  If you attempt to instantiate this profile on nodes with only 1 experiment interface, and ask for more than one flat network, your profile will not instantiate correctly.  Many CloudLab nodes have only a single experiment interface.")
 pc.defineParameter("greDataLanCount","Number of GRE Tunnel Data Networks",
-                   portal.ParameterType.INTEGER,6,advanced=True,
+                   portal.ParameterType.INTEGER,0,advanced=True,
                    longDescription="To use GRE tunnels, you must have at least one flat data network; all tunnels are implemented using the first flat network!")
 pc.defineParameter("vlanDataLanCount","Number of VLAN Data Networks",
                    portal.ParameterType.INTEGER,0,advanced=True,
                    longDescription="If you want to play with OpenStack networks that are implemented using real VLAN tags, create VLAN-backed networks with this parameter.  Currently, however, you cannot combine it with Flat nor Tunnel data networks.")
 pc.defineParameter("vxlanDataLanCount","Number of VXLAN Data Networks",
-                   portal.ParameterType.INTEGER,0,
+                   portal.ParameterType.INTEGER,6,
                    longDescription="To use VXLAN networks, you must have at least one flat data network; all tunnels are implemented using the first flat network!",
                    advanced=True)
 pc.defineParameter("useDesignateAsResolver",

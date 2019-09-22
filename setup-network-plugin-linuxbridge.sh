@@ -61,7 +61,7 @@ crudini --set /etc/neutron/neutron.conf DEFAULT debug ${DEBUG_LOGGING}
 crudini --set /etc/neutron/neutron.conf DEFAULT core_plugin ml2
 if [ $USE_NEUTRON_LBAAS -eq 1 -a $OSVERSION -ge $OSNEWTON ]; then
     crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins \
-        'router,metering,neutron_lbaas.services.loadbalancer.plugin.LoadBalancerPluginv2'
+        'router,qos,metering,neutron_lbaas.services.loadbalancer.plugin.LoadBalancerPluginv2'
 else
     crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins \
         'router,metering'
@@ -186,7 +186,7 @@ crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
     mechanism_drivers 'linuxbridge,l2population'
 extdrivers=port_security
 if [ $OSVERSION -ge $OSNEWTON ]; then
-    extdrivers="${extdrivers},dns"
+    extdrivers="${extdrivers},dns,qos"
 fi
 crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 \
     extension_drivers $extdrivers
@@ -215,6 +215,7 @@ l2_population = True
 
 [agent]
 prevent_arp_spoofing = True
+extensions = qos
 EOF
 crudini --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini securitygroup \
     enable_security_group True

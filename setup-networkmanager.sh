@@ -68,6 +68,7 @@ fi
 crudini --set /etc/neutron/l3_agent.ini DEFAULT \
     interface_driver $interface_driver
 crudini --set /etc/neutron/l3_agent.ini DEFAULT use_namespaces True
+crudini --set /etc/neutron/l3_agent.ini agent extensions fip_qos
 if [ "${ML2PLUGIN}" = "openvswitch" ]; then
     crudini --set /etc/neutron/l3_agent.ini DEFAULT external_network_bridge br-ex
     #crudini --set /etc/neutron/l3_agent.ini agent extensions fip_qos
