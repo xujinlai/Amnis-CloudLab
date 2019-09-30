@@ -139,3 +139,20 @@ openstack network qos rule create --type bandwidth-limit --ingress bw-limiter-md
 openstack network qos policy create bw-limiter-sg
 openstack network qos rule create --type bandwidth-limit --egress bw-limiter-sg --max-kbps 1000 --max-burst-kbits 800
 openstack network qos rule create --type bandwidth-limit --ingress bw-limiter-sg --max-kbps 1000 --max-burst-kbits 800
+
+# install the python packages
+sudo apt install -y python3 python3-pip;
+pip3 install numpy random_word paho-mqtt click fire;
+
+# jdk install
+sudo apt-get install -y software-properties-common debconf-utils;
+sudo add-apt-repository ppa:linuxuprising/java;
+
+sudo apt-get update;
+
+echo "oracle-java12-installer shared/accepted-oracle-license-v1-2 select true" | sudo debconf-set-selections;
+
+sudo apt install -y oracle-java12-installer;
+
+#test the java binary
+java --version
