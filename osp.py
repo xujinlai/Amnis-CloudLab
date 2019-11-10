@@ -357,7 +357,7 @@ if params.release in [ 'juno','kilo' ]:
     perr = portal.ParameterWarning("The %s release is deprecated in this profile; you can use it for now, but it will be removed or refactored in the next version of this profile!",['release'])
     pc.reportWarning(perr)
     pass
-if params.computeNodeCount > 8:
+if params.computeNodeCount > 10:
     perr = portal.ParameterWarning("Are you creating a real cloud?  Otherwise, do you really need more than 8 compute nodes?  Think of your fellow users scrambling to get nodes :).",['computeNodeCount'])
     pc.reportWarning(perr)
     pass
