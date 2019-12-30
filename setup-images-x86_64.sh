@@ -56,7 +56,7 @@ imgname=bionic-server
 #
 # First try just grab from Ubuntu.
 #
-imgfile=`get_url "https://cloud-images.ubuntu.com/releases/bionic/release-20191114/$imgfile"`
+imgfile=`get_url "https://cloud-images.ubuntu.com/releases/bionic/release-20191021/$imgfile"`
 if [ ! $? -eq 0 ]; then
     echo "ERROR: failed to download $imgfile from Cloudlab or Ubuntu!"
 else
