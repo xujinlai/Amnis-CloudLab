@@ -156,4 +156,4 @@ sudo apt-get install -y software-properties-common debconf-utils;
 sudo apt install -y openjdk-8-jdk
 
 #test the java binary
-java --version
+java -version

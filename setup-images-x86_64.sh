@@ -51,12 +51,12 @@ else
 fi
 
 echo "*** Configuring a bionic-server x86_64 image ..."
-imgfile=bionic-server-cloudimg-amd64.img
+imgfile=ubuntu-18.04-server-cloudimg-amd64.img
 imgname=bionic-server
 #
 # First try just grab from Ubuntu.
 #
-imgfile=`get_url "https://cloud-images.ubuntu.com/bionic/current/$imgfile"`
+imgfile=`get_url "https://cloud-images.ubuntu.com/releases/bionic/release-20191114/$imgfile"`
 if [ ! $? -eq 0 ]; then
     echo "ERROR: failed to download $imgfile from Cloudlab or Ubuntu!"
 else
